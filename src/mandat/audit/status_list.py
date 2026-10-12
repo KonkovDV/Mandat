@@ -78,17 +78,32 @@ class StatusRegistry:
             reg.lists = {p: bytearray(MIN_BITS // 8) for p in PURPOSES}
             return reg
         payload = json.loads(state.read_text(encoding="utf-8"))
-        reg = cls(directory, size=int(payload["size"]), epoch=str(payload.get("epoch") or secrets.token_hex(8)))
+        size = int(payload["size"])
+        if size < MIN_BITS or size % 8:
+            raise ValueError(f"список статусов меньше {MIN_BITS} бит: групповая приватность не обеспечена")
+        reg = cls(directory, size=size, epoch=str(payload.get("epoch") or secrets.token_hex(8)))
         reg.lists = {p: decode_bits(payload["lists"][p]) for p in PURPOSES}
+        if any(len(bits) * 8 != size for bits in reg.lists.values()):
+            raise ValueError("длина списка статусов не совпадает с размером в registry.json")
         reg.entries = {str(k): v for k, v in payload["entries"].items()}
         return reg
 
     def allocate(self, meta: dict[str, Any]) -> int:
-        while True:
+        """Случайный свободный индекс из CSPRNG: по номеру не видно ни порядка выдачи, ни числа удостоверений.
+
+        Так советует W3C Bitstring Status List (раздел о statusListIndex). Занятые индексы не выдаются повторно.
+        """
+        if len(self.entries) >= self.size:
+            raise RuntimeError("в списке статусов не осталось свободных индексов: нужна новая эпоха")
+        for _ in range(64):
             index = secrets.randbelow(self.size)
             if str(index) not in self.entries:
-                self.entries[str(index)] = dict(meta)
-                return index
+                break
+        else:
+            taken = {int(i) for i in self.entries}
+            index = secrets.choice([i for i in range(self.size) if i not in taken])
+        self.entries[str(index)] = dict(meta)
+        return index
 
     def credential_status(self, index: int) -> list[dict[str, str]]:
         return [
@@ -180,7 +195,12 @@ def check_status(credential: dict[str, Any], status_dir: Path, public_key: Ed255
         if issued.tzinfo is None:
             raise ValueError(f"у списка {path} нет часового пояса")
         bits = decode_bits(subject["encodedList"])
-        result[purpose] = get_bit(bits, int(entry["statusListIndex"]))
+        if len(bits) * 8 < MIN_BITS:
+            raise ValueError(f"список {path} короче {MIN_BITS} бит (STATUS_LIST_LENGTH_ERROR)")
+        position = int(entry["statusListIndex"])
+        if not 0 <= position < len(bits) * 8:
+            raise ValueError(f"индекс {position} вне списка {path} (RANGE_ERROR)")
+        result[purpose] = get_bit(bits, position)
         result[f"{purpose}_issued"] = issued.isoformat()
     if not result:
         return {"state": "без статуса"}
