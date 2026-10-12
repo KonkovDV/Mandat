@@ -108,3 +108,14 @@ class Directory:
         if self.legacy_token and hmac.compare_digest(token.encode("utf-8"), self.legacy_token.encode("utf-8")):
             found = found or Principal("default", "admin")
         return found
+
+
+def access_problem() -> str | None:
+    """Почему API нельзя запускать с текущим окружением. ``None``, если доступ настроен."""
+    try:
+        users = load_users()
+    except (ValueError, OSError) as exc:
+        return f"MANDAT_API_USERS не читается: {exc}"
+    if not users and not os.environ.get("MANDAT_API_TOKEN", "").strip():
+        return "задайте MANDAT_API_TOKEN (режим стенда) или MANDAT_API_USERS (пользователи с ролями)"
+    return None

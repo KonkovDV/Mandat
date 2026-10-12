@@ -4,7 +4,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     environment:
-      MANDAT_API_TOKEN: ${MANDAT_API_TOKEN:?задайте MANDAT_API_TOKEN в .env}
+      # Нужен хотя бы один из двух. Если нет ни того ни другого, mandat serve сразу выходит с ошибкой.
+      MANDAT_API_TOKEN: ${MANDAT_API_TOKEN:-}
       MANDAT_API_USERS: ${MANDAT_API_USERS:-}
       MANDAT_API_DOCS: ${MANDAT_API_DOCS:-}
       MANDAT_API_RATE_PER_MIN: ${MANDAT_API_RATE_PER_MIN:-120}

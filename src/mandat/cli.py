@@ -261,6 +261,12 @@ def cmd_examples(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
+    from mandat.api.principals import access_problem
+
+    problem = access_problem()
+    if problem:
+        print(f"ошибка: {problem}", file=sys.stderr)
+        return 2
     try:
         import uvicorn
     except ModuleNotFoundError:
