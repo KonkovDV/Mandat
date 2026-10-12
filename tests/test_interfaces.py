@@ -143,3 +143,27 @@ def test_rules_doc_is_up_to_date(root: Path):
     assert (root / "docs" / "RULES.md").read_text(encoding="utf-8") == render_rules_doc(), (
         "docs/RULES.md устарел: python scripts/gen_rules_doc.py"
     )
+
+
+def test_api_keeps_a_bounded_number_of_reports(monkeypatch):
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    import mandat.api.app as api
+
+    class Stub:
+        def __init__(self, case_id):
+            self.case_id = case_id
+
+        def as_dict(self):
+            return {"case_id": self.case_id}
+
+    monkeypatch.setattr(api, "MAX_REPORTS", 3)
+    monkeypatch.setattr(api, "load_case_inline", lambda manifest: manifest["case_id"])
+    monkeypatch.setattr(api, "verify_case", lambda case, profile: Stub(case))
+    client = TestClient(api.create_app(token="secret"))
+    auth = {"Authorization": "Bearer secret"}
+    for n in range(5):
+        assert client.post("/v1/cases", json={"case_id": f"c{n}"}, headers=auth).status_code == 200
+    assert client.get("/v1/cases/c0", headers=auth).status_code == 404
+    assert client.get("/v1/cases/c4", headers=auth).status_code == 200

@@ -184,11 +184,7 @@ def check_status(credential: dict[str, Any], status_dir: Path, public_key: Ed255
         result[f"{purpose}_issued"] = issued.isoformat()
     if not result:
         return {"state": "без статуса"}
-    issued_values = [
-        datetime.fromisoformat(str(result[key]))
-        for key in result
-        if str(key).endswith("_issued")
-    ]
+    issued_values = [datetime.fromisoformat(str(result[key])) for key in result if str(key).endswith("_issued")]
     now = datetime.now(UTC)
     future = any(item > now + timedelta(minutes=5) for item in issued_values)
     stale = any(now - item > timedelta(days=7) for item in issued_values)

@@ -21,6 +21,8 @@ from mandat.services.monitoring import evaluate, parse_events
 from mandat.services.verify import verify_case
 
 MAX_BODY = 8 * 1024 * 1024
+# Отчёты живут в памяти процесса. Без потолка поток POST /v1/cases съедает память (OWASP API4:2023).
+MAX_REPORTS = 1000
 
 
 def create_app(token: str | None = None) -> FastAPI:
@@ -68,7 +70,10 @@ def create_app(token: str | None = None) -> FastAPI:
         except CaseError as exc:
             raise HTTPException(422, str(exc)) from exc
         report = verify_case(case, profile=profile).as_dict()
+        reports.pop(report["case_id"], None)
         reports[report["case_id"]] = report
+        while len(reports) > MAX_REPORTS:
+            reports.pop(next(iter(reports)))
         return report
 
     @app.get("/v1/cases/{case_id}", dependencies=[Depends(auth)])

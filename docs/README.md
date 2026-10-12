@@ -9,7 +9,7 @@
 | Жюри на питче | [сценарий показа](DEMO.md) | [реестр утверждений](../CLAIMS_REGISTRY.md), [конкуренты](COMPETITORS.md) |
 | Жюри после питча | [каркас MVP](MVP.md) | [архитектура](ARCHITECTURE.md), [оценка](EVALUATION.md) |
 | Юрист банка | [нормы](REGULATORY.md) | [правила](RULES.md), [формат МЧД](FORMAT_NOTES.md), [предметная модель](DOMAIN.md) |
-| ИБ банка | [модель угроз](THREAT_MODEL.md) | [защита данных](DATA_PROTECTION.md), [риски ИИ](AI_RISKS.md), [SECURITY](../SECURITY.md) |
+| ИБ банка | [модель угроз](THREAT_MODEL.md), [аудит 2026-10](AUDIT_2026-10.md) | [защита данных](DATA_PROTECTION.md), [риски ИИ](AI_RISKS.md), [SECURITY](../SECURITY.md) |
 | Владелец процесса | [пилот](PILOT.md) | [экономика](ECONOMICS.md), [дорожная карта](ROADMAP.md) |
 | Инженер, который клонировал репозиторий | [README](../README.md), раздел «Запуск» | [архитектура](ARCHITECTURE.md), [перенос идей](PORTING.md) |
 

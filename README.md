@@ -19,7 +19,7 @@
 
 Трек ВТБ «Финтех без границ», Академия Финтеха 2026. Сейчас это вертикальный срез на вымышленных данных. Что уже считается, а что заглушка, написано ниже и на плашке «Режим стенда» в каждом отчёте.
 
-**Для жюри:** [сценарий показа](docs/DEMO.md) · [реестр утверждений](CLAIMS_REGISTRY.md) · [границы](LIMITS.md) · [конкуренты](docs/COMPETITORS.md) · [карта документов](docs/README.md)
+**Для жюри:** [сценарий показа](docs/DEMO.md) · [реестр утверждений](CLAIMS_REGISTRY.md) · [границы](LIMITS.md) · [конкуренты](docs/COMPETITORS.md) · [аудит, октябрь 2026](docs/AUDIT_2026-10.md) · [карта документов](docs/README.md)
 
 ## Коротко
 
@@ -147,7 +147,7 @@ mandat journal-proof var/demo/journal.jsonl --seq 3
 python -m pytest
 ```
 
-На Linux и macOS те же команды, ключ читается как `$(cat var/demo/public_key.txt)`. Проверка Cedar: `pip install -e ".[dev,api,cedar]"`. Docker поднимает API только на localhost: `docker compose up --build`, токен по умолчанию в compose — `change-me`, это не секрет промышленного контура. Описание API — `http://127.0.0.1:8000/docs`. Без `MANDAT_API_TOKEN` API отвечает 503.
+На Linux и macOS те же команды, ключ читается как `$(cat var/demo/public_key.txt)`. Проверка Cedar: `pip install -e ".[dev,api,cedar]"`. Docker поднимает API только на localhost: `docker compose up --build`, перед этим положите `MANDAT_API_TOKEN` в `.env` (образец в `.env.example`): без токена compose не стартует, чтобы стенд не поднялся с паролем по умолчанию. Описание API — `http://127.0.0.1:8000/docs`. Без `MANDAT_API_TOKEN` API отвечает 503.
 
 Перед сдачей: `make check` на Linux или `python -m ruff check src tests scripts` и `python -m pytest` на Windows. Числа для слайдов пересобирает `python scripts/build_evidence.py`.
 
