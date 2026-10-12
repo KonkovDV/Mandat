@@ -5,21 +5,31 @@
 СНИЛС: сумма цифр с весами 9..1; проверяется для номеров больше 001-001-998.
 КПП: только структура (4 цифры, 2 символа причины, 3 цифры), контрольного числа нет.
 
+Цифры только ASCII. ``str.isdigit`` и класс цифр в регулярных выражениях Python пропускают
+арабские, полноширинные и другие цифры Юникода, а ``int`` их честно переводит. Такой ИНН сошёлся бы
+по контрольному числу, но не нашёлся бы ни в одном реестре по строке.
+
 Генераторы ``make_*`` нужны синтетическому корпусу: они достраивают контрольный разряд.
 """
 
 from __future__ import annotations
 
 import re
+from typing import TypeGuard
 
 _INN10 = (2, 4, 10, 3, 5, 9, 4, 6, 8)
 _INN11 = (7, 2, 4, 10, 3, 5, 9, 4, 6, 8)
 _INN12 = (3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8)
-_KPP = re.compile(r"^\d{4}[\dA-Z]{2}\d{3}$")
+_KPP = re.compile(r"[0-9]{4}[0-9A-Z]{2}[0-9]{3}")
+_ASCII_DIGITS = re.compile(r"[0-9]+")
 
 
 def _digits(value: str | None) -> str:
-    return re.sub(r"\D", "", value or "")
+    return re.sub(r"[^0-9]", "", value or "")
+
+
+def _ascii_digits(value: str | None) -> TypeGuard[str]:
+    return isinstance(value, str) and _ASCII_DIGITS.fullmatch(value) is not None
 
 
 def _weighted(digits: str, weights: tuple[int, ...]) -> int:
@@ -27,7 +37,7 @@ def _weighted(digits: str, weights: tuple[int, ...]) -> int:
 
 
 def inn_valid(value: str | None) -> bool:
-    if not value or not value.isdigit():
+    if not _ascii_digits(value):
         return False
     if len(value) == 10:
         return int(value[9]) == _weighted(value[:9], _INN10)
@@ -37,7 +47,7 @@ def inn_valid(value: str | None) -> bool:
 
 
 def ogrn_valid(value: str | None) -> bool:
-    if not value or not value.isdigit():
+    if not _ascii_digits(value):
         return False
     if len(value) == 13:
         return int(value[:12]) % 11 % 10 == int(value[12])
@@ -57,6 +67,8 @@ def _snils_control(nine: str) -> int:
 
 
 def snils_valid(value: str | None) -> bool:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9]{3}-?[0-9]{3}-?[0-9]{3}[ -]?[0-9]{2}", value.strip()) is None:
+        return False
     digits = _digits(value)
     if len(digits) != 11:
         return False
@@ -66,7 +78,7 @@ def snils_valid(value: str | None) -> bool:
 
 
 def kpp_valid(value: str | None) -> bool:
-    return bool(value) and bool(_KPP.match(value or ""))
+    return isinstance(value, str) and _KPP.fullmatch(value) is not None
 
 
 def normalize_snils(value: str | None) -> str:

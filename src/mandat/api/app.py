@@ -2,13 +2,15 @@
 
 Доступ по токену (заголовок ``Authorization: Bearer …``). Два режима:
 
-* стенд: один ``MANDAT_API_TOKEN``, его владелец — администратор, ``case_id`` задаёт клиент;
+* стенд: один ``MANDAT_API_TOKEN``, его владелец — администратор, ``case_id`` задаёт клиент
+  (при заданном ``MANDAT_API_USERS`` этот токен не действует);
 * пользователи: ``MANDAT_API_USERS`` (см. ``api/principals.py``), у каждого роль, ``case_id`` выдаёт сервер,
   а кейс видит только тот, кто его создал, плюс аудитор и администратор.
 
 Без токенов API отвечает только на /health: закрыто по умолчанию.
 Swagger на /docs включается флагом ``MANDAT_API_DOCS=1``. Частота запросов ограничена
-``MANDAT_API_RATE_PER_MIN`` (по умолчанию 120 в минуту на адрес клиента, 0 выключает).
+``MANDAT_API_RATE_PER_MIN`` (по умолчанию 120 в минуту на адрес клиента, 0 выключает). Адрес берётся
+из соединения, ``X-Forwarded-For`` не читается: за прокси лимит надо ставить на самом прокси.
 Отчёты держатся в памяти процесса; хранилище кейсов — задача пилота (Postgres в контуре банка).
 """
 
@@ -33,6 +35,7 @@ from mandat.services.verify import verify_case
 MAX_BODY = 8 * 1024 * 1024
 # Отчёты живут в памяти процесса. Без потолка поток POST /v1/cases съедает память (OWASP API4:2023).
 MAX_REPORTS = 1000
+MAX_CLIENTS = 10_000
 
 
 def _env_flag(name: str) -> bool:
@@ -66,6 +69,10 @@ def create_app(
         if limit > 0 and request.url.path != "/health":
             client = request.client.host if request.client else "unknown"
             now = time.monotonic()
+            if len(hits) > MAX_CLIENTS:
+                # Поток запросов с разных адресов не должен раздувать таблицу: старые окна выбрасываем.
+                for stale in [k for k, w in hits.items() if not w or now - w[-1] > 60]:
+                    del hits[stale]
             window = hits[client]
             while window and now - window[0] > 60:
                 window.popleft()

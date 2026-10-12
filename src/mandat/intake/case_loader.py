@@ -60,14 +60,17 @@ def _rubles(value: Any) -> int | None:
     return value
 
 
+def _text(raw: dict[str, Any], key: str, where: str) -> str | None:
+    """Реквизит строкой или пусто. Число вместо ИНН теряет ведущие нули, поэтому не принимается."""
+    value = raw.get(key)
+    if value is None or isinstance(value, str):
+        return value
+    raise CaseError(f"{where}.{key} должен быть строкой")
+
+
 def _person(raw: dict[str, Any] | None) -> Person:
     raw = _object(raw, "person")
-    return Person(
-        full_name=raw.get("full_name"),
-        inn=raw.get("inn"),
-        snils=raw.get("snils"),
-        position=raw.get("position"),
-    )
+    return Person(**{k: _text(raw, k, "requester") for k in ("full_name", "inn", "snils", "position")})
 
 
 def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, Any]], bytes]) -> Case:
@@ -79,10 +82,10 @@ def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, 
             code=str(op["code"]),
             on_date=date.fromisoformat(str(op["date"])),
             amount_rub=_rubles(op.get("amount_rub")),
-            counterparty_inn=op.get("counterparty_inn"),
+            counterparty_inn=_text(op, "counterparty_inn", "operation"),
         )
         org = _object(manifest.get("organization"), "organization")
-        organization = Organization(inn=org.get("inn"), ogrn=org.get("ogrn"), kpp=org.get("kpp"), name=org.get("name"))
+        organization = Organization(**{k: _text(org, k, "organization") for k in ("inn", "ogrn", "kpp", "name")})
     except (KeyError, ValueError, TypeError) as exc:
         raise CaseError(f"манифест кейса неполный: {exc}") from exc
 

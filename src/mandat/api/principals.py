@@ -85,11 +85,15 @@ def load_users(value: str | None = None) -> tuple[UserEntry, ...]:
 
 
 class Directory:
-    """Ищет пользователя по токену. Один ``MANDAT_API_TOKEN`` без списка — режим стенда: администратор."""
+    """Ищет пользователя по токену. Один ``MANDAT_API_TOKEN`` без списка — режим стенда: администратор.
+
+    Если задан ``MANDAT_API_USERS``, ``MANDAT_API_TOKEN`` не действует.
+    """
 
     def __init__(self, users: tuple[UserEntry, ...], legacy_token: str = ""):
         self.users = users
-        self.legacy_token = legacy_token
+        # Со списком пользователей общий токен не работает: иначе рядом с ролями жил бы безымянный администратор.
+        self.legacy_token = "" if users else legacy_token.strip()
 
     @property
     def configured(self) -> bool:
@@ -105,8 +109,8 @@ class Directory:
         for entry in self.users:
             if hmac.compare_digest(presented, entry.token_sha256):
                 found = entry.principal
-        if self.legacy_token and hmac.compare_digest(token.encode("utf-8"), self.legacy_token.encode("utf-8")):
-            found = found or Principal("default", "admin")
+        if self.legacy_token and hmac.compare_digest(hash_token(token), hash_token(self.legacy_token)):
+            found = Principal("default", "admin")
         return found
 
 
