@@ -34,7 +34,7 @@ DEMO = {
 OVERLAYS = {
     "13_bankruptcy": (
         "ok",
-        "Доверитель в конкурсном производстве: доверенность прекратилась (подп. 5 п. 1 ст. 188 ГК РФ)",
+        "Доверитель в конкурсном производстве: доверенность прекратилась (ст. 126 127-ФЗ, подп. 7 п. 1 ст. 188 ГК РФ)",
         "refuted",
     ),
 }
@@ -58,7 +58,7 @@ def write_examples(target: Path) -> list[Path]:
             "expected_verdict": expected or scenario.expected,
         }
         if folder == "13_bankruptcy":
-            manifest["bankruptcy"] = {scenario.manifest["organization"]["inn"]: "terminating"}
+            manifest["bankruptcy"] = {scenario.manifest["organization"]["inn"]: "bankruptcy_proceedings"}
         (case_dir / "case.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
         )

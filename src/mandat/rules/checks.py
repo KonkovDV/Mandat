@@ -584,11 +584,65 @@ def org_status(ctx: RuleContext) -> list[Finding]:
     return [*_org_status_egrul(ctx), *_bankruptcy(ctx)]
 
 
+# Что процедура по 127-ФЗ значит для доверенности. Таблицу должен подтвердить юрист банка (docs/REGULATORY.md).
+# Подп. 7 п. 1 ст. 188 ГК РФ прекращает доверенность, если лицо утрачивает право само выдавать доверенности.
+# Для юрлица это внешнее управление (ст. 94) и конкурсное производство (ст. 126): полномочия руководителя
+# прекращаются. На наблюдении (ст. 64) и финансовом оздоровлении (ст. 82) органы управления работают с
+# ограничениями. Гражданин-банкрот по сложившейся практике право выдавать доверенности не теряет.
+BANKRUPTCY_RULES: dict[BankruptcyStatus, tuple[E, str]] = {
+    BankruptcyStatus.EXTERNAL_MANAGEMENT: (
+        E.REFUTES,
+        "внешнее управление: полномочия руководителя прекращены (ст. 94 127-ФЗ), доверенность прекратилась",
+    ),
+    BankruptcyStatus.BANKRUPTCY_PROCEEDINGS: (
+        E.REFUTES,
+        "конкурсное производство: полномочия руководителя и органов управления прекращены (ст. 126 127-ФЗ), "
+        "доверенность прекратилась",
+    ),
+    BankruptcyStatus.OBSERVATION: (
+        E.NEEDS_REVIEW,
+        "наблюдение: руководитель не отстранён, но крупные сделки и займы только с согласия временного "
+        "управляющего (ст. 64 127-ФЗ)",
+    ),
+    BankruptcyStatus.FINANCIAL_RECOVERY: (
+        E.NEEDS_REVIEW,
+        "финансовое оздоровление: органы управления работают с ограничениями (ст. 82 127-ФЗ)",
+    ),
+    BankruptcyStatus.SETTLEMENT: (
+        E.NEEDS_REVIEW,
+        "мировое соглашение: производство прекращено (ст. 159 127-ФЗ), нужно сверить дату доверенности с "
+        "периодами внешнего управления и конкурсного производства",
+    ),
+    BankruptcyStatus.DEBT_RESTRUCTURING: (
+        E.NEEDS_REVIEW,
+        "реструктуризация долгов гражданина: право выдавать доверенности сохраняется, сделки с имуществом "
+        "ограничены (ст. 213.11 127-ФЗ)",
+    ),
+    BankruptcyStatus.PROPERTY_SALE: (
+        E.NEEDS_REVIEW,
+        "реализация имущества гражданина: право выдавать доверенности сохраняется, имуществом распоряжается "
+        "финансовый управляющий (ст. 213.25 127-ФЗ)",
+    ),
+}
+ORG_PROCEDURES = frozenset(
+    {
+        BankruptcyStatus.OBSERVATION,
+        BankruptcyStatus.FINANCIAL_RECOVERY,
+        BankruptcyStatus.EXTERNAL_MANAGEMENT,
+        BankruptcyStatus.BANKRUPTCY_PROCEEDINGS,
+        BankruptcyStatus.SETTLEMENT,
+    }
+)
+
+
 def _bankruptcy(ctx: RuleContext) -> list[Finding]:
-    """Подп. 5 п. 1 ст. 188 ГК РФ: процедура банкротства, при которой лицо теряет право выдавать доверенности."""
+    """Подп. 7 п. 1 ст. 188 ГК РФ и 127-ФЗ: что процедура банкротства делает с доверенностью."""
     port = ctx.ports.bankruptcy
     out = []
-    for who, inn in (("Доверитель", ctx.case.organization.inn), ("Представитель", ctx.case.requester.inn)):
+    for who, inn, is_org in (
+        ("Доверитель", ctx.case.organization.inn, True),
+        ("Представитель", ctx.case.requester.inn, False),
+    ):
         if not inn:
             continue
         status = port.status(inn)
@@ -600,12 +654,12 @@ def _bankruptcy(ctx: RuleContext) -> list[Finding]:
             f"efrsb:{inn}",
             quote=status.value,
         )
-        if status is BankruptcyStatus.TERMINATING:
-            text = f"{who} (ИНН {inn}) в процедуре банкротства, при которой доверенность прекращается"
-            out.append(ctx.emit("R-EIO-004", E.REFUTES, text, [ref]))
-        else:
-            text = f"{who} (ИНН {inn}) в наблюдении: доверенность действует, но нужен разбор"
-            out.append(ctx.emit("R-EIO-004", E.NEEDS_REVIEW, text, [ref]))
+        effect, why = BANKRUPTCY_RULES[status]
+        if is_org != (status in ORG_PROCEDURES):
+            # Процедура не того вида лица: данные противоречат друг другу, решает человек.
+            effect = E.NEEDS_REVIEW
+            why = f"процедура {status.value} не подходит к этому лицу, сведения нужно перепроверить"
+        out.append(ctx.emit("R-EIO-004", effect, f"{who} (ИНН {inn}): {why}", [ref]))
     return out
 
 

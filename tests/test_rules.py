@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import date
 
+import pytest
 from conftest import rule_effects, run
 
 from mandat.domain.identifiers import make_inn10, make_ogrn
@@ -165,7 +166,7 @@ def test_r_eio_004_liquidated_refutes():
 
 def test_r_eio_004_bankruptcy_terminating_refutes():
     def mutate(sc):
-        sc.manifest["bankruptcy"] = {sc.manifest["organization"]["inn"]: "terminating"}
+        sc.manifest["bankruptcy"] = {sc.manifest["organization"]["inn"]: "bankruptcy_proceedings"}
 
     report = run("ok", mutate=mutate)
     assert "refutes" in rule_effects(report, "R-EIO-004")
@@ -174,11 +175,34 @@ def test_r_eio_004_bankruptcy_terminating_refutes():
 
 def test_r_eio_004_observation_needs_review():
     def mutate(sc):
-        sc.manifest["bankruptcy"] = {sc.manifest["requester"]["inn"]: "observation"}
+        sc.manifest["bankruptcy"] = {sc.manifest["organization"]["inn"]: "observation"}
 
     report = run("ok", mutate=mutate)
     assert rule_effects(report, "R-EIO-004") == {"needs_review"}
     assert report.verdict.value != "confirmed"
+
+
+@pytest.mark.parametrize(
+    ("who", "status", "effect"),
+    [
+        ("organization", "observation", "needs_review"),
+        ("organization", "financial_recovery", "needs_review"),
+        ("organization", "external_management", "refutes"),
+        ("organization", "bankruptcy_proceedings", "refutes"),
+        ("organization", "settlement", "needs_review"),
+        ("organization", "property_sale", "needs_review"),
+        ("requester", "debt_restructuring", "needs_review"),
+        ("requester", "property_sale", "needs_review"),
+        ("requester", "bankruptcy_proceedings", "needs_review"),
+        ("organization", "none", None),
+    ],
+)
+def test_r_eio_004_bankruptcy_mapping(who, status, effect):
+    def mutate(sc):
+        sc.manifest["bankruptcy"] = {sc.manifest[who]["inn"]: status}
+
+    effects = rule_effects(run("ok", mutate=mutate), "R-EIO-004")
+    assert effects == ({effect} if effect else set())
 
 
 def test_r_eio_004_unknown_bankruptcy_status_is_silent():

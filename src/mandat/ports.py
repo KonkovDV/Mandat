@@ -79,17 +79,23 @@ class NotConnectedSignature:
 
 
 class BankruptcyStatus(StrEnum):
+    """Процедура по 127-ФЗ. Что каждая значит для доверенности, см. ``BANKRUPTCY_RULES`` в rules/checks.py."""
+
     NONE = "none"
-    # Наблюдение: доверенности не прекращаются, но действия органов управления ограничены.
-    OBSERVATION = "observation"
-    # Процедура, при которой лицо утрачивает право само выдавать доверенности
-    # (конкурсное производство, внешнее управление, реализация имущества гражданина).
-    TERMINATING = "terminating"
+    # Юрлицо.
+    OBSERVATION = "observation"  # наблюдение, ст. 64
+    FINANCIAL_RECOVERY = "financial_recovery"  # финансовое оздоровление, ст. 82
+    EXTERNAL_MANAGEMENT = "external_management"  # внешнее управление, ст. 94
+    BANKRUPTCY_PROCEEDINGS = "bankruptcy_proceedings"  # конкурсное производство, ст. 126
+    SETTLEMENT = "settlement"  # мировое соглашение, ст. 159
+    # Гражданин.
+    DEBT_RESTRUCTURING = "debt_restructuring"  # реструктуризация долгов, ст. 213.11
+    PROPERTY_SALE = "property_sale"  # реализация имущества, ст. 213.25
     NOT_CHECKED = "not_checked"
 
 
 class BankruptcyPort(Protocol):
-    """Сведения ЕФРСБ о банкротстве доверителя или представителя (подп. 5 п. 1 ст. 188 ГК РФ)."""
+    """Сведения ЕФРСБ о банкротстве доверителя или представителя (подп. 7 п. 1 ст. 188 ГК РФ)."""
 
     name: str
 
