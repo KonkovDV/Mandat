@@ -247,7 +247,7 @@ def build(defect: str, seed: int = 1) -> Scenario:
         signer = Person(w.stranger.full_name, w.stranger.inn, w.stranger.snils, "Генеральный директор")
     if defect == "bad_checksum":
         principal = Organization(
-            inn=w.org.inn[:-1] + str((int(w.org.inn[-1]) + 1) % 10),
+            inn=(w.org.inn or "")[:-1] + str((int((w.org.inn or "0")[-1]) + 1) % 10),
             ogrn=w.org.ogrn,
             kpp=w.org.kpp,
             name=w.org_full_name,
@@ -383,7 +383,7 @@ def build(defect: str, seed: int = 1) -> Scenario:
     files["egrul.json"] = json.dumps(egrul, ensure_ascii=False, indent=2).encode("utf-8")
     docs.append({"id": "egrul", "kind": "egrul_json", "path": "egrul.json"})
 
-    manifest = {
+    manifest: dict[str, Any] = {
         "case_id": f"{defect}-{seed}",
         "organization": {"inn": w.org.inn, "ogrn": w.org.ogrn, "name": w.org.name},
         "requester": {"full_name": requester.full_name, "inn": requester.inn, "snils": requester.snils},

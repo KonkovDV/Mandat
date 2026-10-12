@@ -110,7 +110,8 @@ def import_esnsi(raw: bytes, *, source: str) -> dict[str, Any]:
         entry = {key: (upper.get(col) or None) for key, col in ESNSI_COLUMNS.items()}
         entry["code"] = code
         for key in ("started", "revoked"):
-            entry[key] = _d(entry[key]).isoformat() if entry[key] else None
+            parsed = _d(entry[key])
+            entry[key] = parsed.isoformat() if parsed else None
         entries.append(entry)
     if not entries:
         raise ValueError("в выгрузке нет записей с полем CODE")

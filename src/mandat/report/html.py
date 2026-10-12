@@ -116,7 +116,7 @@ def render(report: dict[str, Any]) -> str:
 {stand_html}
 <div class="card"><h2>Цепочка полномочий</h2><ul>{chain}</ul></div>
 <div class="card"><h2>Что сделать дальше</h2><ul>{steps}</ul>
-<p class="muted">Очередь: {_e(QUEUE_RU.get(routing.get("queue"), routing.get("queue")))}
+<p class="muted">Очередь: {_e(QUEUE_RU.get(str(routing.get("queue")), routing.get("queue")))}
  · приоритет {_e(routing.get("priority") or "—")} · SLA {_e(routing.get("sla_hours") or "—")} ч (заглушка до калибровки с банком)</p>
 {right_html}</div>
 <div class="card"><h2>Группы проверок</h2><table><tr><th>Группа</th><th>Статус</th></tr>{checks}</table></div>

@@ -69,8 +69,8 @@ def build_chain(case: Case) -> AuthorityChain:
     if not leaves and not case.poas and case.paper_poas:
         return AuthorityChain(kind="paper", notes=("Полномочия подтверждаются бумажной доверенностью",))
     if not leaves:
-        notes = ("Представитель не найден ни в одной МЧД пакета",) if case.poas else ()
-        return AuthorityChain(kind="none", notes=notes)
+        hint = ("Представитель не найден ни в одной МЧД пакета",) if case.poas else ()
+        return AuthorityChain(kind="none", notes=hint)
 
     leaves.sort(key=lambda p: (p.issue_date is not None, p.issue_date), reverse=True)
     by_number, conflicts = _index_by_number(case.poas)
@@ -96,7 +96,7 @@ def build_chain(case: Case) -> AuthorityChain:
         chain.append(parent)
         current = parent
     chain.reverse()
-    notes = tuple(f"Ещё МЧД на представителя: {p.number}" for p in leaves[1:])
+    notes: tuple[str, ...] = tuple(f"Ещё МЧД на представителя: {p.number}" for p in leaves[1:])
     if conflicts:
         notes = (*notes, "Есть номера МЧД, которым соответствуют разные документы: " + ", ".join(conflicts))
     return AuthorityChain(

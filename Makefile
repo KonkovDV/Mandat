@@ -8,6 +8,7 @@ install:
 lint:
 	$(PY) -m ruff check src tests scripts
 	$(PY) -m ruff format --check src tests scripts
+	$(PY) -m mypy
 
 test:
 	$(PY) -m pytest

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import date
-from typing import Any
+from typing import Any, cast
 from xml.etree.ElementTree import Element, tostring
 
 from mandat.data import load_json
@@ -226,7 +226,7 @@ def build_emchd_xml(
                 holder = found if found is not None else _sub(holder, part)
             node = _sub(holder, leaf)
             if list_key == "authorities_machine":
-                code, mnemonic, name = item
+                code, mnemonic, name = cast(tuple[str, str, str], item)
                 for fname, value in (("code", code), ("mnemonic", mnemonic), ("name", name or None)):
                     xpath.write(node, list_spec["fields"][fname], value)
             else:
