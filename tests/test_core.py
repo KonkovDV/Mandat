@@ -107,7 +107,10 @@ def test_fold_precedence_and_profiles():
     assert fold(base, demo, applicable).verdict is Verdict.CONFIRMED
     assert fold([*base, _f("text", LegalEffect.NEEDS_REVIEW)], demo, applicable).verdict is Verdict.NEEDS_REVIEW
     assert fold([*base, _f("eio", LegalEffect.REFUTES)], demo, applicable).verdict is Verdict.REFUTED
-    assert fold([*base, _f("eio", LegalEffect.REFUTES)], strict, applicable).verdict is Verdict.NEEDS_REVIEW
+    assert fold(base, strict, applicable).verdict is Verdict.INSUFFICIENT_DATA
+    approved = [_f(c, LegalEffect.SUPPORTS, "approved") for c in applicable]
+    assert fold(approved, strict, applicable).verdict is Verdict.CONFIRMED
+    assert fold([*base, _f("eio", LegalEffect.REFUTES)], strict, applicable).verdict is Verdict.INSUFFICIENT_DATA
     assert fold([*base, _f("eio", LegalEffect.REFUTES, "approved")], strict, applicable).verdict is Verdict.REFUTED
     assert (
         fold([*base, _f("coverage", LegalEffect.NOT_VERIFIED)], demo, applicable).verdict is Verdict.INSUFFICIENT_DATA
@@ -202,6 +205,9 @@ def test_html_report_escapes_document_content():
 
 
 def test_confirmed_case_has_no_next_steps_and_refuted_has_steps():
-    assert run("ok").next_steps == ()
+    def reviewed(sc):
+        sc.manifest["charter_disposition"] = "no_applicable_restriction"
+
+    assert run("ok", mutate=reviewed).next_steps == ()
     steps = run("revoked").next_steps
     assert steps and steps[0]["because"]

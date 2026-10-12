@@ -70,19 +70,12 @@ def _write_witness(path: Path, records: int, head: str) -> None:
 
 
 def _acquire_lock(path: Path) -> tuple[int, Path]:
-    """Эксклюзивная блокировка на время чтения и записи. Забытый lock старше 30 с снимается один раз."""
+    """Эксклюзивная блокировка. Чужой lock не снимается по возрасту: это не доказательство, что писатель умер."""
     lock = path.with_name(path.name + ".lock")
-    flags = os.O_CREAT | os.O_EXCL | os.O_RDWR
-    for attempt in range(2):
-        try:
-            return os.open(lock, flags), lock
-        except FileExistsError:
-            age = datetime.now(UTC).timestamp() - lock.stat().st_mtime
-            if attempt == 0 and age > 30:
-                lock.unlink(missing_ok=True)
-                continue
-            raise ValueError("журнал занят: файл блокировки не снят") from None
-    raise ValueError("журнал занят: файл блокировки не снят")
+    try:
+        return os.open(lock, os.O_CREAT | os.O_EXCL | os.O_RDWR), lock
+    except FileExistsError:
+        raise ValueError("журнал занят другой записью") from None
 
 
 def append(
@@ -121,11 +114,24 @@ def append(
         if signing:
             record["sig"] = _sign(record["hash"], signing)
         line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
-        existing = path.read_text(encoding="utf-8") if path.exists() else ""
+        existing = path.read_bytes() if path.exists() else None
+        witness = witness_path(path)
+        previous_head = witness.read_bytes() if witness.exists() else None
         tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(existing + line, encoding="utf-8", newline="\n")
+        tmp.write_bytes((existing or b"") + line.encode("utf-8"))
         os.replace(tmp, path)
-        _write_witness(path, record["seq"], record["hash"])
+        try:
+            _write_witness(path, record["seq"], record["hash"])
+        except Exception:
+            if existing is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(existing)
+            if previous_head is None:
+                witness.unlink(missing_ok=True)
+            else:
+                witness.write_bytes(previous_head)
+            raise
         return record
     finally:
         os.close(fd)

@@ -83,20 +83,34 @@ def _event_time(value: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
+def _rows(payload: dict[str, Any], key: str) -> list[Any]:
+    if not isinstance(payload, dict):
+        raise ValueError("тело событий должно быть объектом")
+    rows = payload.get(key) or []
+    if not isinstance(rows, list):
+        raise ValueError(f"{key} должен быть списком")
+    return rows
+
+
 def parse_events(payload: dict[str, Any]) -> tuple[list[GrantedRight], list[Event]]:
-    rights = [
-        GrantedRight(
-            right_id=row["right_id"],
-            org_inn=row["org_inn"],
-            representative_inn=row["representative_inn"],
-            operation=row["operation"],
-            poa_numbers=tuple(row.get("poa_numbers") or ()),
-            eio_inn=row.get("eio_inn"),
+    rights = []
+    for row in _rows(payload, "rights"):
+        if not isinstance(row, dict):
+            raise ValueError("право должно быть объектом")
+        rights.append(
+            GrantedRight(
+                right_id=row["right_id"],
+                org_inn=row["org_inn"],
+                representative_inn=row["representative_inn"],
+                operation=row["operation"],
+                poa_numbers=tuple(row.get("poa_numbers") or ()),
+                eio_inn=row.get("eio_inn"),
+            )
         )
-        for row in payload.get("rights") or []
-    ]
     events = []
-    for row in payload.get("events") or []:
+    for row in _rows(payload, "events"):
+        if not isinstance(row, dict):
+            raise ValueError("событие должно быть объектом")
         if row["kind"] not in EVENT_KINDS:
             raise ValueError(f"неизвестный тип события {row['kind']!r}")
         events.append(Event(row["kind"], row["org_inn"], _event_time(row["at"]), row.get("payload") or {}))

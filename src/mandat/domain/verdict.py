@@ -102,11 +102,19 @@ class FoldResult:
 
 
 def effective_effect(finding: Finding, profile: Profile) -> LegalEffect:
-    """Неутверждённое правило не может опровергнуть в строгом профиле: только отправить на разбор."""
+    """В строгом профиле черновик не закрывает проверку и не считается юридическим опровержением.
+
+    Положительный эффект неутверждённого правила становится «не проверено»:
+    обязательная группа так не получает «выполнено». Отрицательный эффект
+    становится разбором: повод для человека есть, утверждённого отказа нет.
+    """
     if finding.origin != "deterministic":
         return LegalEffect.INFO
-    if finding.effect is LegalEffect.REFUTES and finding.rule_status != "approved" and not profile.trust_draft_rules:
+    draft = finding.rule_status != "approved" and not profile.trust_draft_rules
+    if draft and finding.effect is LegalEffect.REFUTES:
         return LegalEffect.NEEDS_REVIEW
+    if draft and finding.effect is LegalEffect.SUPPORTS:
+        return LegalEffect.NOT_VERIFIED
     return finding.effect
 
 
@@ -135,6 +143,8 @@ def fold(findings: Iterable[Finding], profile: Profile, applicable: Iterable[str
         by_check.setdefault(finding.check, []).append(eff)
         if eff is not finding.effect and finding.effect is LegalEffect.REFUTES:
             warnings.append(f"{finding.rule_id}: правило не утверждено юристом, опровержение понижено до разбора")
+        if eff is not finding.effect and finding.effect is LegalEffect.SUPPORTS:
+            warnings.append(f"{finding.rule_id}: правило не утверждено юристом, подтверждение не закрывает проверку")
         if finding.rule_status != "approved" and profile.trust_draft_rules and finding.effect is LegalEffect.REFUTES:
             warnings.append(f"{finding.rule_id}: опровержение по правилу, не утверждённому юристом (профиль demo)")
 

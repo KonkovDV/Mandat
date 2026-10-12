@@ -44,7 +44,7 @@ def test_attestation_sign_verify_and_tamper(tmp_path: Path):
     cred = attestation.issue(report, key)
     public = attestation.public_key_from_multibase(attestation.public_key_multibase(key))
     assert attestation.verify(cred, public)
-    assert cred["credentialSubject"]["verdict"] == "confirmed"
+    assert cred["credentialSubject"]["verdict"] == "needs_review"
     assert report["requester"]["inn"] not in json.dumps(cred)
     cred["credentialSubject"]["verdict"] = "refuted"
     assert not attestation.verify(cred, public)
@@ -120,8 +120,9 @@ def test_advisory_cannot_change_verdict():
         doc,
     )
     assert len(gate.accepted) == 1
+    plain = verify_case(case)
     report = verify_case(case, advisory=as_advisory_findings(gate.accepted))
-    assert report.verdict.value == "confirmed"
+    assert report.verdict == plain.verdict
     assert any(f.origin == "advisory" for f in report.findings)
 
 

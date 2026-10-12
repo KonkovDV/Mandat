@@ -529,8 +529,17 @@ def eio_changed(ctx: RuleContext) -> list[Finding]:
     if root.parent_number:
         return []
     on = ctx.case.operation.on_date
-    current = ctx.case.egrul.executives_on(on)
-    if not current or any(rec.person.same_as(root.signer) for rec in current):
+    known = [rec for rec in ctx.case.egrul.executives if rec.valid_from is not None]
+    current = [rec for rec in known if rec.active_on(on)]
+    if not current:
+        unknown = [rec for rec in ctx.case.egrul.executives if rec.valid_from is None]
+        text = (
+            "На дату операции нет записи руководителя с известным началом полномочий. "
+            "Это пробел сведений, а не прекращение доверенности"
+        )
+        effect = E.NOT_VERIFIED if unknown else E.NEEDS_REVIEW
+        return [ctx.emit("R-EIO-002", effect, text, [_egrul_ref(ctx, "$.executives")])]
+    if any(rec.person.same_as(root.signer) for rec in current):
         return []
     rec = current[0]
     since = rec.valid_from or rec.record_date
@@ -595,15 +604,6 @@ def eio_direct(ctx: RuleContext) -> list[Finding]:
     rec = ctx.chain.eio_record
     if ctx.chain.kind != "eio_direct" or rec is None:
         return []
-    if ctx.profile_name == "strict":
-        return [
-            ctx.emit(
-                "R-EIO-005",
-                E.NOT_VERIFIED,
-                "Профиль strict не подтверждает полномочия руководителя по снимку ЕГРЮЛ из пакета кейса",
-                [rec.ref or _egrul_ref(ctx)],
-            )
-        ]
     return [
         ctx.emit(
             "R-EIO-005",
@@ -974,25 +974,27 @@ def sub_edge(ctx: RuleContext) -> list[Finding]:
             continue
         compared = [rep.same_as(child.signer) for rep in parent.representatives]
         if any(flag is True for flag in compared):
-            message = (
-                f"МЧД {child.number} подписал представитель МЧД {parent.number}, "
-                f"и на {child.issue_date:%d.%m.%Y} родительская ещё действовала"
-            )
-            effect = E.SUPPORTS
-            if child.original_number and root_number and child.original_number != root_number:
-                message = f"Первоначальная доверенность в МЧД {child.number} не совпадает с корнем {root_number}"
+            index = next(i for i, flag in enumerate(compared, start=1) if flag is True)
+            ref = parent.ref(f"representative.{index}")
+            if parent.issue_date is None:
+                message = f"У МЧД {parent.number} нет даты выдачи: нельзя утверждать, что она действовала"
+                effect = E.NOT_VERIFIED
+            elif parent.joint is None:
+                message = f"У МЧД {parent.number} не указан признак совместных полномочий"
                 effect = E.NEEDS_REVIEW
             elif parent.joint:
                 message = f"МЧД {parent.number}: совместные полномочия, одного подписанта мало"
                 effect = E.NEEDS_REVIEW
-            out.append(
-                ctx.emit(
-                    "R-SUB-009",
-                    effect,
-                    message,
-                    [child.ref("signer.inn"), parent.ref("representative.1")],
+            elif child.original_number and root_number and child.original_number != root_number:
+                message = f"Первоначальная доверенность в МЧД {child.number} не совпадает с корнем {root_number}"
+                effect = E.NEEDS_REVIEW
+            else:
+                message = (
+                    f"МЧД {child.number} подписал представитель МЧД {parent.number}, "
+                    f"и на {child.issue_date:%d.%m.%Y} родительская ещё действовала"
                 )
-            )
+                effect = E.SUPPORTS
+            out.append(ctx.emit("R-SUB-009", effect, message, [child.ref("signer.inn"), ref]))
         elif compared and all(flag is False for flag in compared):
             out.append(
                 ctx.emit(
@@ -1076,12 +1078,21 @@ def charter_info(ctx: RuleContext) -> list[Finding]:
         ]
     ref = EvidenceRef(doc.doc_id, doc.sha256, "text")
     if not ctx.charter_facts:
-        if op and op.high_risk:
+        if ctx.case.charter_disposition == "no_applicable_restriction":
+            return [
+                ctx.emit(
+                    "R-CHR-002",
+                    E.INFO,
+                    "В кейсе есть отметка, что для операции не нашли применимого ограничения. Это не вывод шаблонов",
+                    [ref],
+                )
+            ]
+        if required or (op and op.high_risk):
             return [
                 ctx.emit(
                     "R-CHR-002",
                     E.NEEDS_REVIEW,
-                    "Операция высокого риска, а шаблоны не установили, распространяются ли на неё ограничения устава",
+                    "Шаблоны не классифицировали устав: автоматического подтверждения нет",
                     [ref],
                 )
             ]
@@ -1094,6 +1105,15 @@ def charter_info(ctx: RuleContext) -> list[Finding]:
             )
         ]
     kinds = ", ".join(sorted({f.kind for f in ctx.charter_facts}))
+    if op and op.high_risk and ctx.case.charter_disposition != "no_applicable_restriction":
+        return [
+            ctx.emit(
+                "R-CHR-002",
+                E.NEEDS_REVIEW,
+                f"Найдены положения ({kinds}), но остальной текст устава шаблонами не закрыт",
+                [ref],
+            )
+        ]
     return [ctx.emit("R-CHR-002", E.INFO, f"В уставе найдены положения: {kinds}", [ref])]
 
 

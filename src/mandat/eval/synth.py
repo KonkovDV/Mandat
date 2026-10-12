@@ -44,11 +44,11 @@ ORG_NAMES = ["Северный ветер", "Тихая гавань", "Речн
 
 # Ожидаемый вердикт в профиле demo для каждого вида дефекта.
 DEFECTS: dict[str, str] = {
-    "ok": "confirmed",
-    "ok_subdelegation": "confirmed",
-    "ok_director": "confirmed",
-    "director_changed_long_ago": "confirmed",
-    "long_chain": "confirmed",
+    "ok": "needs_review",
+    "ok_subdelegation": "needs_review",
+    "ok_director": "needs_review",
+    "director_changed_long_ago": "needs_review",
+    "long_chain": "needs_review",
     "revoked": "refuted",
     "expired": "refuted",
     "no_term_expired": "refuted",

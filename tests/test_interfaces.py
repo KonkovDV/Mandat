@@ -37,11 +37,11 @@ def test_cli_demo_matches_expected_verdicts(root: Path, tmp_path: Path, monkeypa
 
 def test_cli_verify_exit_codes(root: Path, tmp_path: Path):
     cases = root / "examples" / "cases"
-    assert main(["verify", str(cases / "01_ok"), "--exit-code", "--json", str(tmp_path / "r.json")]) == 0
+    assert main(["verify", str(cases / "01_ok"), "--exit-code", "--json", str(tmp_path / "r.json")]) == 10
     assert main(["verify", str(cases / "07_revoked"), "--exit-code"]) == 12
     assert main(["verify", str(cases / "08_registry_unavailable"), "--exit-code"]) == 11
     assert main(["verify", str(tmp_path)]) == 2
-    assert json.loads((tmp_path / "r.json").read_text(encoding="utf-8"))["verdict"] == "confirmed"
+    assert json.loads((tmp_path / "r.json").read_text(encoding="utf-8"))["verdict"] == "needs_review"
 
 
 def test_case_loader_blocks_path_traversal(tmp_path: Path):
@@ -78,7 +78,7 @@ def test_api_closed_without_token_and_works_with_token():
     assert client.post("/v1/cases", json=manifest).status_code == 401
     headers = {"Authorization": "Bearer secret"}
     response = client.post("/v1/cases", json=manifest, headers=headers)
-    assert response.status_code == 200 and response.json()["verdict"] == "confirmed"
+    assert response.status_code == 200 and response.json()["verdict"] == "needs_review"
     html = client.get(f"/v1/cases/{manifest['case_id']}/report.html", headers=headers)
     assert html.status_code == 200 and "default-src 'none'" in html.headers["content-security-policy"]
     assert client.post("/v1/cases", json={"case_id": "bad"}, headers=headers).status_code == 422

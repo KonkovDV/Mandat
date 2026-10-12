@@ -73,6 +73,7 @@ def chain_scenario(parent: frozenset[str], child: frozenset[str], flag: str, lon
     entries = load_json("authority_classifier.json")["entries"]
     names = {e["code"]: (e["code"], e["mnemonic"], e["name"]) for e in entries}
     sc = build("ok_subdelegation", seed=17)
+    sc.manifest["charter_disposition"] = "no_applicable_restriction"
     root = parse_emchd(sc.files["poa-root.xml"], doc_id="poa-root")
     leaf = parse_emchd(sc.files["poa-child.xml"], doc_id="poa-child")
     sc.files["poa-root.xml"] = build_emchd_xml(

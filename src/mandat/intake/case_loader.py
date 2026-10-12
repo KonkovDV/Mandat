@@ -27,6 +27,30 @@ class CaseError(ValueError):
     pass
 
 
+def _object(value: Any, name: str) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise CaseError(f"{name} должен быть объектом JSON")
+    return value
+
+
+def _registry(value: Any) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise CaseError("registry должен быть объектом")
+    return {str(k): str(v) for k, v in value.items()}
+
+
+def _disposition(value: Any) -> str | None:
+    if value is None:
+        return None
+    if value != "no_applicable_restriction":
+        raise CaseError("charter_disposition: no_applicable_restriction или пусто")
+    return value
+
+
 def _rubles(value: Any) -> int | None:
     """Целые рубли. Дробь не усекается, boolean не считается деньгами."""
     if value is None:
@@ -37,7 +61,7 @@ def _rubles(value: Any) -> int | None:
 
 
 def _person(raw: dict[str, Any] | None) -> Person:
-    raw = raw or {}
+    raw = _object(raw, "person")
     return Person(
         full_name=raw.get("full_name"),
         inn=raw.get("inn"),
@@ -47,22 +71,29 @@ def _person(raw: dict[str, Any] | None) -> Person:
 
 
 def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, Any]], bytes]) -> Case:
+    if not isinstance(manifest, dict):
+        raise CaseError("манифест должен быть объектом JSON")
     try:
-        op = manifest["operation"]
+        op = _object(manifest.get("operation"), "operation")
         operation = Operation(
             code=str(op["code"]),
             on_date=date.fromisoformat(str(op["date"])),
             amount_rub=_rubles(op.get("amount_rub")),
             counterparty_inn=op.get("counterparty_inn"),
         )
-        org = manifest.get("organization") or {}
+        org = _object(manifest.get("organization"), "organization")
         organization = Organization(inn=org.get("inn"), ogrn=org.get("ogrn"), kpp=org.get("kpp"), name=org.get("name"))
     except (KeyError, ValueError, TypeError) as exc:
         raise CaseError(f"манифест кейса неполный: {exc}") from exc
 
     poas, papers, errors, inputs = [], [], [], []
     egrul = charter = None
-    for doc in manifest.get("documents") or []:
+    documents = manifest.get("documents") or []
+    if not isinstance(documents, list):
+        raise CaseError("documents должен быть списком")
+    for doc in documents:
+        if not isinstance(doc, dict):
+            raise CaseError("документ в списке должен быть объектом")
         doc_id, kind = str(doc.get("id")), str(doc.get("kind"))
         if kind not in KINDS:
             errors.append(IntakeError(doc_id, kind, f"неизвестный вид документа {kind!r}"))
@@ -98,9 +129,10 @@ def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, 
         egrul=egrul,
         charter=charter,
         paper_poas=tuple(papers),
-        registry={str(k): str(v) for k, v in (manifest.get("registry") or {}).items()},
+        registry=_registry(manifest.get("registry")),
         intake_errors=tuple(errors),
         inputs=tuple(inputs),
+        charter_disposition=_disposition(manifest.get("charter_disposition")),
     )
 
 

@@ -31,5 +31,5 @@
     "0b96b829-9227-9033-d07b-60414d94127d": "active"
   },
   "title": "Руководитель сам подключается к интернет-банку",
-  "expected_verdict": "confirmed"
+  "expected_verdict": "needs_review"
 }

@@ -179,11 +179,31 @@ def check_status(credential: dict[str, Any], status_dir: Path, public_key: Ed255
         issued = datetime.fromisoformat(str(status_cred.get("validFrom")))
         if issued.tzinfo is None:
             raise ValueError(f"у списка {path} нет часового пояса")
-        if datetime.now(UTC) - issued > timedelta(days=7):
-            return {"state": "список устарел"}
         bits = decode_bits(subject["encodedList"])
         result[purpose] = get_bit(bits, int(entry["statusListIndex"]))
+        result[f"{purpose}_issued"] = issued.isoformat()
     if not result:
         return {"state": "без статуса"}
-    state = "отозвано" if result.get("revocation") else "приостановлено" if result.get("suspension") else "действует"
+    issued_values = [
+        datetime.fromisoformat(str(result[key]))
+        for key in result
+        if str(key).endswith("_issued")
+    ]
+    now = datetime.now(UTC)
+    future = any(item > now + timedelta(minutes=5) for item in issued_values)
+    stale = any(now - item > timedelta(days=7) for item in issued_values)
+    revoked = bool(result.get("revocation"))
+    suspended = bool(result.get("suspension"))
+    if future:
+        state = "список из будущего"
+    elif stale and revoked:
+        state = "отозвано, список устарел"
+    elif stale:
+        state = "список устарел"
+    elif revoked:
+        state = "отозвано"
+    elif suspended:
+        state = "приостановлено"
+    else:
+        state = "действует"
     return {**result, "state": state}

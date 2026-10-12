@@ -89,6 +89,10 @@ def create_app(token: str | None = None) -> FastAPI:
     @app.post("/v1/events", dependencies=[Depends(auth)])
     def post_events(payload: dict[str, Any], window_hours: int = 72) -> dict[str, Any]:
         """Только оценка событий. Статусы удостоверений этот метод не меняет: их пишет CLI monitor."""
+        if not isinstance(payload, dict):
+            raise HTTPException(422, "тело должно быть объектом")
+        if window_hours < 1 or window_hours > 24 * 30:
+            raise HTTPException(422, "window_hours от 1 до 720")
         try:
             rights, events = parse_events(payload)
         except (KeyError, ValueError) as exc:

@@ -92,29 +92,38 @@ class ReviewCase:
             "version": self.version,
             "engine_report_hash": self.report_hash,
         }
-        if journal_path is not None and not _journal_has(journal_path, self.case_id, self.version, action):
-            journal.append(
-                journal_path,
-                action=JOURNAL_ACTION[action],
-                actor=actor,
-                role=role,
-                case_id=self.case_id,
-                payload_hash=self.report_hash,
-                reason=reason,
-                details={"state": target.value, "version": self.version},
-            )
+        if journal_path is not None:
+            existing = _committed(journal_path, self.case_id, self.version, action)
+            if existing is None:
+                journal.append(
+                    journal_path,
+                    action=JOURNAL_ACTION[action],
+                    actor=actor,
+                    role=role,
+                    case_id=self.case_id,
+                    payload_hash=self.report_hash,
+                    reason=reason,
+                    details={"state": target.value, "version": self.version, "actor": actor},
+                )
+            elif existing.get("payload_hash") != self.report_hash or existing.get("reason") != reason:
+                raise ReviewError("конфликт: эта версия уже записана с другим решением")
+            elif (existing.get("details") or {}).get("actor") not in {None, actor}:
+                raise ReviewError("конфликт: эту версию записал другой сотрудник")
         self.history.append(decision)
         self.state = target
         self.version += 1
         return target
 
 
-def _journal_has(path: Path, case_id: str, version: int, action: str) -> bool:
+def _committed(path: Path, case_id: str, version: int, action: str) -> dict[str, Any] | None:
     if not path.exists():
-        return False
+        return None
+    check = journal.verify_journal(path)
+    if not check.ok:
+        raise ReviewError(f"журнал не цел, решение не принято: {check.reason}")
     for record in journal.read_journal(path):
         details = record.get("details") or {}
-        same_case = record.get("case_id") == case_id and record.get("action") == JOURNAL_ACTION[action]
-        if same_case and details.get("version") == version:
-            return True
-    return False
+        same = record.get("case_id") == case_id and record.get("action") == JOURNAL_ACTION[action]
+        if same and details.get("version") == version:
+            return record
+    return None

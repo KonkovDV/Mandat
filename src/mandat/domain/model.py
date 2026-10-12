@@ -213,6 +213,7 @@ class Case:
     registry: dict[str, str] = field(default_factory=dict)
     intake_errors: tuple[IntakeError, ...] = ()
     inputs: tuple[dict[str, str], ...] = ()
+    charter_disposition: str | None = None
 
 
 @dataclass(frozen=True)

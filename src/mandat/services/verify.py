@@ -13,7 +13,7 @@ from typing import Any
 from mandat import ENGINE
 from mandat.data import sha256_json
 from mandat.domain.graph import AuthorityChain, build_chain
-from mandat.domain.model import Case, Finding
+from mandat.domain.model import Case, EvidenceRef, Finding
 from mandat.domain.verdict import CHECK_LABEL_RU, VERDICT_LABEL_RU, LegalEffect, Verdict, fold, get_profile
 from mandat.ports import FixtureRegistry, NotConnectedSignature, Ports
 from mandat.rules.checks import RuleContext, run_rules
@@ -132,6 +132,47 @@ def default_ports(case: Case) -> Ports:
     return Ports(registry=FixtureRegistry(case.registry), signature=NotConnectedSignature())
 
 
+def _untrusted(case: Case, chain: AuthorityChain, ports: Ports, trusted: frozenset[str]) -> list[Finding]:
+    """В strict фикстура не закрывает обязательный источник. Клиентский JSON это поле не задаёт."""
+    ref = EvidenceRef("source-trust", "0" * 64, "strict-gate")
+    out: list[Finding] = []
+    applicable = chain.applicable_checks(case)
+    if "registry" in applicable and "registry" not in trusted:
+        out.append(
+            Finding(
+                "R-REG-001",
+                "registry",
+                LegalEffect.NOT_VERIFIED,
+                "Профиль strict: реестр МЧД не из доверенного источника",
+                "порт реестра",
+                (ref,),
+            )
+        )
+    if "eio" in applicable and case.egrul is not None and "egrul" not in trusted:
+        out.append(
+            Finding(
+                "R-EIO-001",
+                "eio",
+                LegalEffect.NOT_VERIFIED,
+                "Профиль strict: снимок ЕГРЮЛ из пакета кейса не является доверенным ответом",
+                "порт ЕГРЮЛ",
+                (ref,),
+            )
+        )
+    if "signature" in applicable and "signature" not in trusted:
+        out.append(
+            Finding(
+                "R-SIG-001",
+                "signature",
+                LegalEffect.NOT_VERIFIED,
+                "Профиль strict: подпись не подтверждена доверенным контуром",
+                "порт подписи",
+                (ref,),
+            )
+        )
+    return out
+
+
 def verify_case(
     case: Case,
     *,
@@ -141,6 +182,7 @@ def verify_case(
     catalog: OperationCatalog | None = None,
     classifier: Classifier | None = None,
     advisory: list[Finding] | None = None,
+    trusted_sources: frozenset[str] = frozenset(),
     now: datetime | None = None,
 ) -> CaseReport:
     """``advisory`` — находки модели: попадают в отчёт как справка и не влияют на вердикт (ADR-001)."""
@@ -160,6 +202,8 @@ def verify_case(
         profile_name=prof.name,
     )
     findings = run_rules(ctx)
+    if prof.name == "strict":
+        findings.extend(_untrusted(case, chain, ports, trusted_sources))
     findings.extend(f for f in (advisory or []) if f.origin == "advisory")
     findings.sort(key=lambda f: (_SEVERITY[f.effect], f.rule_id, f.finding_id))
     applicable = set(chain.applicable_checks(case))

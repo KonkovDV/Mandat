@@ -143,7 +143,7 @@ def test_r_eio_002_old_change_is_signal_and_confirms():
     """МЧД прежнего руководителя, не отменённая, действует: подтверждено с сигналом (п. 1 ст. 188 ГК РФ)."""
     report = run("director_changed_long_ago")
     assert rule_effects(report, "R-EIO-002") == {"info"}
-    assert report.verdict.value == "confirmed"
+    assert report.verdict.value == "needs_review"
     assert any("не прекращает" in f.message for f in report.findings if f.rule_id == "R-EIO-002")
     assert report.as_dict()["signals"], "сигнал должен быть виден в отчёте отдельно от находок"
 
@@ -167,7 +167,7 @@ def test_r_eio_005_director_acts_without_poa():
     report = run("ok_director")
     assert report.chain.kind == "eio_direct"
     assert rule_effects(report, "R-EIO-005") == {"supports"}
-    assert report.verdict.value == "confirmed"
+    assert report.verdict.value == "needs_review"
 
 
 def test_r_cov_001_not_covered_refutes():
@@ -269,7 +269,7 @@ def test_r_sub_009_child_signer_must_match_parent_representative():
     from mandat.services.verify import verify_case
 
     report = run("ok_subdelegation", seed=2)
-    assert report.verdict.value == "confirmed"
+    assert report.verdict.value == "needs_review"
     assert rule_effects(report, "R-SUB-009") == {"supports"}
     manifest = build("ok_subdelegation", seed=2).inline_manifest()
     child = next(doc for doc in manifest["documents"] if doc["id"] == "poa-child")
@@ -310,7 +310,7 @@ def test_large_deal_without_threshold_needs_review():
 def test_r_sub_008_long_chain_in_registry_is_info():
     report = run("long_chain")
     assert rule_effects(report, "R-SUB-008") == {"info"}
-    assert report.verdict.value == "confirmed"
+    assert report.verdict.value == "needs_review"
 
 
 def test_r_chr_001_limit_needs_review():
@@ -321,8 +321,8 @@ def test_r_chr_001_limit_needs_review():
 
 def test_r_chr_002_clean_charter_is_info():
     report = run("ok")
-    assert rule_effects(report, "R-CHR-002") == {"info"}
-    assert report.verdict.value == "confirmed"
+    assert rule_effects(report, "R-CHR-002") == {"needs_review"}
+    assert report.verdict.value == "needs_review"
 
 
 def test_r_pap_001_paper_poa_needs_review():
@@ -334,7 +334,7 @@ def test_r_pap_001_paper_poa_needs_review():
 
 def test_r_sig_001_strict_profile_is_insufficient():
     demo, strict = run("ok"), run("ok", profile="strict")
-    assert demo.verdict.value == "confirmed"
+    assert demo.verdict.value == "needs_review"
     assert demo.checks["signature"] == "waived"
     assert strict.verdict.value == "insufficient_data"
     assert strict.checks["signature"] == "not_verified"
