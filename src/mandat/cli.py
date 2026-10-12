@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -271,6 +272,20 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_api_user(args: argparse.Namespace) -> int:
+    from mandat.api.principals import ROLES, hash_token
+
+    if args.role not in ROLES:
+        print(f"роль: одна из {', '.join(sorted(ROLES))}", file=sys.stderr)
+        return 2
+    token = secrets.token_urlsafe(32)
+    entry = {"name": args.name, "role": args.role, "token_sha256": hash_token(token)}
+    print(f"токен для {args.name} (показывается один раз): {token}")
+    print("строка для MANDAT_API_USERS:")
+    print(json.dumps(entry, ensure_ascii=False))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="mandat", description=f"{ENGINE}: проверка полномочий представителя юрлица")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -327,6 +342,11 @@ def build_parser() -> argparse.ArgumentParser:
     x = sub.add_parser("examples", help="пересобрать демо-кейсы")
     x.add_argument("--out", default="examples/cases")
     x.set_defaults(func=cmd_examples)
+
+    u = sub.add_parser("api-user", help="выпустить токен пользователя API и его хеш")
+    u.add_argument("--name", required=True)
+    u.add_argument("--role", required=True, help="operator, reviewer, auditor или admin")
+    u.set_defaults(func=cmd_api_user)
 
     s = sub.add_parser("serve", help="запустить HTTP API")
     s.add_argument("--host", default="127.0.0.1")
