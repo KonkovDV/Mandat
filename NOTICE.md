@@ -12,6 +12,6 @@
 
 Подробная таблица — `docs/PORTING.md`.
 
-Сторонние зависимости: `defusedxml` (PSF), `cryptography` (Apache-2.0 / BSD), опционально `fastapi` (MIT), `uvicorn` (BSD), `cedarpy` (Apache-2.0, только для проверки правил на Cedar), для разработки `pytest` (MIT), `ruff` (MIT), `httpx` (BSD).
+Сторонние зависимости: `defusedxml` (PSF), `cryptography` (Apache-2.0 / BSD), опционально `fastapi` (MIT), `uvicorn` (BSD), `cedarpy` (Apache-2.0, только для проверки правил на Cedar), для разработки `pytest` (MIT), `ruff` (MIT), `mypy` (MIT), `httpx` (BSD).
 
 Формулы дерева Меркла — по RFC 6962 и RFC 9162; формат списков статусов — по W3C Bitstring Status List v1.0.

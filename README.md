@@ -114,7 +114,7 @@ flowchart LR
 | Граф: сроки, однократное передоверие, сужение, каскад отмены, утрата полномочий, совместные полномочия | работает |
 | 33 правила, профили `demo` и `strict` | работает; статус `draft`. В `strict` снимок из кейса не даёт «подтверждено» |
 | Отчёт JSON/HTML: плашка стенда, следующий шаг, сильнейшее возражение, рекомендация роли | работает |
-| Журнал: хеш-цепочка, файл-свидетель, дерево Меркла | работает. HMAC включается, только если задан `MANDAT_JOURNAL_KEY` |
+| Журнал: хеш-цепочка, файл-свидетель, дерево Меркла | работает. На стенде HMAC по желанию, при `MANDAT_ENV=pilot` или `prod` без `MANDAT_JOURNAL_KEY` журнал не пишется |
 | Удостоверение Ed25519 и списки статусов | работает. Это не подпись ГОСТ |
 | Мониторинг отмены МЧД и признаков захвата | работает на событиях из файла. Доставки в антифрод нет: при секрете событие только подписывается |
 | Вторая свёртка вердикта и сверка передоверия на Cedar | работает в тестах |
@@ -147,9 +147,25 @@ mandat journal-proof var/demo/journal.jsonl --seq 3
 python -m pytest
 ```
 
-На Linux и macOS те же команды, ключ читается как `$(cat var/demo/public_key.txt)`. Проверка Cedar: `pip install -e ".[dev,api,cedar]"`. Docker поднимает API только на localhost: `docker compose up --build`, перед этим положите `MANDAT_API_TOKEN` в `.env` (образец в `.env.example`): без токена compose не стартует, чтобы стенд не поднялся с паролем по умолчанию. Описание API — `http://127.0.0.1:8000/docs`. Без `MANDAT_API_TOKEN` API отвечает 503.
+На Linux и macOS те же команды, ключ читается как `$(cat var/demo/public_key.txt)`. Проверка Cedar ставится отдельно: `pip install -e ".[dev,api,cedar]"`.
 
-Перед сдачей: `make check` на Linux или `python -m ruff check src tests scripts` и `python -m pytest` на Windows. Числа для слайдов пересобирает `python scripts/build_evidence.py`.
+Docker поднимает API только на localhost: `docker compose up --build`. Сначала положите `MANDAT_API_TOKEN` в `.env` (образец лежит в `.env.example`). Без токена compose не стартует: так стенд не окажется открыт с паролем по умолчанию.
+
+### Переменные окружения
+
+| Переменная | Зачем | По умолчанию |
+|---|---|---|
+| `MANDAT_API_TOKEN` | токен для `Authorization: Bearer` | пусто: API отвечает 503 на всё, кроме `/health` |
+| `MANDAT_API_DOCS` | `1` включает Swagger на `/docs` | выключено |
+| `MANDAT_API_RATE_PER_MIN` | запросов в минуту с одного адреса, `0` снимает ограничение | 120 |
+| `MANDAT_ENV` | `demo`, `dev`, `test` или `pilot`, `prod` | `demo` |
+| `MANDAT_JOURNAL_KEY` | ключ HMAC журнала | на стенде можно без него, в `pilot` и `prod` обязателен |
+| `MANDAT_PII_KEY` | ключ псевдонимизации ПДн | пусто |
+| `MANDAT_LLM_*` | локальная модель и белый список хостов | модель выключена |
+
+Повторная отправка кейса с тем же `case_id` получает 409. Чтобы перезаписать отчёт, добавьте `?replace=true`.
+
+Перед сдачей: `make check` на Linux. На Windows то же самое по шагам: `python -m ruff check src tests scripts`, `python -m ruff format --check src tests scripts`, `python -m mypy`, `python -m pytest`. Числа для слайдов пересобирает `python scripts/build_evidence.py`.
 
 ## Куда идти дальше
 
