@@ -35,11 +35,11 @@ def _object(value: Any, name: str) -> dict[str, Any]:
     return value
 
 
-def _registry(value: Any) -> dict[str, str]:
+def _registry(value: Any, field_name: str = "registry") -> dict[str, str]:
     if value is None:
         return {}
     if not isinstance(value, dict):
-        raise CaseError("registry должен быть объектом")
+        raise CaseError(f"{field_name} должен быть объектом")
     return {str(k): str(v) for k, v in value.items()}
 
 
@@ -130,6 +130,7 @@ def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, 
         charter=charter,
         paper_poas=tuple(papers),
         registry=_registry(manifest.get("registry")),
+        bankruptcy=_registry(manifest.get("bankruptcy"), "bankruptcy"),
         intake_errors=tuple(errors),
         inputs=tuple(inputs),
         charter_disposition=_disposition(manifest.get("charter_disposition")),

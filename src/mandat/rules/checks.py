@@ -18,7 +18,7 @@ from mandat.domain.identifiers import inn_valid, kpp_valid, ogrn_valid, snils_va
 from mandat.domain.model import Case, EvidenceRef, Finding, PowerOfAttorney, Subdelegation
 from mandat.domain.verdict import LegalEffect
 from mandat.intake.charter import CandidateFact, extract_charter_facts
-from mandat.ports import Ports, RegistryStatus, SignatureStatus
+from mandat.ports import BankruptcyStatus, Ports, RegistryStatus, SignatureStatus
 from mandat.rules.classifier import Classifier, default_classifier
 from mandat.rules.pack import OperationCatalog, RulePack
 
@@ -581,6 +581,35 @@ def eio_unreliable(ctx: RuleContext) -> list[Finding]:
 
 @rule("R-EIO-004")
 def org_status(ctx: RuleContext) -> list[Finding]:
+    return [*_org_status_egrul(ctx), *_bankruptcy(ctx)]
+
+
+def _bankruptcy(ctx: RuleContext) -> list[Finding]:
+    """Подп. 5 п. 1 ст. 188 ГК РФ: процедура банкротства, при которой лицо теряет право выдавать доверенности."""
+    port = ctx.ports.bankruptcy
+    out = []
+    for who, inn in (("Доверитель", ctx.case.organization.inn), ("Представитель", ctx.case.requester.inn)):
+        if not inn:
+            continue
+        status = port.status(inn)
+        if status in (BankruptcyStatus.NONE, BankruptcyStatus.NOT_CHECKED):
+            continue
+        ref = EvidenceRef(
+            f"efrsb:{port.name}",
+            sha256_json({"inn": inn, "status": status.value}),
+            f"efrsb:{inn}",
+            quote=status.value,
+        )
+        if status is BankruptcyStatus.TERMINATING:
+            text = f"{who} (ИНН {inn}) в процедуре банкротства, при которой доверенность прекращается"
+            out.append(ctx.emit("R-EIO-004", E.REFUTES, text, [ref]))
+        else:
+            text = f"{who} (ИНН {inn}) в наблюдении: доверенность действует, но нужен разбор"
+            out.append(ctx.emit("R-EIO-004", E.NEEDS_REVIEW, text, [ref]))
+    return out
+
+
+def _org_status_egrul(ctx: RuleContext) -> list[Finding]:
     eg = ctx.case.egrul
     if eg is None or eg.status == "active":
         return []

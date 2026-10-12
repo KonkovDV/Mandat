@@ -15,7 +15,7 @@ from mandat.data import sha256_json
 from mandat.domain.graph import AuthorityChain, build_chain
 from mandat.domain.model import Case, EvidenceRef, Finding
 from mandat.domain.verdict import CHECK_LABEL_RU, VERDICT_LABEL_RU, LegalEffect, Verdict, fold, get_profile
-from mandat.ports import FixtureRegistry, NotConnectedSignature, Ports
+from mandat.ports import FixtureBankruptcy, FixtureRegistry, NotConnectedSignature, Ports
 from mandat.rules.checks import RuleContext, run_rules
 from mandat.rules.classifier import Classifier, default_classifier
 from mandat.rules.pack import OperationCatalog, RulePack, default_catalog, default_pack
@@ -129,7 +129,11 @@ def stand_notes(ports: Ports, catalog: OperationCatalog, classifier: Classifier)
 
 
 def default_ports(case: Case) -> Ports:
-    return Ports(registry=FixtureRegistry(case.registry), signature=NotConnectedSignature())
+    return Ports(
+        registry=FixtureRegistry(case.registry),
+        signature=NotConnectedSignature(),
+        bankruptcy=FixtureBankruptcy(case.bankruptcy),
+    )
 
 
 def _untrusted(case: Case, chain: AuthorityChain, ports: Ports, trusted: frozenset[str]) -> list[Finding]:

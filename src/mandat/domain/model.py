@@ -211,6 +211,7 @@ class Case:
     charter: TextDocument | None = None
     paper_poas: tuple[TextDocument, ...] = ()
     registry: dict[str, str] = field(default_factory=dict)
+    bankruptcy: dict[str, str] = field(default_factory=dict)
     intake_errors: tuple[IntakeError, ...] = ()
     inputs: tuple[dict[str, str], ...] = ()
     charter_disposition: str | None = None

@@ -163,6 +163,31 @@ def test_r_eio_004_liquidated_refutes():
     assert "refutes" in rule_effects(report, "R-EIO-004")
 
 
+def test_r_eio_004_bankruptcy_terminating_refutes():
+    def mutate(sc):
+        sc.manifest["bankruptcy"] = {sc.manifest["organization"]["inn"]: "terminating"}
+
+    report = run("ok", mutate=mutate)
+    assert "refutes" in rule_effects(report, "R-EIO-004")
+    assert report.verdict.value == "refuted"
+
+
+def test_r_eio_004_observation_needs_review():
+    def mutate(sc):
+        sc.manifest["bankruptcy"] = {sc.manifest["requester"]["inn"]: "observation"}
+
+    report = run("ok", mutate=mutate)
+    assert rule_effects(report, "R-EIO-004") == {"needs_review"}
+    assert report.verdict.value != "confirmed"
+
+
+def test_r_eio_004_unknown_bankruptcy_status_is_silent():
+    def mutate(sc):
+        sc.manifest["bankruptcy"] = {sc.manifest["organization"]["inn"]: "что-то странное"}
+
+    assert "R-EIO-004" not in {f.rule_id for f in run("ok", mutate=mutate).findings}
+
+
 def test_r_eio_005_director_acts_without_poa():
     report = run("ok_director")
     assert report.chain.kind == "eio_direct"

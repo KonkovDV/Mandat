@@ -30,12 +30,24 @@ DEMO = {
     "11_parent_revoked": ("parent_revoked", "Основная МЧД отменена — передоверие теряет силу"),
     "12_no_term": ("no_term", "Срок в МЧД не указан — по закону год со дня совершения"),
 }
+# Кейсы поверх готового сценария: что добавить в манифест и какой вердикт ждать.
+OVERLAYS = {
+    "13_bankruptcy": (
+        "ok",
+        "Доверитель в конкурсном производстве: доверенность прекратилась (подп. 5 п. 1 ст. 188 ГК РФ)",
+        "refuted",
+    ),
+}
 SEED = 2026
 
 
 def write_examples(target: Path) -> list[Path]:
     written = []
-    for folder, (defect, title) in DEMO.items():
+    plan: list[tuple[str, str, str, str | None]] = [
+        (folder, defect, title, None) for folder, (defect, title) in DEMO.items()
+    ]
+    plan += [(folder, defect, title, expected) for folder, (defect, title, expected) in OVERLAYS.items()]
+    for folder, defect, title, expected in plan:
         scenario = build(defect, seed=SEED)
         case_dir = target / folder
         case_dir.mkdir(parents=True, exist_ok=True)
@@ -43,8 +55,10 @@ def write_examples(target: Path) -> list[Path]:
             **scenario.manifest,
             "case_id": folder,
             "title": title,
-            "expected_verdict": scenario.expected,
+            "expected_verdict": expected or scenario.expected,
         }
+        if folder == "13_bankruptcy":
+            manifest["bankruptcy"] = {scenario.manifest["organization"]["inn"]: "terminating"}
         (case_dir / "case.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
         )
