@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 
@@ -78,7 +78,32 @@ class NotConnectedSignature:
         )
 
 
+class BankruptcyStatus(StrEnum):
+    NONE = "none"
+    PROCEDURE = "procedure"
+    NOT_CHECKED = "not_checked"
+
+
+class BankruptcyPort(Protocol):
+    """Сведения ЕФРСБ о банкротстве доверителя или представителя (подп. 5 п. 1 ст. 188 ГК РФ)."""
+
+    name: str
+
+    def status(self, inn: str) -> BankruptcyStatus: ...
+
+
+class NotConnectedBankruptcy:
+    """ЕФРСБ в стенде не подключён. Правила его пока не читают: банкротство видно только по статусу в ЕГРЮЛ."""
+
+    name = "efrsb-not-connected"
+    is_stub = True
+
+    def status(self, inn: str) -> BankruptcyStatus:
+        return BankruptcyStatus.NOT_CHECKED
+
+
 @dataclass(frozen=True)
 class Ports:
     registry: PoaRegistryPort
     signature: SignaturePort
+    bankruptcy: BankruptcyPort = field(default_factory=NotConnectedBankruptcy)

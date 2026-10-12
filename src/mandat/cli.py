@@ -188,8 +188,13 @@ def cmd_eval(args: argparse.Namespace) -> int:
 def cmd_journal_verify(args: argparse.Namespace) -> int:
     check = journal.verify_journal(Path(args.path), anchor=args.anchor)
     tree = merkle.root(merkle.journal_leaves(journal.read_journal(Path(args.path)))).hex()
-    print(json.dumps({**check.as_dict(), "merkle_root": tree}, ensure_ascii=False))
-    return 0 if check.ok else 1
+    result = {**check.as_dict(), "merkle_root": tree}
+    ok = check.ok
+    if args.merkle_anchor is not None and args.merkle_anchor.strip().lower() != tree:
+        ok = False
+        result.update(ok=False, reason="корень Меркла не совпадает с сохранённым вне журнала")
+    print(json.dumps(result, ensure_ascii=False))
+    return 0 if ok else 1
 
 
 def cmd_journal_proof(args: argparse.Namespace) -> int:
@@ -301,7 +306,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     j = sub.add_parser("journal-verify", help="проверить целостность журнала")
     j.add_argument("path")
-    j.add_argument("--anchor")
+    j.add_argument("--anchor", help="последний хеш журнала, сохранённый вне журнала")
+    j.add_argument("--merkle-anchor", help="корень Меркла, сохранённый вне журнала (например, в СЭД или SIEM)")
     j.set_defaults(func=cmd_journal_verify)
 
     jp = sub.add_parser("journal-proof", help="доказательство включения записи в журнал (дерево Меркла)")
@@ -331,7 +337,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return int(args.func(args))
+    try:
+        return int(args.func(args))
+    except journal.JournalKeyMissing as exc:
+        print(f"ошибка: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

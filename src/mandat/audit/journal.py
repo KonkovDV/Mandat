@@ -42,10 +42,26 @@ def _digest(record: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+# Режимы, в которых журнал можно вести без ключа HMAC. Всё остальное (pilot, prod) требует ключ.
+KEYLESS_MODES = frozenset({"", "demo", "dev", "test"})
+
+
+class JournalKeyMissing(RuntimeError):
+    """Режим требует подписанный журнал, а ``MANDAT_JOURNAL_KEY`` не задан."""
+
+
+def mode() -> str:
+    return os.environ.get("MANDAT_ENV", "demo").strip().lower()
+
+
 def _key(key: str | None) -> str | None:
     if key is not None:
-        return key or None
-    return os.environ.get("MANDAT_JOURNAL_KEY", "").strip() or None
+        value: str | None = key or None
+    else:
+        value = os.environ.get("MANDAT_JOURNAL_KEY", "").strip() or None
+    if value is None and mode() not in KEYLESS_MODES:
+        raise JournalKeyMissing(f"MANDAT_ENV={mode()}: журнал без подписи здесь не ведётся, задайте MANDAT_JOURNAL_KEY")
+    return value
 
 
 def _sign(record_hash: str, key: str) -> str:
@@ -93,6 +109,7 @@ def append(
 ) -> dict[str, Any]:
     if action not in ACTIONS:
         raise ValueError(f"action must be one of {ACTIONS}")
+    signing = _key(key)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, lock = _acquire_lock(path)
     try:
@@ -110,7 +127,6 @@ def append(
             "prev": records[-1]["hash"] if records else GENESIS,
         }
         record["hash"] = _digest(record)
-        signing = _key(key)
         if signing:
             record["sig"] = _sign(record["hash"], signing)
         line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"

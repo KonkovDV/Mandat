@@ -2,6 +2,8 @@
 
 Доступ по токену ``MANDAT_API_TOKEN`` (заголовок ``Authorization: Bearer …``).
 Без токена API отвечает только на /health: закрыто по умолчанию.
+Swagger на /docs включается флагом ``MANDAT_API_DOCS=1``. Частота запросов ограничена
+``MANDAT_API_RATE_PER_MIN`` (по умолчанию 120 в минуту на адрес клиента, 0 выключает).
 Отчёты держатся в памяти процесса; хранилище кейсов — задача пилота (Postgres в контуре банка).
 """
 
@@ -9,6 +11,8 @@ from __future__ import annotations
 
 import hmac
 import os
+import time
+from collections import defaultdict, deque
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -25,10 +29,43 @@ MAX_BODY = 8 * 1024 * 1024
 MAX_REPORTS = 1000
 
 
-def create_app(token: str | None = None) -> FastAPI:
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def create_app(
+    token: str | None = None,
+    *,
+    docs: bool | None = None,
+    rate_per_min: int | None = None,
+) -> FastAPI:
     expected = token if token is not None else os.environ.get("MANDAT_API_TOKEN", "")
-    app = FastAPI(title="Мандат API", version=__version__, docs_url="/docs", redoc_url=None)
+    show_docs = docs if docs is not None else _env_flag("MANDAT_API_DOCS")
+    limit = rate_per_min if rate_per_min is not None else int(os.environ.get("MANDAT_API_RATE_PER_MIN", "120"))
+    app = FastAPI(
+        title="Мандат API",
+        version=__version__,
+        docs_url="/docs" if show_docs else None,
+        openapi_url="/openapi.json" if show_docs else None,
+        redoc_url=None,
+    )
     reports: dict[str, dict[str, Any]] = {}
+    hits: dict[str, deque[float]] = defaultdict(deque)
+
+    @app.middleware("http")
+    async def rate_limit(request: Request, call_next):  # type: ignore[no-untyped-def]
+        if limit > 0 and request.url.path != "/health":
+            client = request.client.host if request.client else "unknown"
+            now = time.monotonic()
+            window = hits[client]
+            while window and now - window[0] > 60:
+                window.popleft()
+            if len(window) >= limit:
+                return JSONResponse(
+                    {"detail": "слишком много запросов"}, status_code=429, headers={"Retry-After": "60"}
+                )
+            window.append(now)
+        return await call_next(request)
 
     @app.middleware("http")
     async def limit_body(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -62,7 +99,7 @@ def create_app(token: str | None = None) -> FastAPI:
         return {"status": "ok", "engine": ENGINE, "auth_configured": bool(expected)}
 
     @app.post("/v1/cases", dependencies=[Depends(auth)])
-    def create_case(manifest: dict[str, Any], profile: str = "demo") -> dict[str, Any]:
+    def create_case(manifest: dict[str, Any], profile: str = "demo", replace: bool = False) -> dict[str, Any]:
         if profile not in {"demo", "strict"}:
             raise HTTPException(422, "profile: demo или strict")
         try:
@@ -70,6 +107,8 @@ def create_app(token: str | None = None) -> FastAPI:
         except CaseError as exc:
             raise HTTPException(422, str(exc)) from exc
         report = verify_case(case, profile=profile).as_dict()
+        if report["case_id"] in reports and not replace:
+            raise HTTPException(409, "кейс с таким case_id уже есть: передайте replace=true, чтобы перезаписать")
         reports.pop(report["case_id"], None)
         reports[report["case_id"]] = report
         while len(reports) > MAX_REPORTS:
