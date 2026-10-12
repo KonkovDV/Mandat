@@ -156,6 +156,36 @@ def test_rule_pack_validation_rejects_bad_rules():
         validate_pack(no_norm)
 
 
+def test_verdict_oracle_agrees_with_fold():
+    from mandat.domain.verdict_oracle import oracle_verdict
+
+    ref = EvidenceRef("d", "a" * 64, "x")
+    profiles = [get_profile("demo"), get_profile("strict")]
+    applicable = {"format", "identity", "registry", "term", "eio", "coverage", "subdelegation", "signature"}
+    for profile in profiles:
+        for effect in LegalEffect:
+            for check in ("format", "signature", "charter"):
+                findings = [Finding("R-X", check, effect, "сообщение", "норма", (ref,), rule_status="draft")]
+                assert oracle_verdict(findings, profile, applicable) == fold(findings, profile, applicable).verdict
+    supported = [
+        Finding("R-A", check, LegalEffect.SUPPORTS, "сообщение", "норма", (ref,))
+        for check in ("format", "identity", "registry", "term", "eio", "coverage", "subdelegation")
+    ]
+    supported.append(Finding("R-H", "signature", LegalEffect.NOT_VERIFIED, "сообщение", "норма", (ref,)))
+    for profile in profiles:
+        assert oracle_verdict(supported, profile, applicable) == fold(supported, profile, applicable).verdict
+    for defect in ("ok", "revoked", "registry_unavailable", "charter_limit", "joint_powers"):
+        report = run(defect)
+        live = {name for name, status in report.checks.items() if status != "not_applicable"}
+        assert oracle_verdict(report.findings, get_profile("demo"), live) == report.verdict
+
+
+def test_confirmed_report_names_the_strongest_objection():
+    report = run("ok").as_dict()
+    assert report["objection"].startswith("R-SIG-001")
+    assert "Сильнейшее возражение" in render(report)
+
+
 def test_report_is_reproducible_and_fully_sourced():
     a, b = run("ok").as_dict(), run("ok").as_dict()
     assert a["reproducibility_hash"] == b["reproducibility_hash"]

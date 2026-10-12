@@ -102,12 +102,14 @@ def evaluate(rights: list[GrantedRight], events: list[Event], *, window_hours: i
     for org, evs in by_org.items():
         org_rights = [r for r in rights if r.org_inn == org]
         window = timedelta(hours=window_hours)
+        # Окно не привязано к смене руководителя: любой из трёх сигналов может быть первым.
+        # Тревога захвата не отменяет остальные сигналы той же пачки: отмена МЧД
+        # остаётся отдельным вето (паттерн PALERMO в gptheist).
         hijack = next(
             (
                 [e for e in evs if start.at <= e.at <= start.at + window]
                 for start in evs
-                if start.kind == "EIO_CHANGED"
-                and HIJACK_PATTERN <= {e.kind for e in evs if start.at <= e.at <= start.at + window}
+                if HIJACK_PATTERN <= {e.kind for e in evs if start.at <= e.at <= start.at + window}
             ),
             None,
         )
@@ -129,7 +131,6 @@ def evaluate(rights: list[GrantedRight], events: list[Event], *, window_hours: i
                     attestation_action="suspension",
                 )
             )
-            continue
         for ev in evs:
             if ev.kind in {"POA_REVOKED", "POA_EXPIRED"}:
                 number = str(ev.payload.get("number", ""))

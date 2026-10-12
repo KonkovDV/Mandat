@@ -31,7 +31,15 @@ def create_app(token: str | None = None) -> FastAPI:
     @app.middleware("http")
     async def limit_body(request: Request, call_next):  # type: ignore[no-untyped-def]
         length = request.headers.get("content-length")
-        if length and int(length) > MAX_BODY:
+        if length:
+            try:
+                declared = int(length)
+            except ValueError:
+                return JSONResponse({"detail": "некорректный Content-Length"}, status_code=400)
+            if declared > MAX_BODY:
+                return JSONResponse({"detail": "запрос больше допустимого"}, status_code=413)
+        body = await request.body()
+        if len(body) > MAX_BODY:
             return JSONResponse({"detail": "запрос больше допустимого"}, status_code=413)
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
@@ -42,7 +50,9 @@ def create_app(token: str | None = None) -> FastAPI:
         if not expected:
             raise HTTPException(503, "API закрыт: задайте MANDAT_API_TOKEN")
         scheme, _, value = authorization.partition(" ")
-        if scheme.lower() != "bearer" or not hmac.compare_digest(value.strip(), expected):
+        presented = value.strip().encode("utf-8")
+        required = expected.encode("utf-8")
+        if scheme.lower() != "bearer" or not hmac.compare_digest(presented, required):
             raise HTTPException(401, "нужен токен доступа")
 
     @app.get("/health")

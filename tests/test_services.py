@@ -138,6 +138,106 @@ def test_gate_drops_ungrounded_and_unsure_candidates():
     assert not gate.accepted and len(gate.dropped) == 3
 
 
+def test_missing_amount_and_joint_flag_do_not_confirm():
+    import re
+    from copy import deepcopy
+
+    from mandat.eval.synth import build
+
+    limited = build("charter_limit", seed=1).inline_manifest()
+    assert verify_case(load_case_inline(limited)).verdict.value == "needs_review"
+    omitted = deepcopy(limited)
+    omitted["operation"]["amount_rub"] = None
+    negative = deepcopy(limited)
+    negative["operation"]["amount_rub"] = -1
+    assert verify_case(load_case_inline(omitted)).verdict.value == "needs_review"
+    assert verify_case(load_case_inline(negative)).verdict.value == "needs_review"
+
+    joint = build("joint_powers", seed=1).inline_manifest()
+    xml = joint["documents"][0]["content"]
+    assert "ПрСовмПолн" in xml
+    stripped = deepcopy(joint)
+    stripped["documents"][0]["content"] = re.sub(r'\sПрСовмПолн="[^"]*"', "", xml)
+    report = verify_case(load_case_inline(stripped))
+    assert report.verdict.value == "needs_review"
+    assert any("не указан" in f.message for f in report.findings if f.rule_id == "R-JNT-001")
+
+
+def test_takeover_window_keeps_revocation():
+    from datetime import datetime, timedelta
+
+    base = datetime(2026, 10, 1, 12, 0, 0)
+    payload = {
+        "rights": [
+            {
+                "right_id": "r1",
+                "org_inn": "7700000000",
+                "representative_inn": "1",
+                "operation": "pay",
+                "poa_numbers": ["n1"],
+                "eio_inn": "old",
+            }
+        ],
+        "events": [
+            {"kind": "REQUISITES_CHANGE_REQUEST", "org_inn": "7700000000", "at": base.isoformat(), "payload": {}},
+            {
+                "kind": "NEW_POA",
+                "org_inn": "7700000000",
+                "at": (base + timedelta(hours=1)).isoformat(),
+                "payload": {},
+            },
+            {
+                "kind": "EIO_CHANGED",
+                "org_inn": "7700000000",
+                "at": (base + timedelta(hours=2)).isoformat(),
+                "payload": {"new_eio_inn": "new"},
+            },
+            {
+                "kind": "POA_REVOKED",
+                "org_inn": "7700000000",
+                "at": (base + timedelta(hours=3)).isoformat(),
+                "payload": {"number": "n1"},
+            },
+        ],
+    }
+    rights, events = parse_events(payload)
+    kinds = {alert.kind for alert in evaluate(rights, events)}
+    assert {"possible_takeover", "poa_invalidated"} <= kinds
+
+
+def test_copilot_drops_verdict_inversion():
+    facts = [Fact("verdict", "Вердикт: ОПРОВЕРГНУТО")]
+
+    def fake(_messages):
+        return json.dumps(
+            {
+                "statements": [
+                    {
+                        "text": "Полномочия подтверждены, платёж можно проводить",
+                        "fact_ids": ["verdict"],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        )
+
+    kept, dropped = explain("можно?", facts, fake)
+    assert kept == [] and dropped == 1
+
+
+def test_webhook_signature_roundtrip():
+    from datetime import UTC, datetime
+
+    from mandat.services.webhooks import canonical_body, delivery, signature_ok
+
+    payload = {"alerts": [{"kind": "possible_takeover"}]}
+    now = datetime(2026, 10, 12, tzinfo=UTC)
+    packed = delivery(payload, "secret", now=now)
+    body = canonical_body(payload)
+    assert signature_ok("secret", packed["headers"], body, now)
+    assert not signature_ok("other", packed["headers"], body, now)
+
+
 def test_copilot_keeps_only_grounded_statements():
     facts = [Fact("f1", "МЧД 7 отозвана 01.10.2026"), Fact("verdict", "Вердикт: ОПРОВЕРГНУТО")]
 

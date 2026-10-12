@@ -52,6 +52,26 @@ def numbers_in(text: str) -> set[str]:
     return found
 
 
+def _polarity(text: str) -> set[str]:
+    """Метки смысла: подтверждение, отказ, разбор. «Не подтверждено» — это отказ, не подтверждение."""
+    low = text.casefold().replace("ё", "е")
+    tags: set[str] = set()
+    if re.search(r"не\s+подтвержд", low):
+        tags.add("refute")
+    elif "подтвержд" in low:
+        tags.add("confirm")
+    refute_stems = ("опроверг", "отозван", "отменен", "не вправе", "нельзя проводить", "нельзя подписывать")
+    if any(stem in low for stem in refute_stems):
+        tags.add("refute")
+    if "можно проводить" in low or "можно подписывать" in low:
+        tags.add("confirm")
+    if "недостаточно данных" in low:
+        tags.add("insufficient")
+    if "на разбор" in low:
+        tags.add("review")
+    return tags
+
+
 def _statements(raw: str) -> list[tuple[str, list[str]]]:
     start, end = raw.find("{"), raw.rfind("}")
     if start < 0 or end <= start:
@@ -96,6 +116,11 @@ def explain(
             continue
         allowed = set().union(*(numbers_in(known[c]) for c in cited))
         if not numbers_in(text) <= allowed:
+            dropped += 1
+            continue
+        # Язык утверждения не шире языка процитированных фактов (OMEGA: publication gate).
+        cited_text = "\n".join(known[c] for c in cited)
+        if not _polarity(text) <= _polarity(cited_text):
             dropped += 1
             continue
         kept.append(Statement(text.strip(), tuple(cited)))

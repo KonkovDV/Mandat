@@ -19,7 +19,7 @@ from mandat.ports import FixtureRegistry, NotConnectedSignature, Ports
 from mandat.rules.checks import RuleContext, run_rules
 from mandat.rules.classifier import Classifier, default_classifier
 from mandat.rules.pack import OperationCatalog, RulePack, default_catalog, default_pack
-from mandat.services.next_steps import build_next_steps, route
+from mandat.services.next_steps import build_next_steps, route, strongest_objection
 from mandat.services.rights import propose_right
 
 # Справки, которые сотрудник должен увидеть сразу: они не меняют вердикт, но требуют внимания.
@@ -54,6 +54,7 @@ class CaseReport:
     catalog: dict[str, Any]
     classifier: dict[str, Any]
     stand: tuple[str, ...]
+    objection: str
     generated_at: str
 
     @property
@@ -90,6 +91,7 @@ class CaseReport:
             "catalog": self.catalog,
             "classifier": self.classifier,
             "stand": list(self.stand),
+            "objection": self.objection,
             "signals": [f.message for f in self.findings if f.effect is LegalEffect.INFO and f.rule_id in SIGNAL_RULES],
         }
 
@@ -148,6 +150,7 @@ def verify_case(
     op_spec = catalog.get(case.operation.code)
     warnings = list(result.warnings)
     warnings.extend(chain.notes)
+    objection = strongest_objection(result.verdict, findings, warnings)
     # Проверки, которые профиль не выполняет, не попадают в список действий: они уже названы в предупреждениях.
     next_steps = build_next_steps([f for f in findings if f.check not in prof.waived], result.verdict)
     return CaseReport(
@@ -178,5 +181,6 @@ def verify_case(
         catalog={"catalog_id": catalog.catalog_id, "version": catalog.version, "sha256": catalog.sha256},
         classifier=classifier.summary(),
         stand=tuple(stand_notes(ports, catalog, classifier)),
+        objection=objection,
         generated_at=(now or datetime.now(UTC)).isoformat(timespec="seconds"),
     )

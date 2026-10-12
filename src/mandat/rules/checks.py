@@ -662,7 +662,19 @@ def coverage_classifier(ctx: RuleContext) -> list[Finding]:
 @rule("R-JNT-001")
 def joint_powers(ctx: RuleContext) -> list[Finding]:
     leaf = ctx.chain.leaf
-    if leaf is None or not leaf.joint:
+    if leaf is None:
+        return []
+    # Нет признака — не значит «каждый подписывает сам» (Контур: ненайденное значение не считается соответствием).
+    if leaf.joint is None and len(leaf.representatives) > 1:
+        return [
+            ctx.emit(
+                "R-JNT-001",
+                E.NEEDS_REVIEW,
+                f"В МЧД {leaf.number} несколько представителей, а признак совместных полномочий не указан",
+                [leaf.ref("joint")],
+            )
+        ]
+    if not leaf.joint:
         return []
     others = [p.label() for p in leaf.representatives if not p.same_as(ctx.case.requester)]
     who = ", ".join(others) or "другими представителями"
@@ -901,6 +913,16 @@ def sub_long_chain(ctx: RuleContext) -> list[Finding]:
 def charter_limits(ctx: RuleContext) -> list[Finding]:
     amount = ctx.case.operation.amount_rub
     out = []
+    thresholds = [fact for fact in ctx.charter_facts if fact.value is not None]
+    if thresholds and (amount is None or amount <= 0):
+        out.append(
+            ctx.emit(
+                "R-CHR-001",
+                E.NEEDS_REVIEW,
+                "Сумма операции не задана или неположительна: порог устава не с чем сравнить",
+                [thresholds[0].ref],
+            )
+        )
     for fact in ctx.charter_facts:
         if fact.kind == "joint_signature":
             out.append(

@@ -108,6 +108,7 @@ def render(report: dict[str, Any]) -> str:
 <div class="card"><div class="muted">Мандат · проверка полномочий · профиль {_e(report["profile"])}</div>
 <h1>Кейс {_e(report["case_id"])}</h1>
 <span class="verdict" style="background:{color}">{_e(report["verdict_label"])}</span>
+<p><b>Сильнейшее возражение:</b> {_e(report.get("objection"))}</p>
 <p><b>Операция:</b> {_e(op.get("name") or op["code"])} · {_e(_date(op["date"]))} · сумма {_e(_rub(op.get("amount_rub")))}</p>
 <p><b>Организация:</b> {_e(report["organization"].get("name"))} (ИНН {_e(report["organization"].get("inn"))})
  · <b>Заявитель:</b> {_e(report["requester"].get("full_name"))}</p></div>

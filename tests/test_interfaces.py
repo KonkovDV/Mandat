@@ -92,6 +92,45 @@ def test_api_closed_without_token_and_works_with_token():
     )
 
 
+def test_api_caps_body_and_rejects_odd_token():
+    pytest.importorskip("fastapi")
+    import asyncio
+
+    from mandat.api.app import create_app
+
+    app = create_app(token="secret")
+
+    async def call(headers: list[tuple[bytes, bytes]], body: bytes) -> int:
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/v1/cases",
+            "raw_path": b"/v1/cases",
+            "query_string": b"",
+            "headers": headers,
+            "client": ("127.0.0.1", 1),
+            "server": ("127.0.0.1", 80),
+        }
+        sent = {"status": 0}
+
+        async def receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        async def send(message):
+            if message["type"] == "http.response.start":
+                sent["status"] = message["status"]
+
+        await app(scope, receive, send)
+        return sent["status"]
+
+    auth = [(b"authorization", b"Bearer secret"), (b"content-type", b"application/json")]
+    assert asyncio.run(call(auth, b'{"pad":"' + b"A" * (9 * 1024 * 1024) + b'"}')) == 413
+    assert asyncio.run(call([(b"authorization", b"Bearer \xff")], b"{}")) == 401
+
+
 def test_claims_lint_passes(root: Path):
     result = subprocess.run([sys.executable, str(root / "scripts" / "lint_claims.py")], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr

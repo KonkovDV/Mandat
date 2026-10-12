@@ -39,6 +39,24 @@ def build_next_steps(findings: list[Finding], verdict: Verdict) -> list[dict[str
     return list(steps.values())
 
 
+def strongest_objection(verdict: Verdict, findings: list[Finding], warnings: list[str]) -> str:
+    """Сильнейшее возражение рецензента: почему вердикт ещё нельзя считать окончательным.
+
+    Паттерн Reviewer из OMEGA: перед публикацией назвать самое сильное возражение,
+    а не только итог. На подтверждении это снятая проверка или граница профиля.
+    """
+    ranked = [f for f in findings if f.origin == "deterministic" and f.effect in _ORDER]
+    if ranked:
+        finding = min(ranked, key=lambda f: (_ORDER[f.effect], f.rule_id))
+        return f"{finding.rule_id}: {finding.message}"
+    if verdict is Verdict.CONFIRMED:
+        waived = [w for w in warnings if "не выполнялась" in w]
+        if waived:
+            return waived[0]
+        return "Подтверждение относится к правилам этой версии и этому профилю."
+    return "Автоматического вердикта нет: данных или проверки недостаточно."
+
+
 def route(verdict: Verdict, findings: list[Finding], *, high_risk: bool) -> dict[str, Any]:
     if verdict is Verdict.CONFIRMED:
         return {"queue": "auto_recommendation", "priority": None, "sla_hours": None}

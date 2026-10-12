@@ -45,7 +45,9 @@ def write_examples(target: Path) -> list[Path]:
             "title": title,
             "expected_verdict": scenario.expected,
         }
-        (case_dir / "case.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        (case_dir / "case.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
+        )
         for name, raw in scenario.files.items():
             (case_dir / name).write_bytes(raw)
         written.append(case_dir)
@@ -53,7 +55,7 @@ def write_examples(target: Path) -> list[Path]:
     events.mkdir(parents=True, exist_ok=True)
     for name, payload in (("takeover.json", takeover_events()), ("poa_revoked.json", revocation_events())):
         path = events / name
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
         written.append(path)
     return written
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from mandat.intake.case_loader import CaseError, load_case_dir
 from mandat.report.html import render
 from mandat.services.monitoring import evaluate, parse_events
 from mandat.services.verify import verify_case
+from mandat.services.webhooks import delivery
 
 EXIT = {"confirmed": 0, "needs_review": 10, "insufficient_data": 11, "refuted": 12}
 
@@ -158,6 +160,9 @@ def cmd_monitor(args: argparse.Namespace) -> int:
                         )
         registry.save(key)
         result["status_changes"] = changes
+    secret = os.environ.get("MANDAT_WEBHOOK_SECRET", "").strip()
+    if secret and result["alerts"]:
+        result["webhook"] = delivery({"alerts": result["alerts"]}, secret)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
