@@ -1,4 +1,4 @@
-// Сгенерировано из каталога операций mandat-operations 2026.10.1. Не править вручную.
+// Сгенерировано из каталога операций mandat-operations 2026.10.2. Не править вручную.
 
 // R-COV-001: Подписание платёжных документов в интернет-банке
 permit (principal, action == Mandat::Action::"PAYMENT_SIGN", resource)

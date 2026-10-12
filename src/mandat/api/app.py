@@ -88,6 +88,7 @@ def create_app(token: str | None = None) -> FastAPI:
 
     @app.post("/v1/events", dependencies=[Depends(auth)])
     def post_events(payload: dict[str, Any], window_hours: int = 72) -> dict[str, Any]:
+        """Только оценка событий. Статусы удостоверений этот метод не меняет: их пишет CLI monitor."""
         try:
             rights, events = parse_events(payload)
         except (KeyError, ValueError) as exc:

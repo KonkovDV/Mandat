@@ -14,7 +14,7 @@ from typing import Any
 
 from mandat.domain.model import EgrulSnapshot, EvidenceRef, ExecutiveRecord, Organization, Person
 
-STATUSES = {"active", "in_liquidation", "liquidated"}
+STATUSES = {"active", "in_liquidation", "liquidated", "unknown"}
 
 
 class EgrulError(ValueError):
@@ -39,7 +39,8 @@ def parse_egrul(data: bytes | str, *, doc_id: str) -> EgrulSnapshot:
         raise EgrulError(f"JSON не разбирается: {exc}") from exc
     if not isinstance(payload, dict):
         raise EgrulError("ожидался JSON-объект")
-    status = str(payload.get("status", "active"))
+    raw_status = payload.get("status")
+    status = "unknown" if raw_status in (None, "") else str(raw_status)
     if status not in STATUSES:
         raise EgrulError(f"неизвестный статус {status!r}")
     executives = []

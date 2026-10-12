@@ -191,6 +191,8 @@ def test_effect_model_has_no_hidden_defaults(root: Path):
 
     out = effect(cases=1000, coverage=0.5, t_manual=20, t_auto=5, rate=600)
     assert out["time_saving_rub"] == 1000 * 0.5 * 15 / 60 * 600
+    slower = effect(cases=1000, coverage=0.5, t_manual=5, t_auto=20, rate=600)
+    assert slower["time_saving_rub"] < 0
     assert out["incident_scenario_rub"] == 0
     with pytest.raises(ValueError):
         effect(cases=1, coverage=1.5, t_manual=1, t_auto=0, rate=1)

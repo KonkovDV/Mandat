@@ -61,29 +61,38 @@ class ReviewCase:
     report_hash: str
     state: ReviewState = ReviewState.QUEUED
     history: list[dict[str, Any]] = field(default_factory=list)
+    version: int = 0
 
     def apply(
-        self, action: str, *, actor: str, role: str, reason: str = "", journal_path: Path | None = None
+        self,
+        action: str,
+        *,
+        actor: str,
+        role: str,
+        reason: str = "",
+        journal_path: Path | None = None,
+        expected_version: int | None = None,
     ) -> ReviewState:
         if role not in ROLES:
             raise ReviewError(f"роль {role!r} не может разбирать кейсы")
+        if expected_version is not None and expected_version != self.version:
+            raise ReviewError(f"версия {expected_version} устарела, сейчас {self.version}")
         target = TRANSITIONS.get((self.state, action))
         if target is None:
             raise ReviewError(f"переход {action!r} из состояния {self.state.value!r} недопустим")
         if action in NEEDS_REASON and not reason.strip():
             raise ReviewError(f"для действия {action!r} нужно основание")
-        self.history.append(
-            {
-                "from": self.state.value,
-                "to": target.value,
-                "action": action,
-                "actor": actor,
-                "role": role,
-                "reason": reason,
-            }
-        )
-        self.state = target
-        if journal_path is not None:
+        decision = {
+            "from": self.state.value,
+            "to": target.value,
+            "action": action,
+            "actor": actor,
+            "role": role,
+            "reason": reason,
+            "version": self.version,
+            "engine_report_hash": self.report_hash,
+        }
+        if journal_path is not None and not _journal_has(journal_path, self.case_id, self.version, action):
             journal.append(
                 journal_path,
                 action=JOURNAL_ACTION[action],
@@ -92,6 +101,20 @@ class ReviewCase:
                 case_id=self.case_id,
                 payload_hash=self.report_hash,
                 reason=reason,
-                details={"state": target.value},
+                details={"state": target.value, "version": self.version},
             )
+        self.history.append(decision)
+        self.state = target
+        self.version += 1
         return target
+
+
+def _journal_has(path: Path, case_id: str, version: int, action: str) -> bool:
+    if not path.exists():
+        return False
+    for record in journal.read_journal(path):
+        details = record.get("details") or {}
+        same_case = record.get("case_id") == case_id and record.get("action") == JOURNAL_ACTION[action]
+        if same_case and details.get("version") == version:
+            return True
+    return False

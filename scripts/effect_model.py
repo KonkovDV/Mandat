@@ -28,7 +28,8 @@ def effect(
 ) -> dict[str, float]:
     if not 0 <= coverage <= 1 or not 0 <= return_share <= 1 or not 0 <= return_reduction <= 1:
         raise ValueError("доли задаются от 0 до 1")
-    time_saving = cases * coverage * max(t_manual - t_auto, 0) / 60 * rate
+    # Отрицательная разница сохраняется: если инструмент медленнее ручной работы, эффект отрицательный.
+    time_saving = cases * coverage * (t_manual - t_auto) / 60 * rate
     returns_saving = cases * return_share * return_reduction * return_cost
     incident_scenario = incidents * incident_loss
     return {

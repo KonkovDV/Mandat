@@ -151,9 +151,16 @@ class ExecutiveRecord:
     ref: EvidenceRef | None = None
 
     def active_on(self, day: date) -> bool:
-        if self.valid_from and day < self.valid_from:
+        """Известный интервал. Нет даты начала — история не доказана, запись не действует.
+
+        Открытый конец (есть valid_from и нет valid_to) — известный действующий период.
+        Это не срок годности выписки и не догадка о прошлом.
+        """
+        if self.valid_from is None:
             return False
-        return not (self.valid_to and day > self.valid_to)
+        if day < self.valid_from:
+            return False
+        return not (self.valid_to is not None and day > self.valid_to)
 
 
 @dataclass(frozen=True)
@@ -161,7 +168,7 @@ class EgrulSnapshot:
     doc_id: str
     sha256: str
     organization: Organization
-    status: str  # active | in_liquidation | liquidated
+    status: str  # active | in_liquidation | liquidated | unknown
     executives: tuple[ExecutiveRecord, ...]
     extracted_at: date | None
     full_name: str | None = None

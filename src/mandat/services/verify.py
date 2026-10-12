@@ -107,13 +107,21 @@ class CaseReport:
         }
 
 
+def _stand(profile: str, notes: list[str]) -> list[str]:
+    if profile == "demo":
+        notes.append("Профиль demo считает результат на фикстурах кейса. Это не допуск к операции в банке")
+    elif profile == "strict":
+        notes.append("Профиль strict не подтверждает полномочия по черновикам правил и снимкам из пакета кейса")
+    return notes
+
+
 def stand_notes(ports: Ports, catalog: OperationCatalog, classifier: Classifier) -> list[str]:
     """Честная плашка стенда: что в этой проверке заглушка, а не система банка."""
     notes = []
     if getattr(ports.registry, "is_stub", False):
         notes.append("Реестр МЧД — заглушка: статусы взяты из пакета кейса, а не из реестра ФНС")
     if getattr(ports.signature, "is_stub", False):
-        notes.append("КЭП не проверялась: СКЗИ не подключены; удостоверение подписано Ed25519 — это не ГОСТ")
+        notes.append("КЭП не проверялась: СКЗИ не подключены. Подпись Ed25519 — не ГОСТ и не внешний контроль W3C")
     notes.append("ЕГРЮЛ — сведения из пакета кейса в нормализованном JSON, а не ответ ФНС")
     if catalog.synthetic_codes or classifier.synthetic:
         notes.append("Коды полномочий синтетические (SYN-…), а не коды классификатора из ЕСНСИ")
@@ -142,12 +150,23 @@ def verify_case(
     classifier = classifier or default_classifier()
     ports = ports or default_ports(case)
     chain = build_chain(case)
-    ctx = RuleContext(case=case, chain=chain, pack=pack, catalog=catalog, ports=ports, classifier=classifier)
+    ctx = RuleContext(
+        case=case,
+        chain=chain,
+        pack=pack,
+        catalog=catalog,
+        ports=ports,
+        classifier=classifier,
+        profile_name=prof.name,
+    )
     findings = run_rules(ctx)
     findings.extend(f for f in (advisory or []) if f.origin == "advisory")
     findings.sort(key=lambda f: (_SEVERITY[f.effect], f.rule_id, f.finding_id))
-    result = fold(findings, prof, chain.applicable_checks(case))
+    applicable = set(chain.applicable_checks(case))
     op_spec = catalog.get(case.operation.code)
+    if op_spec and op_spec.charter_required:
+        applicable.add("charter")
+    result = fold(findings, prof, applicable)
     warnings = list(result.warnings)
     warnings.extend(chain.notes)
     objection = strongest_objection(result.verdict, findings, warnings)
@@ -180,7 +199,7 @@ def verify_case(
         rule_pack=pack.summary(),
         catalog={"catalog_id": catalog.catalog_id, "version": catalog.version, "sha256": catalog.sha256},
         classifier=classifier.summary(),
-        stand=tuple(stand_notes(ports, catalog, classifier)),
+        stand=tuple(_stand(prof.name, stand_notes(ports, catalog, classifier))),
         objection=objection,
         generated_at=(now or datetime.now(UTC)).isoformat(timespec="seconds"),
     )

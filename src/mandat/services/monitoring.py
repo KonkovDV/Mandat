@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from mandat.data import sha256_json
@@ -73,6 +73,16 @@ class Alert:
         }
 
 
+def _event_time(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError as exc:
+        raise ValueError(f"время события не разобрано: {value!r}") from exc
+    if parsed.tzinfo is None:
+        raise ValueError("у события нет часового пояса; укажите смещение, например +03:00")
+    return parsed.astimezone(UTC)
+
+
 def parse_events(payload: dict[str, Any]) -> tuple[list[GrantedRight], list[Event]]:
     rights = [
         GrantedRight(
@@ -89,7 +99,7 @@ def parse_events(payload: dict[str, Any]) -> tuple[list[GrantedRight], list[Even
     for row in payload.get("events") or []:
         if row["kind"] not in EVENT_KINDS:
             raise ValueError(f"неизвестный тип события {row['kind']!r}")
-        events.append(Event(row["kind"], row["org_inn"], datetime.fromisoformat(row["at"]), row.get("payload") or {}))
+        events.append(Event(row["kind"], row["org_inn"], _event_time(row["at"]), row.get("payload") or {}))
     return rights, events
 
 

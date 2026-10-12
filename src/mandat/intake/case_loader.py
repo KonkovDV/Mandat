@@ -27,6 +27,15 @@ class CaseError(ValueError):
     pass
 
 
+def _rubles(value: Any) -> int | None:
+    """Целые рубли. Дробь не усекается, boolean не считается деньгами."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise CaseError("amount_rub — целое число рублей; дробные значения и boolean не принимаются")
+    return value
+
+
 def _person(raw: dict[str, Any] | None) -> Person:
     raw = raw or {}
     return Person(
@@ -43,7 +52,7 @@ def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, 
         operation = Operation(
             code=str(op["code"]),
             on_date=date.fromisoformat(str(op["date"])),
-            amount_rub=int(op["amount_rub"]) if op.get("amount_rub") is not None else None,
+            amount_rub=_rubles(op.get("amount_rub")),
             counterparty_inn=op.get("counterparty_inn"),
         )
         org = manifest.get("organization") or {}

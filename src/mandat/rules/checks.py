@@ -34,6 +34,7 @@ class RuleContext:
     ports: Ports
     classifier: Classifier = field(default_factory=default_classifier)
     charter_facts: list[CandidateFact] = field(default_factory=list)
+    profile_name: str = "demo"
 
     @property
     def case_ref(self) -> EvidenceRef:
@@ -110,6 +111,16 @@ def fmt_parsed(ctx: RuleContext) -> list[Finding]:
     for err in ctx.case.intake_errors:
         ref = EvidenceRef(err.doc_id, _input_sha(ctx, err.doc_id), "document")
         out.append(ctx.emit("R-FMT-001", E.NOT_VERIFIED, f"Документ {err.doc_id} не принят: {err.error}", [ref]))
+    if ctx.chain.number_conflicts:
+        for number in ctx.chain.number_conflicts:
+            out.append(
+                ctx.emit(
+                    "R-FMT-001",
+                    E.NOT_VERIFIED,
+                    f"Номер МЧД {number} встречается в документах с разным содержимым: цепочка по нему не выбирается",
+                    [],
+                )
+            )
     if out:
         return out
     if ctx.chain.kind == "eio_direct" and ctx.case.egrul is not None:
@@ -565,6 +576,15 @@ def org_status(ctx: RuleContext) -> list[Finding]:
     if eg is None or eg.status == "active":
         return []
     ref = _egrul_ref(ctx, "$.status")
+    if eg.status == "unknown":
+        return [
+            ctx.emit(
+                "R-EIO-004",
+                E.NEEDS_REVIEW,
+                "В снимке ЕГРЮЛ не указан статус организации: это не сведения о действующем юридическом лице",
+                [ref],
+            )
+        ]
     if eg.status == "liquidated":
         return [ctx.emit("R-EIO-004", E.REFUTES, "Организация ликвидирована по данным ЕГРЮЛ", [ref])]
     return [ctx.emit("R-EIO-004", E.NEEDS_REVIEW, "Организация в процессе ликвидации", [ref])]
@@ -575,6 +595,15 @@ def eio_direct(ctx: RuleContext) -> list[Finding]:
     rec = ctx.chain.eio_record
     if ctx.chain.kind != "eio_direct" or rec is None:
         return []
+    if ctx.profile_name == "strict":
+        return [
+            ctx.emit(
+                "R-EIO-005",
+                E.NOT_VERIFIED,
+                "Профиль strict не подтверждает полномочия руководителя по снимку ЕГРЮЛ из пакета кейса",
+                [rec.ref or _egrul_ref(ctx)],
+            )
+        ]
     return [
         ctx.emit(
             "R-EIO-005",
@@ -906,6 +935,85 @@ def sub_long_chain(ctx: RuleContext) -> list[Finding]:
     ]
 
 
+@rule("R-SUB-009")
+def sub_edge(ctx: RuleContext) -> list[Finding]:
+    """Каждое ребро: подписант дочерней МЧД — представитель родительской, и родитель ещё действовал в день выдачи."""
+    out = []
+    root_number = ctx.chain.root.number if ctx.chain.root else None
+    for _, parent, child in _pairs(ctx.chain):
+        if child.issue_date is None:
+            out.append(
+                ctx.emit(
+                    "R-SUB-009",
+                    E.NOT_VERIFIED,
+                    f"У МЧД {child.number} нет даты выдачи: нельзя проверить ребро передоверия",
+                    [child.ref("number")],
+                )
+            )
+            continue
+        if parent.issue_date and child.issue_date < parent.issue_date:
+            out.append(
+                ctx.emit(
+                    "R-SUB-009",
+                    E.REFUTES,
+                    f"МЧД {child.number} выдана раньше родительской МЧД {parent.number}",
+                    [child.ref("issue_date"), parent.ref("issue_date")],
+                )
+            )
+            continue
+        until = parent.effective_until()
+        if until is not None and child.issue_date > until:
+            out.append(
+                ctx.emit(
+                    "R-SUB-009",
+                    E.REFUTES,
+                    f"МЧД {child.number} выдана, когда МЧД {parent.number} уже не действовала",
+                    [child.ref("issue_date"), parent.ref("valid_until")],
+                )
+            )
+            continue
+        compared = [rep.same_as(child.signer) for rep in parent.representatives]
+        if any(flag is True for flag in compared):
+            message = (
+                f"МЧД {child.number} подписал представитель МЧД {parent.number}, "
+                f"и на {child.issue_date:%d.%m.%Y} родительская ещё действовала"
+            )
+            effect = E.SUPPORTS
+            if child.original_number and root_number and child.original_number != root_number:
+                message = f"Первоначальная доверенность в МЧД {child.number} не совпадает с корнем {root_number}"
+                effect = E.NEEDS_REVIEW
+            elif parent.joint:
+                message = f"МЧД {parent.number}: совместные полномочия, одного подписанта мало"
+                effect = E.NEEDS_REVIEW
+            out.append(
+                ctx.emit(
+                    "R-SUB-009",
+                    effect,
+                    message,
+                    [child.ref("signer.inn"), parent.ref("representative.1")],
+                )
+            )
+        elif compared and all(flag is False for flag in compared):
+            out.append(
+                ctx.emit(
+                    "R-SUB-009",
+                    E.REFUTES,
+                    f"Подписант МЧД {child.number} не совпадает с представителем МЧД {parent.number} по ИНН или СНИЛС",
+                    [child.ref("signer.inn"), parent.ref("representative.1")],
+                )
+            )
+        else:
+            out.append(
+                ctx.emit(
+                    "R-SUB-009",
+                    E.NOT_VERIFIED,
+                    f"Подписанта МЧД {child.number} нельзя сверить с представителем МЧД {parent.number}",
+                    [child.ref("signer.inn"), parent.ref("representative.1")],
+                )
+            )
+    return out
+
+
 # --- устав, текст, бумага, подпись ------------------------------------------
 
 
@@ -928,6 +1036,16 @@ def charter_limits(ctx: RuleContext) -> list[Finding]:
             out.append(
                 ctx.emit("R-CHR-001", E.NEEDS_REVIEW, "Устав требует совместных действий или подписей", [fact.ref])
             )
+        elif fact.kind == "large_deal_approval" and fact.value is None:
+            out.append(
+                ctx.emit(
+                    "R-CHR-001",
+                    E.NEEDS_REVIEW,
+                    "В уставе есть положение о крупных сделках без числового порога: "
+                    "применимость к этой операции не установлена и одобрение не показано",
+                    [fact.ref],
+                )
+            )
         elif fact.value is not None and amount is not None and amount > fact.value:
             out.append(
                 ctx.emit(
@@ -943,10 +1061,30 @@ def charter_limits(ctx: RuleContext) -> list[Finding]:
 @rule("R-CHR-002")
 def charter_info(ctx: RuleContext) -> list[Finding]:
     doc = ctx.case.charter
+    op = ctx.catalog.get(ctx.case.operation.code)
+    required = bool(op and op.charter_required)
     if doc is None:
-        return []
+        if not required:
+            return []
+        return [
+            ctx.emit(
+                "R-CHR-002",
+                E.NOT_VERIFIED,
+                f"Для операции {ctx.case.operation.code} политика доказательств требует устав; документа нет",
+                [],
+            )
+        ]
     ref = EvidenceRef(doc.doc_id, doc.sha256, "text")
     if not ctx.charter_facts:
+        if op and op.high_risk:
+            return [
+                ctx.emit(
+                    "R-CHR-002",
+                    E.NEEDS_REVIEW,
+                    "Операция высокого риска, а шаблоны не установили, распространяются ли на неё ограничения устава",
+                    [ref],
+                )
+            ]
         return [
             ctx.emit(
                 "R-CHR-002",

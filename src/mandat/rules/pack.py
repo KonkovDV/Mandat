@@ -133,6 +133,7 @@ class OperationSpec:
     text_keywords: tuple[str, ...]
     proposed_role: str
     high_risk: bool
+    charter_required: bool
 
 
 @dataclass(frozen=True)
@@ -157,6 +158,7 @@ def default_catalog() -> OperationCatalog:
             text_keywords=tuple(row.get("text_keywords") or ()),
             proposed_role=row["proposed_role"],
             high_risk=bool(row.get("high_risk", False)),
+            charter_required=bool(row.get("charter_required", False)),
         )
         for row in payload["operations"]
     }

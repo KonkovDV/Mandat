@@ -18,6 +18,7 @@ class AuthorityChain:
     links: tuple[PowerOfAttorney, ...] = ()  # от корня к листу
     eio_record: ExecutiveRecord | None = None
     missing_parents: tuple[str, ...] = ()
+    number_conflicts: tuple[str, ...] = ()
     notes: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -72,7 +73,13 @@ def build_chain(case: Case) -> AuthorityChain:
         return AuthorityChain(kind="none", notes=notes)
 
     leaves.sort(key=lambda p: (p.issue_date is not None, p.issue_date), reverse=True)
-    by_number = {poa.number: poa for poa in case.poas if poa.number}
+    by_number, conflicts = _index_by_number(case.poas)
+    if leaves[0].number in conflicts:
+        return AuthorityChain(
+            kind="none",
+            number_conflicts=conflicts,
+            notes=("Одинаковый номер МЧД у документов с разным содержимым: цепочка не выбирается",),
+        )
     chain = [leaves[0]]
     missing: list[str] = []
     seen = {leaves[0].number}
@@ -90,4 +97,28 @@ def build_chain(case: Case) -> AuthorityChain:
         current = parent
     chain.reverse()
     notes = tuple(f"Ещё МЧД на представителя: {p.number}" for p in leaves[1:])
-    return AuthorityChain(kind="poa", links=tuple(chain), missing_parents=tuple(missing), notes=notes)
+    if conflicts:
+        notes = (*notes, "Есть номера МЧД, которым соответствуют разные документы: " + ", ".join(conflicts))
+    return AuthorityChain(
+        kind="poa",
+        links=tuple(chain),
+        missing_parents=tuple(missing),
+        number_conflicts=conflicts,
+        notes=notes,
+    )
+
+
+def _index_by_number(poas: tuple[PowerOfAttorney, ...]) -> tuple[dict[str, PowerOfAttorney], tuple[str, ...]]:
+    """Один sha256 — дубликат. Разное содержимое одного номера — конфликт."""
+    grouped: dict[str, list[PowerOfAttorney]] = {}
+    for poa in poas:
+        if poa.number:
+            grouped.setdefault(poa.number, []).append(poa)
+    chosen: dict[str, PowerOfAttorney] = {}
+    conflicts: list[str] = []
+    for number, items in grouped.items():
+        if len({item.sha256 for item in items}) == 1:
+            chosen[number] = items[0]
+        else:
+            conflicts.append(number)
+    return chosen, tuple(conflicts)

@@ -261,6 +261,52 @@ def test_r_sub_008_long_chain_needs_review():
     assert report.verdict.value == "needs_review"
 
 
+def test_r_sub_009_child_signer_must_match_parent_representative():
+    from mandat.domain.identifiers import make_inn12
+    from mandat.eval.synth import build
+    from mandat.intake.case_loader import load_case_inline
+    from mandat.intake.emchd import parse_emchd
+    from mandat.services.verify import verify_case
+
+    report = run("ok_subdelegation", seed=2)
+    assert report.verdict.value == "confirmed"
+    assert rule_effects(report, "R-SUB-009") == {"supports"}
+    manifest = build("ok_subdelegation", seed=2).inline_manifest()
+    child = next(doc for doc in manifest["documents"] if doc["id"] == "poa-child")
+    signer_inn = parse_emchd(child["content"], doc_id="poa-child").signer.inn
+    assert signer_inn
+    child["content"] = child["content"].replace(signer_inn, make_inn12("7700000001"))
+    broken = verify_case(load_case_inline(manifest))
+    assert broken.verdict.value == "refuted"
+    assert rule_effects(broken, "R-SUB-009") == {"refutes"}
+
+
+def test_missing_charter_blocks_confirmation():
+    from mandat.eval.synth import build
+    from mandat.intake.case_loader import load_case_inline
+    from mandat.services.verify import verify_case
+
+    manifest = build("ok", seed=4).inline_manifest()
+    manifest["documents"] = [doc for doc in manifest["documents"] if doc["kind"] != "charter_text"]
+    report = verify_case(load_case_inline(manifest))
+    assert report.verdict.value != "confirmed"
+    assert rule_effects(report, "R-CHR-002") == {"not_verified"}
+
+
+def test_large_deal_without_threshold_needs_review():
+    from mandat.eval.synth import build
+    from mandat.intake.case_loader import load_case_inline
+    from mandat.services.verify import verify_case
+
+    manifest = build("ok", seed=5).inline_manifest()
+    for doc in manifest["documents"]:
+        if doc["kind"] == "charter_text":
+            doc["content"] += " Крупные сделки требуют предварительного одобрения общего собрания участников."
+    report = verify_case(load_case_inline(manifest))
+    assert report.verdict.value == "needs_review"
+    assert "needs_review" in rule_effects(report, "R-CHR-001")
+
+
 def test_r_sub_008_long_chain_in_registry_is_info():
     report = run("long_chain")
     assert rule_effects(report, "R-SUB-008") == {"info"}

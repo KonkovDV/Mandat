@@ -164,9 +164,9 @@ def test_missing_amount_and_joint_flag_do_not_confirm():
 
 
 def test_takeover_window_keeps_revocation():
-    from datetime import datetime, timedelta
+    from datetime import UTC, datetime, timedelta
 
-    base = datetime(2026, 10, 1, 12, 0, 0)
+    base = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
     payload = {
         "rights": [
             {
@@ -284,3 +284,49 @@ def test_corpus_has_no_false_confirmations():
     assert metrics["false_confirmed"] == 0
     assert metrics["agreement"] == 1.0, metrics["mismatches"]
     assert metrics["refute_recall"] == 1.0
+
+
+def test_review_does_not_commit_when_journal_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    case = ReviewCase("c-audit", "h" * 64, state=ReviewState.IN_REVIEW)
+
+    def boom(*_args, **_kwargs):
+        raise OSError("нет диска")
+
+    monkeypatch.setattr("mandat.review.state_machine.journal.append", boom)
+    with pytest.raises(OSError):
+        case.apply("accept", actor="lawyer-1", role="lawyer", reason="основание", journal_path=tmp_path / "j.jsonl")
+    assert case.state == ReviewState.IN_REVIEW
+    assert case.version == 0
+    assert case.history == []
+
+
+def test_fractional_amount_and_naive_event_time_are_rejected():
+    from mandat.eval.synth import build
+    from mandat.intake.case_loader import CaseError
+
+    manifest = build("ok", seed=1).inline_manifest()
+    manifest["operation"]["amount_rub"] = 10.5
+    with pytest.raises(CaseError):
+        load_case_inline(manifest)
+    manifest["operation"]["amount_rub"] = True
+    with pytest.raises(CaseError):
+        load_case_inline(manifest)
+    with pytest.raises(ValueError, match="часового пояса"):
+        parse_events({"events": [{"kind": "NEW_POA", "org_inn": "1", "at": "2026-10-01T12:00:00"}]})
+
+
+def test_unknown_egrul_history_is_not_active():
+    from datetime import date
+
+    from mandat.domain.model import ExecutiveRecord, Person
+    from mandat.eval.synth import build
+    from mandat.intake.egrul import parse_egrul
+
+    payload = json.loads(build("ok", seed=1).files["egrul.json"])
+    del payload["status"]
+    snapshot = parse_egrul(json.dumps(payload), doc_id="egrul")
+    assert snapshot.status == "unknown"
+    unknown = ExecutiveRecord(Person("А"), None, None, None, None)
+    assert unknown.active_on(date(2026, 10, 20)) is False
+    known = snapshot.executives[0]
+    assert known.valid_from is not None and known.active_on(date(2026, 10, 20)) is True

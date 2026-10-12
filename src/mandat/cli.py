@@ -79,6 +79,14 @@ def cmd_demo(args: argparse.Namespace) -> int:
     cases = sorted((root / "examples" / "cases").iterdir())
     out = Path(args.out)
     log = out / "journal.jsonl"
+    if log.exists():
+        previous = out / "previous"
+        previous.mkdir(parents=True, exist_ok=True)
+        stamp = log.stat().st_mtime_ns
+        log.replace(previous / f"journal-{stamp}.jsonl")
+        head = log.with_name(log.name + ".head")
+        if head.exists():
+            head.replace(previous / f"journal-{stamp}.jsonl.head")
     key = attestation.load_or_create_key(out / "keys" / "attestation_ed25519.pem")
     status_dir = out / "status"
     for stale in ("registry.json", "revocation.json", "suspension.json"):

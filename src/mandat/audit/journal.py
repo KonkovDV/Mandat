@@ -69,6 +69,22 @@ def _write_witness(path: Path, records: int, head: str) -> None:
     tmp.replace(witness)
 
 
+def _acquire_lock(path: Path) -> tuple[int, Path]:
+    """Эксклюзивная блокировка на время чтения и записи. Забытый lock старше 30 с снимается один раз."""
+    lock = path.with_name(path.name + ".lock")
+    flags = os.O_CREAT | os.O_EXCL | os.O_RDWR
+    for attempt in range(2):
+        try:
+            return os.open(lock, flags), lock
+        except FileExistsError:
+            age = datetime.now(UTC).timestamp() - lock.stat().st_mtime
+            if attempt == 0 and age > 30:
+                lock.unlink(missing_ok=True)
+                continue
+            raise ValueError("журнал занят: файл блокировки не снят") from None
+    raise ValueError("журнал занят: файл блокировки не снят")
+
+
 def append(
     path: Path,
     *,
@@ -84,28 +100,36 @@ def append(
 ) -> dict[str, Any]:
     if action not in ACTIONS:
         raise ValueError(f"action must be one of {ACTIONS}")
-    records = read_journal(path)
-    record: dict[str, Any] = {
-        "seq": len(records) + 1,
-        "at": (now or datetime.now(UTC)).isoformat(timespec="seconds"),
-        "actor": actor,
-        "role": role,
-        "action": action,
-        "case_id": case_id,
-        "payload_hash": payload_hash,
-        "reason": reason,
-        "details": details or {},
-        "prev": records[-1]["hash"] if records else GENESIS,
-    }
-    record["hash"] = _digest(record)
-    signing = _key(key)
-    if signing:
-        record["sig"] = _sign(record["hash"], signing)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
-    _write_witness(path, record["seq"], record["hash"])
-    return record
+    fd, lock = _acquire_lock(path)
+    try:
+        records = read_journal(path)
+        record: dict[str, Any] = {
+            "seq": len(records) + 1,
+            "at": (now or datetime.now(UTC)).isoformat(timespec="seconds"),
+            "actor": actor,
+            "role": role,
+            "action": action,
+            "case_id": case_id,
+            "payload_hash": payload_hash,
+            "reason": reason,
+            "details": details or {},
+            "prev": records[-1]["hash"] if records else GENESIS,
+        }
+        record["hash"] = _digest(record)
+        signing = _key(key)
+        if signing:
+            record["sig"] = _sign(record["hash"], signing)
+        line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
+        existing = path.read_text(encoding="utf-8") if path.exists() else ""
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(existing + line, encoding="utf-8", newline="\n")
+        os.replace(tmp, path)
+        _write_witness(path, record["seq"], record["hash"])
+        return record
+    finally:
+        os.close(fd)
+        lock.unlink(missing_ok=True)
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,11 @@
 {
   "catalog_id": "mandat-operations",
-  "version": "2026.10.1",
+  "version": "2026.10.2",
+  "evidence_policy": {
+    "policy_id": "mandat-evidence-2026.10.2",
+    "amount": "целое число рублей; дробные значения и boolean не принимаются и не усекаются",
+    "note": "Черновик до утверждения юристом банка. charter_required значит: нет файла устава — нет автоматического подтверждения. Молчание шаблонов не доказывает отсутствие ограничений."
+  },
   "synthetic_codes": true,
   "note": "Коды полномочий ниже — синтетические заглушки с префиксом SYN-. Банковские коды единого классификатора полномочий в открытых источниках не подтверждены (docs/REGULATORY.md), поэтому коды не придумываются: перед пилотом владелец процесса в банке выбирает коды по выгрузке ЕСНСИ (scripts/import_classifier.py). Код ядра при замене не меняется. Код SYN-BANK-PAY-SIGN-OLD исключён из снимка классификатора и нужен для демонстрации правила R-COV-002.",
   "operations": [
@@ -20,7 +25,8 @@
         "банковск"
       ],
       "proposed_role": "DBO_PAYMENT_SIGNER",
-      "high_risk": false
+      "high_risk": false,
+      "charter_required": true
     },
     {
       "code": "STATEMENT_VIEW",
@@ -36,7 +42,8 @@
         "банковск"
       ],
       "proposed_role": "DBO_VIEWER",
-      "high_risk": false
+      "high_risk": false,
+      "charter_required": false
     },
     {
       "code": "REQUISITES_CHANGE",
@@ -50,7 +57,8 @@
         "юридическое дело"
       ],
       "proposed_role": "DBO_CLIENT_ADMIN",
-      "high_risk": true
+      "high_risk": true,
+      "charter_required": true
     },
     {
       "code": "USER_ADMIN",
@@ -63,7 +71,8 @@
         "доступ"
       ],
       "proposed_role": "DBO_USER_ADMIN",
-      "high_risk": true
+      "high_risk": true,
+      "charter_required": true
     }
   ]
 }

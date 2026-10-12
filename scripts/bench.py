@@ -36,7 +36,7 @@ def bench(rounds: int = 20) -> dict:
         "median_ms": round(statistics.median(samples), 2),
         "p95_ms": round(samples[int(len(samples) * 0.95) - 1], 2),
         "machine": f"{platform.machine()}, Python {platform.python_version()}",
-        "scope": "разбор XML и JSON, 32 правила, свёртка, отчёт; без сети и без модели",
+        "scope": "разбор XML и JSON, 33 правила, свёртка, отчёт; без сети и без модели",
     }
 
 

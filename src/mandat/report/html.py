@@ -85,7 +85,7 @@ def render(report: dict[str, Any]) -> str:
             f"<li><b>{_e(s['action'])}</b> <span class='muted'>— {_e(s['unit'])}</span></li>"
             for s in report["next_steps"]
         )
-        or "<li>Действий не требуется</li>"
+        or "<li>До операции в банке нужна проверка доверенных источников: реестр МЧД, ЕГРЮЛ и КЭП. Это не разрешение провести платёж.</li>"
     )
     chain = "".join(f"<li>{_e(row)}</li>" for row in report["chain"]["links"]) or "<li>Цепочка не построена</li>"
     warnings = "".join(f"<li>{_e(w)}</li>" for w in report["warnings"])

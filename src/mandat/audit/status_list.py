@@ -19,7 +19,7 @@ import gzip
 import json
 import secrets
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +66,7 @@ class StatusRegistry:
 
     directory: Path
     size: int = MIN_BITS
+    epoch: str = ""
     lists: dict[str, bytearray] = field(default_factory=dict)
     entries: dict[str, dict[str, Any]] = field(default_factory=dict)  # индекс → сведения об удостоверении
 
@@ -73,11 +74,11 @@ class StatusRegistry:
     def open(cls, directory: Path) -> StatusRegistry:
         state = directory / "registry.json"
         if not state.exists():
-            reg = cls(directory)
+            reg = cls(directory, epoch=secrets.token_hex(8))
             reg.lists = {p: bytearray(MIN_BITS // 8) for p in PURPOSES}
             return reg
         payload = json.loads(state.read_text(encoding="utf-8"))
-        reg = cls(directory, size=int(payload["size"]))
+        reg = cls(directory, size=int(payload["size"]), epoch=str(payload.get("epoch") or secrets.token_hex(8)))
         reg.lists = {p: decode_bits(payload["lists"][p]) for p in PURPOSES}
         reg.entries = {str(k): v for k, v in payload["entries"].items()}
         return reg
@@ -97,6 +98,7 @@ class StatusRegistry:
                 "statusPurpose": p,
                 "statusListIndex": str(index),
                 "statusListCredential": list_url(p),
+                "epoch": self.epoch,
             }
             for p in PURPOSES
         ]
@@ -124,17 +126,23 @@ class StatusRegistry:
         self.directory.mkdir(parents=True, exist_ok=True)
         state = {
             "size": self.size,
+            "epoch": self.epoch,
             "lists": {p: encode_bits(b) for p, b in self.lists.items()},
             "entries": self.entries,
         }
         (self.directory / "registry.json").write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         for purpose in PURPOSES:
-            cred = status_list_credential(purpose, self.lists[purpose], key, now=now)
+            cred = status_list_credential(purpose, self.lists[purpose], key, epoch=self.epoch, now=now)
             (self.directory / f"{purpose}.json").write_text(attestation.dump(cred), encoding="utf-8")
 
 
 def status_list_credential(
-    purpose: str, bits: bytearray, key: Ed25519PrivateKey, *, now: datetime | None = None
+    purpose: str,
+    bits: bytearray,
+    key: Ed25519PrivateKey,
+    *,
+    epoch: str = "",
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     created = (now or datetime.now(UTC)).isoformat(timespec="seconds")
     document = {
@@ -147,6 +155,7 @@ def status_list_credential(
             "id": f"{list_url(purpose)}#list",
             "type": "BitstringStatusList",
             "statusPurpose": purpose,
+            "epoch": epoch,
             "encodedList": encode_bits(bits),
         },
     }
@@ -164,7 +173,15 @@ def check_status(credential: dict[str, Any], status_dir: Path, public_key: Ed255
             raise ValueError(f"список {path} не тот, на который ссылается удостоверение")
         if not attestation.verify(status_cred, public_key):
             raise ValueError(f"подпись списка {path} не верна")
-        bits = decode_bits(status_cred["credentialSubject"]["encodedList"])
+        subject = status_cred.get("credentialSubject") or {}
+        if entry.get("epoch") and subject.get("epoch") != entry.get("epoch"):
+            raise ValueError(f"список {path} из другой эпохи, чем удостоверение")
+        issued = datetime.fromisoformat(str(status_cred.get("validFrom")))
+        if issued.tzinfo is None:
+            raise ValueError(f"у списка {path} нет часового пояса")
+        if datetime.now(UTC) - issued > timedelta(days=7):
+            return {"state": "список устарел"}
+        bits = decode_bits(subject["encodedList"])
         result[purpose] = get_bit(bits, int(entry["statusListIndex"]))
     if not result:
         return {"state": "без статуса"}
