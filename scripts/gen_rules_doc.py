@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mandat.domain.verdict import CHECK_LABEL_RU
+from mandat.domain.verdict import CHECK_LABEL_RU, PROFILES
 from mandat.rules.pack import default_catalog, default_pack
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,14 +26,73 @@ def _cell(text: str | None) -> str:
 
 def render_rules_doc() -> str:
     pack, catalog = default_pack(), default_catalog()
+    groups: dict[str, int] = {}
+    for spec in pack.rules.values():
+        groups[spec.check] = groups.get(spec.check, 0) + 1
+    demo, strict = PROFILES["demo"], PROFILES["strict"]
+
+    def mark(check: str) -> str:
+        cells = []
+        for profile in (demo, strict):
+            if check in profile.mandatory:
+                cells.append("обязательна")
+            elif check in profile.waived:
+                cells.append("снята")
+            else:
+                cells.append("по ситуации")
+        return " | ".join(cells)
+
     lines = [
         "# Правила «Мандата»",
         "",
-        "Файл собирается командой `python scripts/gen_rules_doc.py` из `src/mandat/data/rules.json`.",
-        "Тест `test_rules_doc_is_up_to_date` не даёт ему разойтись с пакетом.",
+        f"Здесь все {len(pack.rules)} правил: что проверяет каждое, на какую норму опирается, "
+        "чем может закончиться и какой тест это держит.",
         "",
-        f"Пакет `{pack.pack_id}` версии `{pack.version}`, статус `{pack.status}`, sha256 `{pack.sha256[:16]}…`.",
-        "Статус `draft` означает: ссылка на норму подобрана командой и ждёт проверки юристом.",
+        "> Файл собирается из `src/mandat/data/rules.json` командой `python scripts/gen_rules_doc.py`. "
+        "Руками его не правят: тест `test_rules_doc_is_up_to_date` упадёт, если он разойдётся с пакетом.",
+        "",
+        f"Пакет `{pack.pack_id}`, версия `{pack.version}`, статус `{pack.status}`, sha256 `{pack.sha256[:16]}…`. "
+        "Статус `draft` значит, что норму подобрала команда, а юрист банка её ещё не проверил.",
+        "",
+        "## Как правила превращаются в вердикт",
+        "",
+        "Каждое правило выдаёт находки с эффектом. Потом находки сворачиваются по группам, "
+        "а группы в один ответ. Порядок жёсткий: сильный эффект всегда перебивает слабый.",
+        "",
+        "```mermaid",
+        "flowchart TD",
+        '    F["Находки правил"] --> R{"Есть опровержение?"}',
+        '    R -- да --> V1["ОПРОВЕРГНУТО"]',
+        '    R -- нет --> M{"Обязательная группа не проверена?"}',
+        '    M -- да --> V2["НЕДОСТАТОЧНО ДАННЫХ"]',
+        '    M -- нет --> N{"Есть повод для разбора?"}',
+        '    N -- да --> V3["НА РАЗБОР"]',
+        '    N -- нет --> O{"Все обязательные группы подтверждены?"}',
+        '    O -- да --> V4["ПОДТВЕРЖДЕНО"]',
+        '    O -- нет --> V3',
+        "```",
+        "",
+        "| Эффект | Что значит |",
+        "|---|---|",
+        "| подтверждает | правило нашло, на что опереться |",
+        "| опровергает | полномочия нет, и это видно из документа или реестра |",
+        "| на разбор | спорно, решает человек |",
+        "| не проверено | источника нет или он недоступен. Это не «всё хорошо» |",
+        "| справка | для карточки, на вердикт не влияет |",
+        "",
+        "## Группы проверок",
+        "",
+        "Профиль `demo` честно снимает проверку подписи, потому что СКЗИ в стенде нет. "
+        "Профиль `strict` требует всё и не доверяет правилам в статусе `draft`.",
+        "",
+        "| Группа | Правил | `demo` | `strict` |",
+        "|---|---|---|---|",
+    ]
+    for check, count in groups.items():
+        lines.append(f"| {CHECK_LABEL_RU.get(check, check)} | {count} | {mark(check)} |")
+    lines += [
+        "",
+        "## Все правила",
         "",
         "| Правило | Группа | Что проверяет | Норма | Возможные эффекты | Следующий шаг | Тесты |",
         "|---|---|---|---|---|---|---|",
@@ -50,10 +109,13 @@ def render_rules_doc() -> str:
         "",
         "## Каталог операций",
         "",
-        f"Каталог `{catalog.catalog_id}` версии `{catalog.version}`."
+        "Операция из запроса сверяется с кодами полномочий в МЧД. Если ни один код не подходит, "
+        "правила покрытия дают опровержение или разбор.",
+        "",
+        f"Каталог `{catalog.catalog_id}`, версия `{catalog.version}`."
         + (
-            " Коды полномочий синтетические (`SYN-…`): заменить кодами из выгрузки классификатора ЕСНСИ "
-            "(`scripts/import_classifier.py`); снимок с датами — `data/authority_classifier.json`."
+            " Коды полномочий пока синтетические (`SYN-…`). Настоящие берутся из выгрузки классификатора ЕСНСИ "
+            "командой `scripts/import_classifier.py`, снимок с датами лежит в `data/authority_classifier.json`."
             if catalog.synthetic_codes
             else ""
         ),
