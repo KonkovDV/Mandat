@@ -45,6 +45,8 @@ ORG_NAMES = ["Северный ветер", "Тихая гавань", "Речн
 # Ожидаемый вердикт в профиле demo для каждого вида дефекта.
 DEFECTS: dict[str, str] = {
     "ok": "needs_review",
+    # Тот же кейс, но юрист отметил, что применимых ограничений устава нет: единственный путь к «подтверждено».
+    "ok_charter_cleared": "confirmed",
     "ok_subdelegation": "needs_review",
     "ok_director": "needs_review",
     "director_changed_long_ago": "needs_review",
@@ -391,4 +393,6 @@ def build(defect: str, seed: int = 1) -> Scenario:
         "documents": docs,
         "registry": registry,
     }
+    if defect == "ok_charter_cleared":
+        manifest["charter_disposition"] = "no_applicable_restriction"
     return Scenario(manifest["case_id"], defect, DEFECTS[defect], manifest, files)

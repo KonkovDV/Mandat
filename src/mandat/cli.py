@@ -183,7 +183,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
     text = json.dumps(metrics, ensure_ascii=False, indent=2)
     _write(Path(args.out) if args.out else None, text)
     print(text)
-    return 0 if metrics["false_confirmed"] == 0 else 1
+    return 0 if metrics["false_confirmed"] == 0 and not metrics["mismatches"] else 1
 
 
 def cmd_journal_verify(args: argparse.Namespace) -> int:

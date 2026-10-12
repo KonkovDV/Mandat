@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-10-12T19:35:16+00:00",
-  "engine": "mandat/0.2.2",
+  "generated_at": "2026-10-12T21:52:17+00:00",
+  "engine": "mandat/0.2.3",
   "python": "3.12.10",
   "rule_pack": {
     "pack_id": "mandat-rules-ru",
     "version": "2026.10.2",
     "status": "draft",
-    "sha256": "2ded6d83161a5e99e4f04546b6c2ec4735bb0a61e2c665fbb0e94c6e7017d6d9",
+    "sha256": "f83326158d8f87daf953204a4fb2c16fd8ceba621ad58f253bfa57ce7689529e",
     "rules": 33
   },
   "operations_catalog": {
@@ -18,88 +18,92 @@
     "command": "mandat demo",
     "results": {
       "01_ok": {
-        "verdict": "confirmed",
-        "reproducibility_hash": "2094fc1915cf14855fdae345aaf6436680eeda018dee2d4e356e777a77242563"
+        "verdict": "needs_review",
+        "reproducibility_hash": "22570d028828980bda6186e0e35b08eab15d0144e1a9104b35e8b3f431c03e1b"
       },
       "02_director_without_poa": {
-        "verdict": "confirmed",
-        "reproducibility_hash": "3de0aedf14714be00576317be754b37248d470a14711a6408fdbdacc6cd4d86b"
+        "verdict": "needs_review",
+        "reproducibility_hash": "b7bca3b46d929f82532a6c37f359661f5c523c9f1fcdf32b002bed73e51160f9"
       },
       "03_subdelegation_ok": {
-        "verdict": "confirmed",
-        "reproducibility_hash": "336938174751e3b457898024187903bf025bb34fc9c11da360ccbe252393f131"
+        "verdict": "needs_review",
+        "reproducibility_hash": "5ae9d094955fc15b71e78b760fc69007de2a5676f6ad9ebd43452f824ef7771d"
       },
       "04_subdelegation_forbidden": {
         "verdict": "refuted",
-        "reproducibility_hash": "a92e35ddbcff84297f3009f0fd3024a29f14ed44a60987f40ce77d3584f98cce"
+        "reproducibility_hash": "c8c1f96527b8559982551d537761f57f4a1eb65ee7b28bb50998a3e1438043d7"
       },
       "05_director_changed": {
         "verdict": "needs_review",
-        "reproducibility_hash": "ae47a5bb6a07869bab149b2a599847ff11c5f889de4fea77430c3381bc486151"
+        "reproducibility_hash": "45fd2bcba639bfbc82116c377b6fbd32c9df240ffc642378d9703e87186663a7"
       },
       "06_text_authority": {
         "verdict": "needs_review",
-        "reproducibility_hash": "cfcbd77344a78330c403e57ea228dfe15dc2a49cbe2c0cac5d4e1f0de2994266"
+        "reproducibility_hash": "d367c5c05cc075d6c35afe2179676e174322c31a032942d86f2499be5715d9f5"
       },
       "07_revoked": {
         "verdict": "refuted",
-        "reproducibility_hash": "be8a03920ca69e1d85e1fa3836113dd83e992c8bdab8fc752471740bd98d8700"
+        "reproducibility_hash": "842104d5fdb0c2adf5d591d48a0dbec422f9dc05fed66959beebd1cc9e36ee4a"
       },
       "08_registry_unavailable": {
         "verdict": "insufficient_data",
-        "reproducibility_hash": "8e569519ade1fa0f501eeeb4bad0bfc3be6a8e439366c5d2d7279cd4023bcafa"
+        "reproducibility_hash": "3c5ed6070c2dd5ec9684c3d5349fba54e975a755c2c834b2226bdcebdc9f392b"
       },
       "09_charter_limit": {
         "verdict": "needs_review",
-        "reproducibility_hash": "d461cfac94c843549166f2d9e8f348db01acece5e7d06371fa7d8764109e27c8"
+        "reproducibility_hash": "f021ffe027a6416abf826f2eb0a16709e7ea077304821fbc560ba689b801b98c"
       },
       "10_old_director_poa": {
-        "verdict": "confirmed",
-        "reproducibility_hash": "aca0177b094ddf2285f6942d7a048060ae970b5274639fcca7529604dfec9b07"
+        "verdict": "needs_review",
+        "reproducibility_hash": "86694bc76b9a3ca4d8e6d5817654ccdf6b913b8c860b9b6457832d5578e0de37"
       },
       "11_parent_revoked": {
         "verdict": "refuted",
-        "reproducibility_hash": "74c52cc8f51e387dac6fb5634b2ce76bafe29623a62af07b6d5ba53eb23cd9fa"
+        "reproducibility_hash": "73d90f5a7148457a52da313c2a85b5078a03584c4c8597f20385b26398f85c8f"
       },
       "12_no_term": {
         "verdict": "needs_review",
-        "reproducibility_hash": "dc3e3b0ff0438918a756759610ba970124ab6078358251ff3c1b66b03e8dc325"
+        "reproducibility_hash": "6e8cab54f7492004f596a52890ab4396e27a2932800bed48926a3a3e4cdf0284"
+      },
+      "13_bankruptcy": {
+        "verdict": "refuted",
+        "reproducibility_hash": "0efe2f9ad7c3313112ba21ca01b1825e96c18d0c3f5d7f5ed04ddb41c4e0642a"
       }
     }
   },
   "synthetic_corpus": {
     "command": "mandat eval --per-defect 6",
     "profile": "demo",
-    "cases": 204,
-    "defect_types": 34,
+    "cases": 210,
+    "defect_types": 35,
     "agreement": 1.0,
     "agreement_wilson95": [
-      0.981517360191317,
+      0.9820359492407167,
       1.0
     ],
     "false_confirmed": 0,
-    "false_confirmed_rate_upper95": 0.021600468451887907,
+    "false_confirmed_rate_upper95": 0.018482639808683074,
     "refute_recall": 1.0,
     "refute_recall_wilson95": [
       0.95626827158534,
       1.0
     ],
-    "abstention_rate": 0.4411764705882353,
-    "coverage": 0.5588235294117647,
+    "abstention_rate": 0.5714285714285714,
+    "coverage": 0.42857142857142855,
     "auto_risk": 0.0,
-    "auto_risk_upper95": 0.03259853415884162,
+    "auto_risk_upper95": 0.04093562556432678,
     "n_for_recall_0_9_pm_0_05": 139,
     "confusion": {
-      "confirmed->confirmed": 30,
+      "confirmed->confirmed": 6,
       "insufficient_data->insufficient_data": 24,
-      "needs_review->needs_review": 66,
+      "needs_review->needs_review": 96,
       "refuted->refuted": 84
     },
     "boundary": "синтетический корпус: проверка логики правил, не точность на документах банка"
   },
   "synthetic_corpus_strict": {
     "command": "mandat eval --per-defect 6 --profile strict",
-    "cases": 204,
+    "cases": 210,
     "false_confirmed": 0,
     "coverage": 0.0,
     "abstention_rate": 1.0,
@@ -119,16 +123,17 @@
   },
   "latency": {
     "command": "python scripts/bench.py --rounds 20",
-    "cases": 240,
-    "median_ms": 1.68,
-    "p95_ms": 2.39,
+    "cases": 260,
+    "median_ms": 1.62,
+    "p95_ms": 2.32,
     "machine": "AMD64, Python 3.12.10",
     "scope": "разбор XML и JSON, 33 правила, свёртка, отчёт; без сети и без модели"
   },
   "tests": {
     "command": "python -m pytest -q",
     "returncode": 0,
-    "summary": "101 passed in 2.69s",
-    "passed": 101
+    "summary": "160 passed, 1 skipped in 2.21s",
+    "passed": 160,
+    "skipped": 1
   }
 }

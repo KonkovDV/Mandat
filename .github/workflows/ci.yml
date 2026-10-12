@@ -36,3 +36,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t mandat:ci .
+      - name: container refuses to start without access settings
+        run: |
+          set +e
+          docker run --rm mandat:ci
+          test $? -eq 2

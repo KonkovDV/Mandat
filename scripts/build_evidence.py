@@ -21,7 +21,7 @@ from bench import bench
 
 from mandat import ENGINE
 from mandat.eval.run import run_corpus
-from mandat.examples import DEMO
+from mandat.examples import DEMO, OVERLAYS
 from mandat.intake.case_loader import load_case_dir
 from mandat.rules.classifier import default_classifier
 from mandat.rules.pack import default_catalog, default_pack
@@ -50,7 +50,7 @@ def main() -> int:
 
     pack, catalog, classifier = default_pack(), default_catalog(), default_classifier()
     demo = {}
-    for folder in DEMO:
+    for folder in [*DEMO, *OVERLAYS]:
         report = verify_case(load_case_dir(ROOT / "examples" / "cases" / folder)).as_dict()
         demo[folder] = {"verdict": report["verdict"], "reproducibility_hash": report["reproducibility_hash"]}
     corpus = run_corpus(args.per_defect)
