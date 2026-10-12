@@ -1,0 +1,74 @@
+"""Шлюз детерминизма: что модели можно и чего нельзя.
+
+Перенесено из AeroBIM (``determinism_gate``, ``llm_advisory``). Предложения модели
+становятся находками с происхождением ``advisory`` и эффектом «справка»:
+свёртка вердикта их не учитывает. Кандидат без дословной цитаты из источника
+отбрасывается («без цитаты нет факта»).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from mandat.domain.model import EvidenceRef, ExtractionMethod, Finding, TextDocument
+from mandat.domain.verdict import LegalEffect
+from mandat.intake.charter import CandidateFact, quote_is_grounded
+
+FORBIDDEN_LLM_ACTIONS = frozenset({"change_verdict", "approve_rule", "grant_right", "call_tool", "send_data"})
+LLM_WRITES_VERDICT = False
+LLM_SELECTS_RULES = False
+
+
+@dataclass(frozen=True)
+class GateResult:
+    accepted: tuple[CandidateFact, ...]
+    dropped: tuple[str, ...]
+
+
+def ground_candidates(raw: list[dict], doc: TextDocument, *, min_confidence: float = 0.5) -> GateResult:
+    """Оставляем только кандидатов с цитатой из документа и достаточной уверенностью."""
+    accepted: list[CandidateFact] = []
+    dropped: list[str] = []
+    for item in raw:
+        quote = str(item.get("quote") or "")
+        kind = str(item.get("kind") or "")
+        confidence = float(item.get("confidence", 0.0) or 0.0)
+        if kind not in {"approval_threshold", "joint_signature", "large_deal_approval"}:
+            dropped.append(f"неизвестный вид факта {kind!r}")
+            continue
+        if not quote_is_grounded(quote, doc.text):
+            dropped.append("цитата не найдена в документе")
+            continue
+        if confidence < min_confidence:
+            dropped.append("низкая уверенность: кейс уходит человеку")
+            continue
+        start = doc.text.find(quote.strip()[:40])
+        locator = f"text:{start}-{start + len(quote)}" if start >= 0 else "text"
+        value = item.get("value")
+        accepted.append(
+            CandidateFact(
+                kind,
+                int(value) if isinstance(value, (int, float)) else None,
+                quote,
+                EvidenceRef(doc.doc_id, doc.sha256, locator, quote=quote[:400]),
+                ExtractionMethod.LLM_ADVISORY,
+                confidence,
+            )
+        )
+    return GateResult(tuple(accepted), tuple(dropped))
+
+
+def as_advisory_findings(candidates: tuple[CandidateFact, ...]) -> list[Finding]:
+    return [
+        Finding(
+            rule_id="ADVISORY-LLM",
+            check="charter",
+            effect=LegalEffect.INFO,
+            message=f"Модель предлагает факт «{c.kind}» по цитате; решение — за правилами и сотрудником",
+            norm_ref="—",
+            refs=(c.ref,),
+            rule_status="advisory",
+            origin="advisory",
+        )
+        for c in candidates
+    ]

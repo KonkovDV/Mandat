@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e ".[dev,api,cedar]"
+      - run: python -m ruff check src tests scripts
+      - run: python -m pytest
+      - run: python scripts/lint_claims.py
+      - run: mandat demo
+      - run: mandat eval --per-defect 6
+      - run: mandat journal-verify var/demo/journal.jsonl
+      - run: mandat monitor examples/events/poa_revoked.json --status-dir var/demo/status
+      - run: mandat journal-proof var/demo/journal.jsonl --seq 1
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t mandat:ci .

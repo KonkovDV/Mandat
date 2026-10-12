@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "Если используете «Мандат», сошлитесь на него так."
+title: "Мандат: единое окно полномочий для бизнес-клиентов банка"
+version: 0.1.0
+date-released: 2026-10-12
+license: MIT
+authors:
+  - family-names: Konkov
+    given-names: Dmitrij
+repository-code: "https://github.com/KonkovDV/Mandat"
+keywords:
+  - machine-readable power of attorney
+  - authority verification
+  - explainable decisions
+  - banking

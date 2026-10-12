@@ -1,0 +1,69 @@
+{
+  "catalog_id": "mandat-operations",
+  "version": "2026.10.1",
+  "synthetic_codes": true,
+  "note": "Коды полномочий ниже — синтетические заглушки с префиксом SYN-. Банковские коды единого классификатора полномочий в открытых источниках не подтверждены (docs/REGULATORY.md), поэтому коды не придумываются: перед пилотом владелец процесса в банке выбирает коды по выгрузке ЕСНСИ (scripts/import_classifier.py). Код ядра при замене не меняется. Код SYN-BANK-PAY-SIGN-OLD исключён из снимка классификатора и нужен для демонстрации правила R-COV-002.",
+  "operations": [
+    {
+      "code": "PAYMENT_SIGN",
+      "name": "Подписание платёжных документов в интернет-банке",
+      "accepted_authority_codes": [
+        "SYN-BANK-PAY-SIGN",
+        "SYN-BANK-ACCOUNT-DISPOSE",
+        "SYN-BANK-PAY-SIGN-OLD"
+      ],
+      "text_keywords": [
+        "платёж",
+        "платеж",
+        "распоряж",
+        "денежными средствами",
+        "банковск"
+      ],
+      "proposed_role": "DBO_PAYMENT_SIGNER",
+      "high_risk": false
+    },
+    {
+      "code": "STATEMENT_VIEW",
+      "name": "Просмотр выписок и остатков",
+      "accepted_authority_codes": [
+        "SYN-BANK-STATEMENT",
+        "SYN-BANK-PAY-SIGN",
+        "SYN-BANK-ACCOUNT-DISPOSE"
+      ],
+      "text_keywords": [
+        "выписк",
+        "остат",
+        "банковск"
+      ],
+      "proposed_role": "DBO_VIEWER",
+      "high_risk": false
+    },
+    {
+      "code": "REQUISITES_CHANGE",
+      "name": "Изменение реквизитов и сведений о клиенте",
+      "accepted_authority_codes": [
+        "SYN-BANK-CLIENT-DATA"
+      ],
+      "text_keywords": [
+        "сведени",
+        "реквизит",
+        "юридическое дело"
+      ],
+      "proposed_role": "DBO_CLIENT_ADMIN",
+      "high_risk": true
+    },
+    {
+      "code": "USER_ADMIN",
+      "name": "Управление пользователями интернет-банка",
+      "accepted_authority_codes": [
+        "SYN-BANK-USER-ADMIN"
+      ],
+      "text_keywords": [
+        "пользовател",
+        "доступ"
+      ],
+      "proposed_role": "DBO_USER_ADMIN",
+      "high_risk": true
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+namespace Mandat {
+  entity Representative;
+  entity Organization;
+  type Link = {
+    codes: Set<String>,
+    registryActive: Bool,
+    validFrom: Long,
+    validUntil: Long,
+    subdelegation: Long,
+  };
+  action "PAYMENT_SIGN", "REQUISITES_CHANGE", "STATEMENT_VIEW", "USER_ADMIN" appliesTo {
+    principal: Representative,
+    resource: Organization,
+    context: { day: Long, hasParent: Bool, leaf: Link, parent: Link },
+  };
+}

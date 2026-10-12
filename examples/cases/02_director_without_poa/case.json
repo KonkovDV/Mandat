@@ -1,0 +1,35 @@
+{
+  "case_id": "02_director_without_poa",
+  "organization": {
+    "inn": "7729985006",
+    "ogrn": "1257700518756",
+    "name": "ООО «Ясная поляна»"
+  },
+  "requester": {
+    "full_name": "Петров Пётр Петрович",
+    "inn": "779341418422",
+    "snils": "797-600-698 62"
+  },
+  "operation": {
+    "code": "PAYMENT_SIGN",
+    "date": "2026-10-20",
+    "amount_rub": 480000
+  },
+  "documents": [
+    {
+      "id": "charter",
+      "kind": "charter_text",
+      "path": "charter.txt"
+    },
+    {
+      "id": "egrul",
+      "kind": "egrul_json",
+      "path": "egrul.json"
+    }
+  ],
+  "registry": {
+    "0b96b829-9227-9033-d07b-60414d94127d": "active"
+  },
+  "title": "Руководитель сам подключается к интернет-банку",
+  "expected_verdict": "confirmed"
+}

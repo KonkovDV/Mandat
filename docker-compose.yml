@@ -1,0 +1,17 @@
+services:
+  mandat:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      MANDAT_API_TOKEN: ${MANDAT_API_TOKEN:-change-me}
+      MANDAT_JOURNAL_KEY: ${MANDAT_JOURNAL_KEY:-}
+      MANDAT_PII_KEY: ${MANDAT_PII_KEY:-}
+      MANDAT_LLM_BASE_URL: ${MANDAT_LLM_BASE_URL:-}
+      MANDAT_LLM_ALLOWED_HOSTS: ${MANDAT_LLM_ALLOWED_HOSTS:-127.0.0.1,localhost}
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/var
+    security_opt:
+      - no-new-privileges:true

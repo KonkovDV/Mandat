@@ -1,0 +1,50 @@
+{
+  "title": "Признаки захвата компании через подставного руководителя",
+  "rights": [
+    {
+      "right_id": "R-001",
+      "org_inn": "7729985006",
+      "representative_inn": "777588807322",
+      "operation": "PAYMENT_SIGN",
+      "poa_numbers": [
+        "71ad2f2e-9941-cb17-2164-f172376af807"
+      ],
+      "eio_inn": "779341418422"
+    },
+    {
+      "right_id": "R-002",
+      "org_inn": "7729985006",
+      "representative_inn": "779341418422",
+      "operation": "USER_ADMIN",
+      "poa_numbers": [],
+      "eio_inn": "779341418422"
+    }
+  ],
+  "events": [
+    {
+      "kind": "EIO_CHANGED",
+      "org_inn": "7729985006",
+      "at": "2026-10-21T09:10:00+03:00",
+      "payload": {
+        "grn": "2267700999001",
+        "new_eio_inn": "777035165017"
+      }
+    },
+    {
+      "kind": "NEW_POA",
+      "org_inn": "7729985006",
+      "at": "2026-10-21T11:40:00+03:00",
+      "payload": {
+        "number": "11111111-2222-3333-4444-555555555555"
+      }
+    },
+    {
+      "kind": "REQUISITES_CHANGE_REQUEST",
+      "org_inn": "7729985006",
+      "at": "2026-10-21T12:05:00+03:00",
+      "payload": {
+        "field": "контактный телефон"
+      }
+    }
+  ]
+}

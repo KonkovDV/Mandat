@@ -1,0 +1,134 @@
+{
+  "generated_at": "2026-10-12T18:20:14+00:00",
+  "engine": "mandat/0.2.0",
+  "python": "3.13.16",
+  "rule_pack": {
+    "pack_id": "mandat-rules-ru",
+    "version": "2026.10.1",
+    "status": "draft",
+    "sha256": "04ac9b56b02f2f563847ed4cb716ce0e0119d882524a973566f2608922a42564",
+    "rules": 32
+  },
+  "operations_catalog": {
+    "version": "2026.10.1",
+    "sha256": "8c11bddb145a29d902651a9d7a921cb1071f65892325ed06b3b06ecbd2f8b262",
+    "synthetic": true
+  },
+  "demo_cases": {
+    "command": "mandat demo",
+    "results": {
+      "01_ok": {
+        "verdict": "confirmed",
+        "reproducibility_hash": "04e1cfee75a281754e8f2c6e9cd6649e8cf6d35a52c51ac3bb0afd2a74e8df4f"
+      },
+      "02_director_without_poa": {
+        "verdict": "confirmed",
+        "reproducibility_hash": "ae4348928f9a09bf9d5ec26cfdf7e2a32179afb2337e2fae95a6170424277847"
+      },
+      "03_subdelegation_ok": {
+        "verdict": "confirmed",
+        "reproducibility_hash": "93abd48d64bf02ea0059b547f212a02fea89c18b4ebe775a76acb4d5ddef9f3b"
+      },
+      "04_subdelegation_forbidden": {
+        "verdict": "refuted",
+        "reproducibility_hash": "ebd7287f0c2481d5a66a98ab51656ebce035c82bb9088629bec7044d88772203"
+      },
+      "05_director_changed": {
+        "verdict": "needs_review",
+        "reproducibility_hash": "315ab361cb43325defd971af4db582efbc202ae808ee5ed72f7b1fdfa5f13412"
+      },
+      "06_text_authority": {
+        "verdict": "needs_review",
+        "reproducibility_hash": "fac020d6b0ab57ae1bdd49794d9f9b7aa4554494be868ebc1cd2dc13e7cfe1b7"
+      },
+      "07_revoked": {
+        "verdict": "refuted",
+        "reproducibility_hash": "b6146469f7c7d453f70711e6de1a11b793baf84b02f6ebcc43635881bab39279"
+      },
+      "08_registry_unavailable": {
+        "verdict": "insufficient_data",
+        "reproducibility_hash": "df9c47c68757dc7357b41daeaa6ad0ff52f156e93fc88e32179d3d70cdc95cef"
+      },
+      "09_charter_limit": {
+        "verdict": "needs_review",
+        "reproducibility_hash": "b5c7e25627efc15b17fd311bd986952f2e2f467e226d70e1231d6eb76772aebb"
+      },
+      "10_old_director_poa": {
+        "verdict": "confirmed",
+        "reproducibility_hash": "a0d1832a6b3e510d343fa0eaea54e440067e1ab30c3d1958a383b075ba038985"
+      },
+      "11_parent_revoked": {
+        "verdict": "refuted",
+        "reproducibility_hash": "6fa2b48cb4162723c1badd30085372a4b211efa13fe9e7c526f280ed033a9703"
+      },
+      "12_no_term": {
+        "verdict": "needs_review",
+        "reproducibility_hash": "0618894434ecc612f79bcf9bcf94321e47edeedabde02ab2a44948b7a296cd31"
+      }
+    }
+  },
+  "synthetic_corpus": {
+    "command": "mandat eval --per-defect 6",
+    "profile": "demo",
+    "cases": 204,
+    "defect_types": 34,
+    "agreement": 1.0,
+    "agreement_wilson95": [
+      0.981517360191317,
+      1.0
+    ],
+    "false_confirmed": 0,
+    "false_confirmed_rate_upper95": 0.021600468451887907,
+    "refute_recall": 1.0,
+    "refute_recall_wilson95": [
+      0.95626827158534,
+      1.0
+    ],
+    "abstention_rate": 0.4411764705882353,
+    "coverage": 0.5588235294117647,
+    "auto_risk": 0.0,
+    "auto_risk_upper95": 0.03259853415884162,
+    "n_for_recall_0_9_pm_0_05": 139,
+    "confusion": {
+      "confirmed->confirmed": 30,
+      "insufficient_data->insufficient_data": 24,
+      "needs_review->needs_review": 66,
+      "refuted->refuted": 84
+    },
+    "boundary": "синтетический корпус: проверка логики правил, не точность на документах банка"
+  },
+  "synthetic_corpus_strict": {
+    "command": "mandat eval --per-defect 6 --profile strict",
+    "cases": 204,
+    "false_confirmed": 0,
+    "coverage": 0.029411764705882353,
+    "abstention_rate": 0.9705882352941176,
+    "boundary": "строгий профиль без СКЗИ и утверждённых юристом правил: автоматически подтверждаются только действия руководителя по ЕГРЮЛ, остальное уходит человеку — так задумано"
+  },
+  "subdelegation_property": {
+    "command": "python -m pytest tests/test_properties.py tests/test_cedar.py",
+    "chains": 384,
+    "property": "«подтверждено» ⇔ передоверие разрешено, не шире и не дольше родительской МЧД и покрывает операцию",
+    "cedar_differential": "tests/test_cedar.py, нужен extra [cedar]"
+  },
+  "classifier": {
+    "classifier_id": "mandat-authority-classifier",
+    "version": "2026.10.1",
+    "sha256": "5f08b73d574ac63ec8118545afe1a351a4b0e275019b2d7f25f886f5a3ef215c",
+    "synthetic": true
+  },
+  "latency": {
+    "command": "python scripts/bench.py --rounds 20",
+    "cases": 240,
+    "median_ms": 2.28,
+    "p95_ms": 3.62,
+    "machine": "x86_64, Python 3.13.16",
+    "scope": "разбор XML и JSON, 32 правила, свёртка, отчёт; без сети и без модели"
+  },
+  "tests": {
+    "command": "python -m pytest -q",
+    "returncode": 0,
+    "summary": "88 passed in 4.28s",
+    "passed": 88
+  }
+}
