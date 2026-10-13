@@ -13,7 +13,7 @@
 
 Критерии и подтверждение (последний прогон):
 
-- `python -m pytest -p no:warnings -o addopts="" -q` — 571 passed, 0 skipped;
+- `python -m pytest -p no:warnings -o addopts="" -q` — 585 passed, 0 skipped;
 - `ruff check .`, `ruff format --check .`, `mypy` (55 файлов), `python scripts/lint_claims.py` — без замечаний;
 - `mandat demo` и `mandat journal-verify var/demo/journal.jsonl` — журнал цел, 14 записей;
 - `mandat eval --per-defect 6` — `mismatches: []`, ложных «подтверждено» 0 на 294 синтетических кейсах;

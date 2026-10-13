@@ -1,6 +1,6 @@
 # Карта документов
 
-Срез 13.10.2026. Если времени мало, достаточно трёх файлов: [README](../README.md), [сценарий показа](DEMO.md), [границы](../LIMITS.md).
+Срез 13.10.2026, после слияния аудита. Если времени мало, достаточно трёх файлов: [README](../README.md), [сценарий показа](DEMO.md), [границы](../LIMITS.md).
 
 ## По роли
 
@@ -9,9 +9,9 @@
 | Жюри на питче | [сценарий показа](DEMO.md) | [реестр утверждений](../CLAIMS_REGISTRY.md), [конкуренты](COMPETITORS.md) |
 | Жюри после питча | [каркас MVP](MVP.md) | [архитектура](ARCHITECTURE.md), [оценка](EVALUATION.md) |
 | Юрист банка | [вопросы юристу](LEGAL_REVIEW.md), [нормы](REGULATORY.md) | [правила](RULES.md), [формат МЧД](FORMAT_NOTES.md), [предметная модель](DOMAIN.md) |
-| ИБ банка | [модель угроз](THREAT_MODEL.md), [аудит 2026-10](AUDIT_2026-10.md) | [защита данных](DATA_PROTECTION.md), [риски ИИ](AI_RISKS.md), [SECURITY](../SECURITY.md) |
+| ИБ банка | [модель угроз](THREAT_MODEL.md), [аудит октября 2026](audit/AUDIT.md) | [защита данных](DATA_PROTECTION.md), [риски ИИ](AI_RISKS.md), [SECURITY](../SECURITY.md) |
 | Владелец процесса | [пилот](PILOT.md) | [экономика](ECONOMICS.md), [дорожная карта](ROADMAP.md) |
-| Инженер, который клонировал репозиторий | [README](../README.md), раздел «Запуск» | [архитектура](ARCHITECTURE.md), [перенос идей](PORTING.md) |
+| Инженер, который клонировал репозиторий | [запуск и API](RUN.md) | [архитектура](ARCHITECTURE.md), [перенос идей](PORTING.md) |
 
 ## По вопросу
 
@@ -27,7 +27,8 @@
 | Почему модель не пишет вердикт | [ADR-001](adr/ADR-001-verdict-ownership.md) |
 | Откуда журнал, удостоверение и вторая свёртка | [перенос](PORTING.md) |
 | Что сдавать по спринтам | [сдача](../submission/README.md) |
-| Что закрыл аудит и что нет | [закрытие аудита](AUDIT_CLOSURE.md), [устаревшие слайды](SUBMISSION_DRIFT.md) |
+| Что закрыл аудит и что нет | [аудит октября 2026](audit/AUDIT.md), [ступени готовности](audit/READINESS_GATES.md); история: [закрытие аудита 12.10](AUDIT_CLOSURE.md), [первый аудит октября](AUDIT_2026-10.md), [колода и код](SUBMISSION_DRIFT.md) |
+| Какая норма за каким правилом и откуда источник | [трассировка норм](audit/LEGAL_TRACEABILITY.md), [реестр источников](audit/SOURCE_LEDGER.md) |
 | Как говорить с пользователями | [discovery](discovery/) |
 | Откуда взяты источники | [источники](SOURCES.md), [литература](LITERATURE.md) |
 

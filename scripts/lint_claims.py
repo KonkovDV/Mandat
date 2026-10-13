@@ -27,7 +27,7 @@ def pptx_text(path: Path) -> str:
 
 
 # Число правил в текстах должно совпадать с пакетом. История (CHANGELOG, записи аудитов) не проверяется.
-RULE_COUNT = re.compile(r"\b(\d+)\s+правил\b")
+RULE_COUNT = re.compile(r"\b(\d+)\s+правил\b|правило из (\d+)\b")
 RULE_COUNT_SKIP = {"CHANGELOG.md"}
 RULE_COUNT_SKIP_PREFIXES = ("docs/AUDIT_", "docs/audit/")
 
@@ -44,12 +44,39 @@ def rule_count_hits() -> list[str]:
         if any(part in SKIP_DIRS or part.endswith(".egg-info") for part in path.relative_to(ROOT).parts):
             continue
         for number, line in (
-            (int(m.group(1)), i)
+            (int(m.group(1) or m.group(2)), i)
             for i, text in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1)
             for m in RULE_COUNT.finditer(text)
         ):
             if number != actual:
                 hits.append(f"{rel}:{line}: «{number} правил», а в rules.json {actual}")
+    return hits
+
+
+# Ключевые числа для жюри должны совпадать с evidence.json: число автотестов и демо-кейсов.
+EVIDENCE_COUNTS = {
+    "автотест": re.compile(r"\b(\d+)\s+автотест"),
+    "демо-кейс": re.compile(r"\b(\d+)\s+демо-кейс"),
+}
+
+
+def evidence_count_hits() -> list[str]:
+    import json
+
+    evidence = json.loads((ROOT / "evidence.json").read_text(encoding="utf-8"))
+    expected = {"автотест": evidence["tests"]["passed"], "демо-кейс": len(evidence["demo_cases"]["results"])}
+    hits = []
+    for path in sorted(ROOT.rglob("*.md")):
+        rel = path.relative_to(ROOT).as_posix()
+        if path.name in RULE_COUNT_SKIP or rel.startswith(RULE_COUNT_SKIP_PREFIXES):
+            continue
+        if any(part in SKIP_DIRS or part.endswith(".egg-info") for part in path.relative_to(ROOT).parts):
+            continue
+        for i, text in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
+            for name, pattern in EVIDENCE_COUNTS.items():
+                for m in pattern.finditer(text):
+                    if int(m.group(1)) != expected[name]:
+                        hits.append(f"{rel}:{i}: «{m.group(0)}», а в evidence.json {expected[name]}")
     return hits
 
 
@@ -76,6 +103,10 @@ def main() -> int:
     count_hits = rule_count_hits()
     if count_hits:
         sys.stderr.write("число правил в текстах не совпадает с пакетом:\n" + "\n".join(count_hits) + "\n")
+        return 1
+    evidence_hits = evidence_count_hits()
+    if evidence_hits:
+        sys.stderr.write("числа в текстах не совпадают с evidence.json:\n" + "\n".join(evidence_hits) + "\n")
         return 1
     print(f"проверено, запрещённых формулировок нет ({len(banned)} шаблонов)")
     return 0

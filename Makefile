@@ -15,6 +15,7 @@ test:
 
 claims:
 	$(PY) scripts/lint_claims.py
+	$(PY) scripts/check_links.py
 
 rules-doc:
 	$(PY) scripts/gen_rules_doc.py
