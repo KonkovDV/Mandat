@@ -68,8 +68,15 @@ def b58decode(text: str) -> bytes:
     return b"\0" * pad + body
 
 
+def _private_bytes(path: Path) -> bytes:
+    """Байты секретного ключа. В POSIX файл, открытый группе или всем, не читается: ключ уже мог утечь."""
+    if os.name == "posix" and path.stat().st_mode & 0o077:
+        raise ValueError(f"ключ {path.name} доступен не только владельцу: выполните chmod 600 {path}")
+    return path.read_bytes()
+
+
 def _read_signing_key(path: Path) -> Ed25519PrivateKey:
-    key = serialization.load_pem_private_key(path.read_bytes(), password=None)
+    key = serialization.load_pem_private_key(_private_bytes(path), password=None)
     if not isinstance(key, Ed25519PrivateKey):
         raise ValueError("ключ подписи должен быть Ed25519")
     return key
@@ -186,7 +193,7 @@ PSEUDONYM_KEY_MIN_BYTES = 32
 
 
 def _read_pseudonym_key(path: Path) -> bytes:
-    key = path.read_bytes()
+    key = _private_bytes(path)
     if len(key) < PSEUDONYM_KEY_MIN_BYTES:
         raise ValueError(f"ключ HMAC короче {PSEUDONYM_KEY_MIN_BYTES} байт: токен представителя был бы слабым")
     return key

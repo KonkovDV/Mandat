@@ -47,6 +47,9 @@ def safe_fromstring(data: bytes | str) -> Element:
         raise XmlRejected(f"XML отклонён защитой: {type(exc).__name__}") from exc
     except ParseError as exc:
         raise XmlRejected(f"XML не разбирается: {exc}") from exc
+    except LookupError as exc:
+        # Неизвестная кодировка в прологе (encoding="…") — ошибка входа, а не сбой сервера.
+        raise XmlRejected(f"XML в неизвестной кодировке: {exc}") from exc
     count = sum(1 for _ in root.iter())
     if count > MAX_ELEMENTS:
         raise XmlRejected(f"слишком много элементов ({count} > {MAX_ELEMENTS})")

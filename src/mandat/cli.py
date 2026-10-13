@@ -269,6 +269,11 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
         print(f"не принимается: {problem}", file=sys.stderr)
     if problems:
         return 4
+    # Действительное удостоверение бывает и у опровергнутого кейса: вердикт печатается всегда.
+    verdict = (cred.get("credentialSubject") or {}).get("verdict")
+    print(f"вердикт в удостоверении: {verdict}")
+    if cred.get("credentialStatus") and not args.status_dir:
+        print("предупреждение: статус не проверялся, передайте --status-dir", file=sys.stderr)
     if args.status_dir:
         seen_path = Path(args.seen_file) if args.seen_file else None
         seen = json.loads(seen_path.read_text(encoding="utf-8")) if seen_path and seen_path.exists() else {}

@@ -54,7 +54,7 @@ class UserEntry:
 def parse_users(raw: Any) -> tuple[UserEntry, ...]:
     if not isinstance(raw, list):
         raise ValueError("MANDAT_API_USERS: ожидался JSON-массив пользователей")
-    users = []
+    users: list[UserEntry] = []
     seen: set[str] = set()
     for item in raw:
         if not isinstance(item, dict):
@@ -70,6 +70,9 @@ def parse_users(raw: Any) -> tuple[UserEntry, ...]:
             raise ValueError(f"MANDAT_API_USERS: у {name} token_sha256 не похож на SHA-256")
         if name in seen:
             raise ValueError(f"MANDAT_API_USERS: имя {name} встречается дважды")
+        if digest.lower() in {entry.token_sha256 for entry in users}:
+            # Один токен у двух имён: запросы и записи журнала достались бы не тому пользователю.
+            raise ValueError(f"MANDAT_API_USERS: токен {name} совпадает с токеном другого пользователя")
         seen.add(name)
         users.append(UserEntry(Principal(name, role), digest.lower()))
     return tuple(users)

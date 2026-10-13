@@ -4,8 +4,9 @@
 тем, чего там не было: ИНН и СНИЛС с контрольными числами, паспорт РФ, телефон
 и почта. Токен детерминирован для одного ключа, поэтому сотрудник видит, что в
 двух местах упомянут один и тот же человек, но не видит самого номера.
-Ключ — ``MANDAT_PII_KEY``; без ключа токены строятся на ключе разработки и
-в отчёт добавляется предупреждение (см. docs/DATA_PROTECTION.md).
+Ключ — ``MANDAT_PII_KEY``. Без ключа токены строятся на открытом ключе разработки, поэтому
+так можно только в режимах demo, dev и test; в pilot, prod и любом другом режиме псевдонимизация
+без ключа отказывает (см. docs/DATA_PROTECTION.md).
 """
 
 from __future__ import annotations
@@ -38,12 +39,20 @@ DETECTORS = (
 )
 
 
+class PiiKeyMissing(RuntimeError):
+    """Режим требует собственный ключ псевдонимизации, а ``MANDAT_PII_KEY`` не задан."""
+
+
 def _key() -> bytes:
-    return (os.environ.get("MANDAT_PII_KEY") or DEV_KEY).encode("utf-8")
+    value = os.environ.get("MANDAT_PII_KEY", "").strip()
+    if value:
+        return value.encode("utf-8")
+    from mandat.services.env_policy import protected
 
-
-def using_dev_key() -> bool:
-    return not os.environ.get("MANDAT_PII_KEY")
+    if protected():
+        # Ключ разработки лежит в репозитории: токен ИНН по нему восстанавливается перебором.
+        raise PiiKeyMissing("MANDAT_PII_KEY не задан: на открытом ключе разработки ПДн не псевдонимизируются")
+    return DEV_KEY.encode("utf-8")
 
 
 def token(kind: str, value: str) -> str:
