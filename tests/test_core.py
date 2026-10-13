@@ -185,7 +185,9 @@ def test_verdict_oracle_agrees_with_fold():
 
 def test_confirmed_report_names_the_strongest_objection():
     report = run("ok").as_dict()
-    assert report["objection"].startswith("R-SIG-001")
+    # «ok» уходит на разбор из-за неразмеченного устава; снятая в demo подпись — не причина вердикта.
+    assert report["verdict"] == "needs_review"
+    assert report["objection"].startswith("R-CHR-002")
     assert "Сильнейшее возражение" in render(report)
 
 

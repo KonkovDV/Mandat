@@ -13,6 +13,12 @@ from mandat.domain.model import Finding
 from mandat.domain.verdict import LegalEffect, Verdict
 
 _ORDER = {LegalEffect.REFUTES: 0, LegalEffect.NOT_VERIFIED: 1, LegalEffect.NEEDS_REVIEW: 2}
+_DRIVER = {
+    Verdict.REFUTED: LegalEffect.REFUTES,
+    Verdict.NEEDS_REVIEW: LegalEffect.NEEDS_REVIEW,
+    Verdict.INSUFFICIENT_DATA: LegalEffect.NOT_VERIFIED,
+}
+_GENERIC = frozenset({"R-CHR-002"})
 SLA_HOURS = {"P1": 4, "P2": 24, "P3": 72}
 # Справки, которые сотрудник должен увидеть сразу: они не меняют вердикт, но требуют внимания.
 SIGNAL_RULES = frozenset({"R-EIO-002", "R-SUB-008"})
@@ -56,7 +62,13 @@ def strongest_objection(verdict: Verdict, findings: list[Finding], warnings: lis
             return f"{signals[0].rule_id}: {signals[0].message}"
     ranked = [f for f in findings if f.origin == "deterministic" and f.effect in _ORDER]
     if ranked:
-        finding = min(ranked, key=lambda f: (_ORDER[f.effect], f.rule_id))
+        # Сначала находка того же вида, что и вердикт: она и есть настоящая причина.
+        # Неразмеченный устав (R-CHR-002) есть почти в каждом кейсе, поэтому он идёт последним из равных.
+        # Снятая в профиле проверка (например, подпись в demo) не должна заслонять её.
+        driver = _DRIVER.get(verdict)
+        finding = min(
+            ranked, key=lambda f: (f.effect is not driver, _ORDER[f.effect], f.rule_id in _GENERIC, f.rule_id)
+        )
         return f"{finding.rule_id}: {finding.message}"
     if verdict is Verdict.CONFIRMED:
         waived = [w for w in warnings if "не выполнялась" in w]

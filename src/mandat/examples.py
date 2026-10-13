@@ -37,7 +37,18 @@ OVERLAYS = {
         "Доверитель в конкурсном производстве: доверенность прекратилась (ст. 126 127-ФЗ, подп. 7 п. 1 ст. 188 ГК РФ)",
         "refuted",
     ),
+    "14_old_director_charter_cleared": (
+        "director_changed_long_ago",
+        "Кейс 10 с синтетической отметкой «по уставу применимых ограничений нет»: "
+        "подтверждено, смена руководителя — сигнал",
+        "confirmed",
+    ),
 }
+# Дополнения манифеста для кейсов поверх сценария.
+CHARTER_NOTE = (
+    "СИНТЕТИЧЕСКАЯ отметка для демонстрации: устав никто не проверял. В банке такую отметку ставит юрист "
+    "после чтения устава, и она попадает в журнал вместе с его именем."
+)
 SEED = 2026
 
 
@@ -59,6 +70,9 @@ def write_examples(target: Path) -> list[Path]:
         }
         if folder == "13_bankruptcy":
             manifest["bankruptcy"] = {scenario.manifest["organization"]["inn"]: "bankruptcy_proceedings"}
+        if folder == "14_old_director_charter_cleared":
+            manifest["charter_disposition"] = "no_applicable_restriction"
+            manifest["charter_disposition_note"] = CHARTER_NOTE
         (case_dir / "case.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
         )

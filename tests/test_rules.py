@@ -530,3 +530,21 @@ def test_objection_on_confirmed_names_the_signal_first():
     waived = Finding("R-SIG-001", "signature", LegalEffect.NOT_VERIFIED, "подпись не проверена", "n", ref)
     text = strongest_objection(Verdict.CONFIRMED, [waived, signal], [])
     assert text.startswith("R-EIO-002")
+
+
+def test_objection_names_the_real_reason_not_a_waived_check():
+    """В demo проверка подписи снята; возражение должно назвать причину вердикта."""
+    import json
+    from pathlib import Path
+
+    from mandat.intake.case_loader import load_case_dir
+    from mandat.services.verify import verify_case
+
+    root = Path(__file__).resolve().parents[1] / "examples" / "cases"
+    for case, rule in (
+        ("01_ok", "R-CHR-002"),
+        ("05_director_changed", "R-EIO-002"),
+        ("10_old_director_poa", "R-CHR-002"),
+    ):
+        report = json.loads(json.dumps(verify_case(load_case_dir(root / case)).as_dict()))
+        assert report["objection"].startswith(rule), (case, report["objection"])

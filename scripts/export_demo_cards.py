@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CARDS = ("01_ok", "10_old_director_poa", "05_director_changed")
+CARDS = ("01_ok", "10_old_director_poa", "05_director_changed", "14_old_director_charter_cleared")
 
 
 def export(src: Path, dst: Path) -> list[Path]:
