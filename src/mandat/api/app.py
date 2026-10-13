@@ -235,12 +235,21 @@ def create_app(
         else:
             report = verify_case(case, profile=profile).as_dict()
         case_id = report["case_id"]
-        # Атомарная заявка на создание: из двух одновременных запросов с одним case_id проходит один,
-        # второй получает 409, а не перезаписывает первый. first_seen атомарен во всех хранилищах.
-        if not replace and not shared.first_seen(f"create:{case_id}", CREATE_CLAIM_SECONDS):
-            raise HTTPException(
-                409, "кейс с таким case_id уже создаётся или создан: повторите позже или передайте replace=true"
-            )
+        # Атомарная заявка на создание (в том числе при replace=true): из одновременных запросов с одним
+        # case_id дальше проходит один, остальные получают 409, а не перезаписывают друг друга. Заявка
+        # держится только на время записи: после успеха или любой ошибки она снимается, и честный повтор
+        # проходит сразу. CREATE_CLAIM_SECONDS — страховка на случай, если процесс упал посреди записи.
+        claim = f"create:{case_id}"
+        if not shared.first_seen(claim, CREATE_CLAIM_SECONDS):
+            raise HTTPException(409, "кейс с таким case_id сейчас записывается другим запросом: повторите позже")
+        try:
+            return _store(case_id, report, principal, client_ref, replace)
+        finally:
+            shared.release(claim)
+
+    def _store(
+        case_id: str, report: dict[str, Any], principal: Principal, client_ref: Any, replace: bool
+    ) -> dict[str, Any]:
         existing = shared.get(case_id)
         if existing is not None and not replace:
             raise HTTPException(409, "кейс с таким case_id уже есть: передайте replace=true, чтобы перезаписать")

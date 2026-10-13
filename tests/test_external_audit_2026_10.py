@@ -1,4 +1,4 @@
-"""Регрессии повторного аудита 13.10.2026 (R01, R12, R13, R14, R18): каждый тест падал до исправления."""
+"""Регрессии по замечаниям внешнего аудита, октябрь 2026 (R01–R18)."""
 
 from __future__ import annotations
 
@@ -187,6 +187,7 @@ def test_registry_snapshot_from_the_future_is_not_evidence():
     }
     report = verify_case(load_case_inline(manifest), now=NOW)
     assert "not_verified" in _effects(report, "R-REG-001")
+    assert any("позже момента проверки" in f.message for f in report.findings if f.rule_id == "R-REG-001")
     assert report.verdict.value != "confirmed"
 
 
@@ -214,3 +215,136 @@ def test_deeply_nested_model_answer_yields_no_facts():
     deep = '{"facts":' + "[" * 100_000 + "]" * 100_000 + "}"
     assert parse_facts(deep) == []
     assert _statements(deep.replace("facts", "statements")) == []
+
+
+def _signed_case(tmp_path: Path, *, list_age: timedelta):
+    key = attestation.Ed25519PrivateKey.generate()
+    registry = StatusRegistry.open(tmp_path / "status")
+    report = verify_case(load_case_inline(synth.build("ok", 1).inline_manifest()), profile="strict").as_dict()
+    meta = {"org_inn": report["organization"]["inn"], "verdict": report["verdict"], "poa_numbers": []}
+    index = registry.allocate(meta)
+    now = datetime.now(UTC)
+    cred = attestation.issue(report, key, now=now, status=registry.credential_status(index))
+    registry.save(key, now=now - list_age)
+    path = tmp_path / "cred.json"
+    path.write_text(json.dumps(cred, ensure_ascii=False), encoding="utf-8")
+    return path, attestation.public_key_multibase(key)
+
+
+def test_cli_attest_verify_checks_list_freshness_in_pilot(tmp_path: Path, monkeypatch, capsys):
+    from mandat.cli import main
+
+    path, public = _signed_case(tmp_path, list_age=timedelta(days=8))
+    args = ["attest-verify", str(path), "--public-key", public, "--status-dir", str(tmp_path / "status")]
+    monkeypatch.setenv("MANDAT_ENV", "pilot")
+    assert main(args) == 3
+    assert "список устарел" in capsys.readouterr().out
+    # На стенде демо-списки проверяются и через месяц: свежесть по часам не включается.
+    monkeypatch.delenv("MANDAT_ENV")
+    assert main(args) == 0
+
+
+def test_api_passes_the_server_clock_to_the_engine_only_outside_the_stand(tmp_path: Path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import mandat.api.app as api
+    from mandat.api.storage import MemoryStore
+
+    seen: list[object] = []
+    real = api.verify_case
+
+    def spy(case, **kwargs):
+        seen.append(kwargs.get("now"))
+        return real(case, **kwargs)
+
+    monkeypatch.setattr(api, "verify_case", spy)
+    manifest = synth.build("ok", 1).inline_manifest()
+    headers = {"Authorization": "Bearer t"}
+    TestClient(api.create_app(token="t", rate_per_min=0, store=MemoryStore())).post(
+        "/v1/cases", json=manifest, headers=headers
+    )
+    monkeypatch.setenv("MANDAT_ENV", "pilot")
+    monkeypatch.setenv("MANDAT_JOURNAL_KEY", "k" * 32)
+    monkeypatch.setenv("MANDAT_PII_KEY", "p" * 32)
+    pilot = api.create_app(token="t", rate_per_min=0, store=MemoryStore(), journal_path=tmp_path / "j.jsonl")
+    TestClient(pilot).post("/v1/cases", json=manifest, headers=headers)
+    assert seen[0] is None
+    assert isinstance(seen[1], datetime)
+    assert abs((seen[1] - datetime.now(UTC)).total_seconds()) < 60
+
+
+def _api_with(store, **kw):
+    from fastapi.testclient import TestClient
+
+    from mandat.api.app import create_app
+
+    return TestClient(create_app(token="t", rate_per_min=0, store=store, **kw))
+
+
+def test_concurrent_replace_does_not_bypass_the_claim():
+    import threading
+
+    from mandat.api.storage import MemoryStore
+
+    class RacyStore(MemoryStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.barrier = threading.Barrier(2, timeout=2)
+
+        def get(self, case_id):
+            found = super().get(case_id)
+            try:
+                self.barrier.wait()
+            except threading.BrokenBarrierError:
+                pass
+            return found
+
+    client = _api_with(RacyStore())
+    manifest = synth.build("ok", 1).inline_manifest()
+    codes: list[int] = []
+
+    def post() -> None:
+        url = "/v1/cases?replace=true"
+        codes.append(client.post(url, json=manifest, headers={"Authorization": "Bearer t"}).status_code)
+
+    threads = [threading.Thread(target=post) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(15)
+    assert sorted(codes) == [200, 409]
+
+
+def test_retry_after_journal_failure_is_accepted(tmp_path: Path, monkeypatch):
+    from mandat.api.storage import MemoryStore
+    from mandat.audit import journal
+
+    store = MemoryStore()
+    client = _api_with(store, journal_path=tmp_path / "j.jsonl")
+    manifest = synth.build("ok", 1).inline_manifest()
+    headers = {"Authorization": "Bearer t"}
+    real = journal.append
+
+    def broken(*args, **kwargs):
+        raise OSError("диск недоступен")
+
+    monkeypatch.setattr(journal, "append", broken)
+    assert client.post("/v1/cases", json=manifest, headers=headers).status_code == 503
+    monkeypatch.setattr(journal, "append", real)
+    assert client.post("/v1/cases", json=manifest, headers=headers).status_code == 200
+    # Кейс записан: повтор без replace — честный 409, а замена сразу проходит.
+    assert client.post("/v1/cases", json=manifest, headers=headers).status_code == 409
+    assert client.post("/v1/cases?replace=true", json=manifest, headers=headers).status_code == 200
+
+
+@pytest.mark.parametrize("kind", ["sqlite", "redis"])
+def test_store_claim_can_be_released(tmp_path: Path, kind: str):
+    import fakeredis
+
+    from mandat.api.storage import RedisStore, SQLiteStore
+
+    store = SQLiteStore(tmp_path / "s.db") if kind == "sqlite" else RedisStore(fakeredis.FakeRedis())
+    assert store.first_seen("create:c1", 30)
+    assert not store.first_seen("create:c1", 30)
+    store.release("create:c1")
+    assert store.first_seen("create:c1", 30)

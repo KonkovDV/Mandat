@@ -42,6 +42,9 @@ class Store(Protocol):
     def first_seen(self, key: str, ttl: float, now: float | None = None) -> bool:
         """True ровно один раз за ``ttl`` секунд для данного ключа (защита от повтора вебхука)."""
 
+    def release(self, key: str) -> None:
+        """Снять ключ ``first_seen`` раньше срока: заявка на создание кейса завершена."""
+
 
 class MemoryStore:
     name = "memory"
@@ -87,6 +90,10 @@ class MemoryStore:
                 return False
             self._seen[key] = now + ttl
             return True
+
+    def release(self, key: str) -> None:
+        with self._lock:
+            self._seen.pop(key, None)
 
 
 class SQLiteStore:
@@ -166,6 +173,10 @@ class SQLiteStore:
             cur = db.execute("INSERT OR IGNORE INTO seen (key, until) VALUES (?, ?)", (key, now + ttl))
             return cur.rowcount == 1
 
+    def release(self, key: str) -> None:
+        with self._tx() as db:
+            db.execute("DELETE FROM seen WHERE key = ?", (key,))
+
 
 class RedisStore:
     """Окно лимита — сортированное множество на клиента, отчёты — строки JSON, порядок — ещё одно множество."""
@@ -222,6 +233,9 @@ class RedisStore:
 
     def first_seen(self, key: str, ttl: float, now: float | None = None) -> bool:
         return bool(self.r.set(f"{self.prefix}seen:{key}", "1", nx=True, ex=max(1, int(ttl))))
+
+    def release(self, key: str) -> None:
+        self.r.delete(f"{self.prefix}seen:{key}")
 
 
 def open_store(spec: str | None = None) -> Store:
