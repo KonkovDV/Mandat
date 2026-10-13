@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="docs/assets/logo.png" alt="Мандат" width="420">
+</p>
+
+<p align="center">
   <a href="https://github.com/KonkovDV/Mandat/raw/main/Mandat_VTB.pptx"><img alt="Презентация" src="https://img.shields.io/badge/%D0%9F%D1%80%D0%B5%D0%B7%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F-PowerPoint-B7472A?style=for-the-badge&logo=libreofficeimpress&logoColor=white"></a>
   <a href="https://github.com/KonkovDV/Mandat/blob/main/Mandat_VTB.pdf"><img alt="PDF" src="https://img.shields.io/badge/%D0%9F%D1%80%D0%B5%D0%B7%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F-PDF-EC1C24?style=for-the-badge&logo=files&logoColor=white"></a>
 </p>
