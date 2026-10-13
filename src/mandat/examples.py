@@ -75,7 +75,10 @@ def write_examples(target: Path) -> list[Path]:
 
 
 def revocation_events() -> dict:
-    """Отмена основной МЧД: права по цепочке передоверия приостанавливаются (п. 3 ст. 188 ГК РФ)."""
+    """Отмена основной МЧД: удостоверения по цепочке передоверия отзываются.
+
+    Банку уходит рекомендация приостановить права (п. 3 ст. 188 ГК РФ).
+    """
     chain = build("ok_subdelegation", seed=SEED)
     org_inn = chain.manifest["organization"]["inn"]
     root_number, child_number = list(chain.manifest["registry"])

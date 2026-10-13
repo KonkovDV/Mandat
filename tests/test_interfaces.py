@@ -167,3 +167,21 @@ def test_api_keeps_a_bounded_number_of_reports(monkeypatch):
         assert client.post("/v1/cases", json={"case_id": f"c{n}"}, headers=auth).status_code == 200
     assert client.get("/v1/cases/c0", headers=auth).status_code == 404
     assert client.get("/v1/cases/c4", headers=auth).status_code == 200
+
+
+def test_lint_claims_reads_presentation_text(tmp_path):
+    import importlib.util
+    import zipfile
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("lint_claims", root / "scripts" / "lint_claims.py")
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    deck = tmp_path / "d.pptx"
+    with zipfile.ZipFile(deck, "w") as z:
+        z.writestr("ppt/slides/slide1.xml", "<p:sld><a:t>Первая</a:t><a:t>фраза</a:t></p:sld>")
+        z.writestr("ppt/notesSlides/notesSlide1.xml", "<p:notes><a:t>заметка</a:t></p:notes>")
+    text = mod.pptx_text(deck)
+    assert "Первая" in text and "заметка" in text

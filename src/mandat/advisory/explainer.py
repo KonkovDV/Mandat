@@ -126,7 +126,7 @@ def explain(
         if not numbers_in(text) <= allowed:
             dropped += 1
             continue
-        # Язык утверждения не шире языка процитированных фактов (OMEGA: publication gate).
+        # Язык утверждения не шире языка процитированных фактов (шлюз языка публикации).
         cited_text = "\n".join(known[c] for c in cited)
         tags = _polarity(text)
         if "confirm" in tags and not confirmed:

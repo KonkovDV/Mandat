@@ -1,18 +1,29 @@
 """Падает, если запрещённая формулировка встречается вне реестра утверждений.
 
 Перенесено из SynAPS-ProgramPlan. Список — BANNED_CLAIMS.txt, одна фраза в строке,
-сравнение без учёта регистра.
+сравнение без учёта регистра. Текст презентации (слайды и заметки из .pptx) проверяется
+тем же списком: она главный материал для жюри.
 """
 
 from __future__ import annotations
 
+import re
 import sys
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SKIP_FILES = {"CLAIMS_REGISTRY.md", "BANNED_CLAIMS.txt", "lint_claims.py"}
-SKIP_DIRS = {".git", ".venv", "var", "build", "dist", ".pytest_cache", ".ruff_cache", "__pycache__"}
-SUFFIXES = {".py", ".md", ".html", ".toml", ".json", ".txt", ".yml", ".yaml"}
+SKIP_DIRS = {".git", ".venv", "var", "build", "dist", ".pytest_cache", ".ruff_cache", "__pycache__", "node_modules"}
+SUFFIXES = {".pptx", ".py", ".md", ".html", ".toml", ".json", ".txt", ".yml", ".yaml"}
+
+
+def pptx_text(path: Path) -> str:
+    """Текст слайдов и заметок без сторонних библиотек: только узлы <a:t>."""
+    with zipfile.ZipFile(path) as z:
+        parts = [n for n in z.namelist() if re.match(r"ppt/(slides|notesSlides)/[^/]+\.xml$", n)]
+        xml = " ".join(z.read(n).decode("utf-8", errors="ignore") for n in sorted(parts))
+    return " ".join(re.findall(r"<a:t>([^<]*)</a:t>", xml))
 
 
 def main() -> int:
@@ -27,7 +38,10 @@ def main() -> int:
             continue
         if any(part in SKIP_DIRS or part.endswith(".egg-info") for part in path.relative_to(ROOT).parts):
             continue
-        text = path.read_text(encoding="utf-8", errors="ignore").casefold()
+        if path.suffix == ".pptx":
+            text = pptx_text(path).casefold()
+        else:
+            text = path.read_text(encoding="utf-8", errors="ignore").casefold()
         hits += [f"{path.relative_to(ROOT)}: «{phrase}»" for phrase in banned if phrase.casefold() in text]
     if hits:
         sys.stderr.write("запрещённые формулировки:\n" + "\n".join(hits) + "\n")

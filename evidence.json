@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-13T07:09:48+00:00",
+  "generated_at": "2026-10-13T09:55:44+00:00",
   "engine": "mandat/0.3.0",
   "python": "3.12.10",
   "rule_pack": {
@@ -124,15 +124,15 @@
   "latency": {
     "command": "python scripts/bench.py --rounds 20",
     "cases": 260,
-    "median_ms": 1.71,
-    "p95_ms": 2.33,
+    "median_ms": 1.7,
+    "p95_ms": 2.34,
     "machine": "AMD64, Python 3.12.10",
-    "scope": "разбор XML и JSON, 33 правила, свёртка, отчёт; без сети и без модели"
+    "scope": "разбор XML и JSON, 36 правил, свёртка, отчёт; без сети и без модели"
   },
   "tests": {
     "command": "python -m pytest -q",
     "returncode": 0,
-    "summary": "312 passed in 7.47s",
-    "passed": 312
+    "summary": "313 passed in 7.69s",
+    "passed": 313
   }
 }

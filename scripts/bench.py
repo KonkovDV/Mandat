@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 from mandat.intake.case_loader import load_case_dir
+from mandat.rules.pack import default_pack
 from mandat.services.verify import verify_case
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,7 +37,7 @@ def bench(rounds: int = 20) -> dict:
         "median_ms": round(statistics.median(samples), 2),
         "p95_ms": round(samples[int(len(samples) * 0.95) - 1], 2),
         "machine": f"{platform.machine()}, Python {platform.python_version()}",
-        "scope": "разбор XML и JSON, 33 правила, свёртка, отчёт; без сети и без модели",
+        "scope": f"разбор XML и JSON, {len(default_pack().rules)} правил, свёртка, отчёт; без сети и без модели",
     }
 
 
