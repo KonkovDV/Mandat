@@ -34,6 +34,7 @@ jobs:
       - run: python -m mypy
       - run: python -m pytest
       - run: python scripts/lint_claims.py
+      - run: python scripts/build_evidence.py --verify-source
       - run: python scripts/check_links.py
       - name: known vulnerabilities in dependencies
         run: |

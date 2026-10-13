@@ -2,6 +2,7 @@
 
     python scripts/build_evidence.py            # тесты, демо, корпус
     python scripts/build_evidence.py --no-tests # без прогона pytest
+    python scripts/build_evidence.py --verify-source  # evidence.json собран из этих исходников?
 
 Перенесено по образцу SynAPS-ProgramPlan (evidence.json + CLAIMS_REGISTRY.md).
 """
@@ -9,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import platform
 import re
@@ -42,11 +44,51 @@ def pytest_summary() -> dict:
     return {"command": "python -m pytest -q", "returncode": proc.returncode, "summary": tail, **counts}
 
 
+# Исходники, от которых зависят числа в evidence.json. Сам evidence.json и документы сюда не входят.
+SOURCE_DIRS = ("src", "tests", "scripts", "examples")
+
+
+def source_digest() -> str:
+    """SHA-256 по путям и содержимому отслеживаемых git файлов исходников, как они лежат на диске."""
+    listed = subprocess.run(
+        ["git", "ls-files", "-z", "--", *SOURCE_DIRS], cwd=ROOT, capture_output=True, check=True
+    ).stdout.split(b"\0")
+    digest = hashlib.sha256()
+    for raw in sorted(p for p in listed if p):
+        path = ROOT / raw.decode("utf-8")
+        if path.is_file():
+            digest.update(raw + b"\0" + hashlib.sha256(path.read_bytes()).digest())
+    return digest.hexdigest()
+
+
+def source_binding() -> dict:
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    return {
+        "base_commit": head or None,
+        "sources": list(SOURCE_DIRS),
+        "sha256": source_digest(),
+        "check": "python scripts/build_evidence.py --verify-source",
+    }
+
+
+def verify_source() -> int:
+    recorded = (json.loads((ROOT / "evidence.json").read_text(encoding="utf-8")).get("source") or {}).get("sha256")
+    actual = source_digest()
+    if recorded != actual:
+        print(f"evidence.json собран не из этих исходников: {recorded} != {actual}. Пересоберите: make evidence")
+        return 1
+    print(f"evidence.json соответствует исходникам ({actual[:16]}…)")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-tests", action="store_true")
     parser.add_argument("--per-defect", type=int, default=6)
+    parser.add_argument("--verify-source", action="store_true")
     args = parser.parse_args()
+    if args.verify_source:
+        return verify_source()
 
     pack, catalog, classifier = default_pack(), default_catalog(), default_classifier()
     demo = {}
@@ -70,6 +112,7 @@ def main() -> int:
     evidence = {
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "engine": ENGINE,
+        "source": source_binding(),
         "python": platform.python_version(),
         "rule_pack": {**pack.summary(), "rules": len(pack.rules)},
         "operations_catalog": {
