@@ -58,7 +58,8 @@ def rule_count_hits() -> list[str]:
 EVIDENCE_COUNTS = {
     "автотест": re.compile(r"\b(\d+)\s+автотест"),
     "демо-кейс": re.compile(r"\b(\d+)\s+демо-кейс"),
-    "мутаци": re.compile(r"\b(\d+)\s+мутаци"),
+    # «8814», «8 814» и «8\u00a0814»; «мутаций», «мутированных сценариев».
+    "мутаци": re.compile(r"\b(\d{1,3}(?:[ \u00a0\u202f]\d{3})+|\d+)\s+(?:мутаци|мутированн)", re.IGNORECASE),
 }
 
 
@@ -90,7 +91,7 @@ def evidence_count_hits() -> list[str]:
         for i, text in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
             for name, pattern in EVIDENCE_COUNTS.items():
                 for m in pattern.finditer(text):
-                    if int(m.group(1)) != expected[name]:
+                    if int(re.sub(r"\D", "", m.group(1))) != expected[name]:
                         hits.append(f"{rel}:{i}: «{m.group(0)}», а в источнике {expected[name]}")
     return hits
 
