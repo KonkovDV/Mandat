@@ -7,7 +7,9 @@ Cedar (CNCF Sandbox, спецификация проверена в Lean) отв
 
 Экспортируется подмножество правил: покрытие операции (R-COV-001), срок и реестр
 (R-TERM-002, R-REG-001), право передоверия (R-SUB-001), сужение (R-SUB-002),
-срок передоверия (R-SUB-003), каскад (R-SUB-006). Цепочка — до двух звеньев.
+срок передоверия (R-SUB-003), каскад (R-SUB-006), подписант передоверия — представитель
+по родительской МЧД (R-SUB-009), порядок дат звена (R-SUB-004) и совместные полномочия
+(R-JNT-001: при них автоматического «да» нет). Цепочка — до двух звеньев.
 Тест ``tests/test_cedar.py`` сравнивает решения Cedar и «Мандата» на полном переборе.
 """
 
@@ -33,7 +35,10 @@ SCHEMA_TEMPLATE = """namespace Mandat {{
   action {actions} appliesTo {{
     principal: Representative,
     resource: Organization,
-    context: {{ day: Long, hasParent: Bool, leaf: Link, parent: Link }},
+    context: {{
+      day: Long, hasParent: Bool, leaf: Link, parent: Link,
+      signerIsParentRepresentative: Bool, joint: Bool,
+    }},
   }};
 }}
 """
@@ -57,6 +62,18 @@ when { context.hasParent && !context.parent.codes.containsAll(context.leaf.codes
 // R-SUB-003: срок передоверия не дольше срока родительской МЧД.
 forbid (principal, action, resource)
 when { context.hasParent && context.leaf.validUntil > context.parent.validUntil };
+
+// R-SUB-009: передоверие подписал представитель по родительской МЧД, а не кто-то другой.
+forbid (principal, action, resource)
+when { context.hasParent && !context.signerIsParentRepresentative };
+
+// R-SUB-004: передоверие выдано не раньше родительской МЧД.
+forbid (principal, action, resource)
+when { context.hasParent && context.leaf.validFrom < context.parent.validFrom };
+
+// R-JNT-001: совместные полномочия — автоматического «да» нет.
+forbid (principal, action, resource)
+when { context.joint };
 
 // R-SUB-006: с прекращением основной доверенности теряет силу передоверие.
 forbid (principal, action, resource)

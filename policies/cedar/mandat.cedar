@@ -36,6 +36,18 @@ when { context.hasParent && !context.parent.codes.containsAll(context.leaf.codes
 forbid (principal, action, resource)
 when { context.hasParent && context.leaf.validUntil > context.parent.validUntil };
 
+// R-SUB-009: передоверие подписал представитель по родительской МЧД, а не кто-то другой.
+forbid (principal, action, resource)
+when { context.hasParent && !context.signerIsParentRepresentative };
+
+// R-SUB-004: передоверие выдано не раньше родительской МЧД.
+forbid (principal, action, resource)
+when { context.hasParent && context.leaf.validFrom < context.parent.validFrom };
+
+// R-JNT-001: совместные полномочия — автоматического «да» нет.
+forbid (principal, action, resource)
+when { context.joint };
+
 // R-SUB-006: с прекращением основной доверенности теряет силу передоверие.
 forbid (principal, action, resource)
 when {

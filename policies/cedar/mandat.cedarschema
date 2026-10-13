@@ -11,6 +11,9 @@ namespace Mandat {
   action "PAYMENT_SIGN", "REQUISITES_CHANGE", "STATEMENT_VIEW", "USER_ADMIN" appliesTo {
     principal: Representative,
     resource: Organization,
-    context: { day: Long, hasParent: Bool, leaf: Link, parent: Link },
+    context: {
+      day: Long, hasParent: Bool, leaf: Link, parent: Link,
+      signerIsParentRepresentative: Bool, joint: Bool,
+    },
   };
 }
