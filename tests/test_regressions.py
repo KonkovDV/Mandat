@@ -312,15 +312,11 @@ def test_invalid_amount_is_rejected(amount):
     assert verdict(m) == "insufficient_data"
 
 
-def test_amount_with_kopecks_is_not_truncated():
+def test_amount_with_kopecks_is_rejected():
     m = manifest("ok")
     m["operation"]["amount_rub"] = 1.9
-    try:
-        case = load_case_inline(m)
-    except CaseError:
-        return
-    report = verify_case(case).as_dict()
-    assert float(report["operation"]["amount_rub"]) == pytest.approx(1.9)
+    with pytest.raises(CaseError, match="целое число рублей"):
+        load_case_inline(m)
 
 
 def test_leaf_choice_does_not_depend_on_document_order():
@@ -408,12 +404,9 @@ def test_revocation_matches_regardless_of_formatting(event):
     assert "poa_invalidated" in _alerts([event])
 
 
-def test_revocation_without_number_is_not_silently_dropped():
-    try:
-        alerts = _alerts([{**REVOKED, "payload": {}}])
-    except (KeyError, ValueError):
-        return
-    assert alerts, "событие отмены без номера МЧД пропало без следа"
+def test_revocation_without_number_is_rejected_explicitly():
+    with pytest.raises(ValueError, match="без номера МЧД"):
+        _alerts([{**REVOKED, "payload": {}}])
 
 
 def test_mixed_naive_and_aware_time_keeps_revocation():
@@ -457,12 +450,25 @@ MALFORMED = {
 }
 
 
+# Ошибки структуры — 422; поля, которые разбор помечает пробелом, дают 200 и «данных недостаточно».
+MALFORMED_STATUS = {
+    "documents_dict": 422,
+    "documents_strings": 422,
+    "executives_number": 200,
+    "executives_strings": 200,
+    "full_name_int": 200,
+    "organization_list": 422,
+    "registry_list": 422,
+    "requester_inn_list": 422,
+}
+
+
 @pytest.mark.parametrize("name", sorted(MALFORMED))
 def test_malformed_manifest_is_not_500(name):
     m = manifest("ok")
     MALFORMED[name](m)
     response = api_client().post("/v1/cases", json=m, headers=AUTH)
-    assert response.status_code in (200, 400, 422), response.text[:200]
+    assert response.status_code == MALFORMED_STATUS[name], response.text[:200]
     if response.status_code == 200:
         assert response.json()["verdict"] == "insufficient_data"
 
@@ -473,9 +479,7 @@ def test_infinite_amount_is_not_500():
     response = api_client().post(
         "/v1/cases", content=body.encode("utf-8"), headers={**AUTH, "Content-Type": "application/json"}
     )
-    assert response.status_code in (200, 400, 422), response.text[:200]
-    if response.status_code == 200:
-        assert response.json()["verdict"] == "insufficient_data"
+    assert response.status_code == 422, response.text[:200]
 
 
 def test_issue_year_9999_without_term_is_not_500():
@@ -483,14 +487,13 @@ def test_issue_year_9999_without_term_is_not_500():
     xml_set(doc(m, "poa-root"), SV, "ДатаВыдДовер", "9999-03-01")
     xml_set(doc(m, "poa-root"), SV, "СрокДейст", None)
     response = api_client().post("/v1/cases", json=m, headers=AUTH)
-    assert response.status_code in (200, 400, 422), response.text[:200]
-    if response.status_code == 200:
-        assert response.json()["verdict"] != "confirmed"
+    assert response.status_code == 200, response.text[:200]
+    assert response.json()["verdict"] != "confirmed"
 
 
 @pytest.mark.parametrize("path", ["/openapi.json", "/docs"])
 def test_api_description_requires_token(path):
-    assert api_client().get(path).status_code in (401, 404)
+    assert api_client().get(path).status_code == 401
 
 
 def test_unauthenticated_chunked_body_is_not_buffered():

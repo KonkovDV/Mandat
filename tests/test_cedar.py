@@ -1,18 +1,19 @@
 """Дифференциальная проверка: решения Cedar по экспортированным политикам и вердикты «Мандата».
 
-Нужен extra ``cedar`` (pip install -e ".[cedar]"), он входит в dev.
+Нужен extra ``cedar`` (pip install -e ".[cedar]"); без него модуль пропускается. CI ставит extra и запускает модуль.
 """
 
 from __future__ import annotations
 
 from datetime import date, timedelta
 
-import cedarpy
 import pytest
 from conftest import chain_matrix, chain_scenario, verify_scenario
 
 from mandat.eval.synth import OP_DATE
 from mandat.rules.cedar_export import day_number, export_policies, export_schema
+
+cedarpy = pytest.importorskip("cedarpy")
 
 
 def _link(codes: frozenset[str], until: date, issue: date, flag: int) -> dict:
