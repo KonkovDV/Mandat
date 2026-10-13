@@ -11,3 +11,4 @@ var/
 .env
 *.key
 *.zip
+submission/deck/node_modules/

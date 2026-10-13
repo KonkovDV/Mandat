@@ -1,0 +1,10 @@
+{
+  "name": "Mandat",
+  "headFontFace": "Calibri",
+  "bodyFontFace": "Calibri",
+  "colors": {
+    "dk1": "0F1B2A", "lt1": "F3F6F9", "dk2": "2B4561", "lt2": "E6ECF2",
+    "accent1": "F28C3A", "accent2": "6FA3D8", "accent3": "8FD3A8", "accent4": "C9D5E0",
+    "accent5": "E8705F", "accent6": "172B40", "hlink": "F28C3A", "folHlink": "C9D5E0"
+  }
+}
