@@ -1,6 +1,6 @@
 # Научные основания
 
-Работы, на которые опираются решения «Мандата», и что из каждой следует для продукта. Библиографические данные работ по Cedar сверены онлайн 12.10.2026. Остальные приведены по базе знаний команды, и перед включением в материалы для жюри их нужно сверить по DOI или arXiv.
+Научные работы, на которые опираются решения «Мандата», и что из каждой следует для кода. Библиографию всех работ сверили 13.10.2026 по Crossref, arXiv, USENIX, RFC Editor и W3C.
 
 ## Делегирование и авторизация
 
@@ -19,14 +19,14 @@
 | Работа | Вывод | Где в коде |
 |---|---|---|
 | Merigoux, Chataing, Protzenko. *Catala: A Programming Language for the Law.* ICFP (PACMPL 5), 2021 | Каждое вычисление привязано к статье закона | `norm_ref` у каждого правила, `docs/RULES.md` |
-| OECD OPSI. *Cracking the Code: Rulemaking for Humans and Machines.* OECD Working Papers on Public Governance, 2020 | Rules as Code: норма и её машинная версия ведутся вместе, с ответственным за актуальность | правила-данные со статусом `draft`/`approved` |
+| OECD OPSI. *Cracking the Code: Rulemaking for Humans and Machines.* OECD Working Papers on Public Governance, 12.10.2020 | Rules as Code: норма и её машинная версия ведутся вместе, с ответственным за актуальность | правила-данные со статусом `draft`/`approved` |
 
 ## Языковые модели в юридических задачах
 
 | Работа | Вывод | Где в коде |
 |---|---|---|
-| Magesh et al. *Hallucination-Free? Assessing the Reliability of Leading AI Legal Research Tools.* 2024 (arXiv:2405.20362) | Даже коммерческие юридические системы с поиском по источникам ошибаются в заметной доле ответов | модель не выносит вердикт (ADR-001) |
-| Dahl, Magesh, Suzgun, Ho. *Large Legal Fictions: Profiling Legal Hallucinations in Large Language Models.* Journal of Legal Analysis, 2024 | Высокая частота юридических галлюцинаций у моделей общего назначения | шлюз дословных цитат, `advisory/gate.py` |
+| Magesh, Surani, Dahl, Suzgun et al. *Hallucination-Free? Assessing the Reliability of Leading AI Legal Research Tools.* Journal of Empirical Legal Studies 22(2), 2025 (arXiv:2405.20362) | Коммерческие юридические системы с поиском по источникам тоже ошибаются | модель не выносит вердикт (ADR-001) |
+| Dahl, Magesh, Suzgun, Ho. *Large Legal Fictions: Profiling Legal Hallucinations in Large Language Models.* Journal of Legal Analysis 16(1), 2024 | Высокая частота юридических галлюцинаций у моделей общего назначения | шлюз дословных цитат, `advisory/gate.py` |
 | Guha et al. *LegalBench.* NeurIPS Datasets and Benchmarks, 2023 | Методика юридических задач для моделей: разбивать на проверяемые подзадачи | извлечение фактов устава по видам, а не «оцени устав» |
 | Fenogenova et al. *MERA: A Comprehensive LLM Evaluation in Russian.* ACL, 2024 | Русскоязычные бенчмарки для выбора модели | выбор on-prem модели перед пилотом |
 | Greshake et al. *Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection.* AISec, 2023 | Инструкции, спрятанные в документе, перехватывают модель | документ в маркерах данных, модель изолирована от вердикта, `FORBIDDEN_LLM_ACTIONS` |
@@ -35,7 +35,7 @@
 
 | Работа | Вывод | Где в коде |
 |---|---|---|
-| Geifman, El-Yaniv. *Selective Classification for Deep Neural Networks.* NeurIPS, 2017 | Система с отказом оценивается парой «риск — покрытие» | `coverage`, `auto_risk` в `eval/run.py` |
+| Geifman, El-Yaniv. *Selective Classification for Deep Neural Networks.* NeurIPS, 2017 (arXiv:1705.08500) | Система с отказом оценивается парой «риск — покрытие» | `coverage`, `auto_risk` в `eval/run.py` |
 | Angelopoulos, Bates. *A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification.* arXiv:2107.07511 | Гарантии покрытия при отказе — когда появится вероятностная часть | план спринта 2 для модели |
 | Brown, Cai, DasGupta. *Interval Estimation for a Binomial Proportion.* Statistical Science 16(2), 2001 | При малой выборке интервал Вилсона корректнее нормального | `eval/metrics.wilson_interval` |
 | Artstein, Poesio. *Inter-Coder Agreement for Computational Linguistics.* Computational Linguistics 34(4), 2008 | Согласие разметчиков — через κ, а не через долю совпадений | `eval/metrics.cohen_kappa` |
@@ -44,5 +44,5 @@
 
 | Работа | Вывод | Где в коде |
 |---|---|---|
-| Laurie, Langley, Kasper. *Certificate Transparency.* RFC 6962, 2013; RFC 9162, 2021 | Дерево Меркла и короткое доказательство включения записи | `audit/merkle.py`, `mandat journal-proof` |
+| Laurie, Langley, Kasper. *Certificate Transparency.* RFC 6962, 2013; Laurie, Messeri, Stradling. *Certificate Transparency Version 2.0.* RFC 9162, 2021 | Дерево Меркла и короткое доказательство включения записи | `audit/merkle.py`, `mandat journal-proof` |
 | W3C. *Bitstring Status List v1.0.* Рекомендация, 2025 | Статус удостоверения проверяется без запроса к издателю, номера выдаются случайно ради приватности | `audit/status_list.py` |

@@ -1,8 +1,6 @@
 # Запуск, команды и API
 
-Коротко про демо — в [README](../README.md#запустить-демо). Здесь всё остальное.
-
-Нужен Python 3.11 или новее.
+Как запустить стенд, проверить удостоверения и журнал, поднять API и какие переменные окружения он читает. Коротко про демо — в [README](../README.md#запустить-демо). Нужен Python 3.11 или новее.
 
 Windows, без установки в систему:
 
@@ -76,5 +74,5 @@ Docker поднимает API только на localhost: `docker compose up --
 
 ## Перед сдачей
 
-`make check` на Linux. На Windows по шагам: `python -m ruff check src tests scripts tools`, `python -m ruff format --check src tests scripts tools`, `python -m mypy`, `python -m pytest`, `python scripts/lint_claims.py`. Числа для слайдов пересобирает `python scripts/build_evidence.py`.
+`make check` на Linux. На Windows по шагам: `python -m ruff check src tests scripts tools`, `python -m ruff format --check src tests scripts tools`, `python -m mypy`, `python -m pytest`, `python scripts/lint_claims.py`, `python scripts/check_links.py`. Числа для слайдов пересобирает `python scripts/build_evidence.py`.
 

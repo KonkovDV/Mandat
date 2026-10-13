@@ -1,58 +1,45 @@
 # Что взято из других проектов автора
 
-Все исходные репозитории — `github.com/KonkovDV`, лицензия MIT, один автор. Переносились паттерны и небольшие модули, а не целые системы: предметная область другая, и тащить строительную логику в банковский продукт нельзя.
+Откуда в «Мандат» пришли паттерны и небольшие модули и что в них изменено. Переносились идеи и отдельные файлы, а не системы целиком: предметная область другая.
 
-| Идея | Откуда (путь в исходном репозитории) | Где в «Мандате» | Что изменено |
+Все исходные репозитории — `github.com/KonkovDV`, один автор, лицензия MIT. Существование репозиториев, лицензию и каждый путь из таблиц сверили через GitHub API 13.10.2026. У AeroBIM пути даны относительно `backend/src/aerobim/`, а у файлов без каталога — по имени файла. Два репозитория в таблицах не названы («другой репозиторий автора»), их пути не проверялись.
+
+## Перенесено
+
+| Идея | Откуда | Где в «Мандате» | Что изменено |
 |---|---|---|---|
-| Свёртка вердикта без ложного «да», профили строгости | AeroBIM: `application/services/package_outcome.py`, `capability_policy.py` | `domain/verdict.py` | четыре банковских вердикта, «тишина — не успех» на уровне групп проверок |
-| Модель не пишет вердикт, находки советника — только справка | AeroBIM: `application/services/determinism_gate.py`, `domain/llm_advisory.py`, ADR-001 | `advisory/gate.py`, `docs/adr/ADR-001-verdict-ownership.md` | добавлен шлюз дословных цитат |
-| Находка без источника не публикуется, стабильный id | AeroBIM: `domain/finding_provenance.py`, `evidence_provenance.py` | `domain/model.py` (`Finding`, `EvidenceRef`) | локаторы XPath, JSON, текст, реестр; без абсолютных путей файловой системы |
+| Свёртка без ложного «да», профили строгости | AeroBIM: `application/services/package_outcome.py`, `capability_policy.py` | `domain/verdict.py` | четыре банковских вердикта, «тишина — не успех» на уровне групп |
+| Модель не пишет вердикт | AeroBIM: `application/services/determinism_gate.py`, `domain/llm_advisory.py` | `advisory/gate.py`, [ADR-001](adr/ADR-001-verdict-ownership.md) | добавлен шлюз дословных цитат |
+| Находка без источника не публикуется | AeroBIM: `domain/finding_provenance.py`, `evidence_provenance.py` | `domain/model.py` (`Finding`, `EvidenceRef`) | локаторы XPath, JSON, текст, реестр; без абсолютных путей |
 | Безопасный разбор XML | AeroBIM: `core/security/xml_limits.py` | `intake/xml_safety.py` | лимиты под размер МЧД |
-| Пакет правил с хешем, статусом и проверкой при загрузке | AeroBIM: `json_norm_rule_pack_loader.py`, `norm_pack_hash.py`, `norm_rule_eligibility.py` | `rules/pack.py`, `data/rules.json` | неутверждённое правило не опровергает в профиле `strict` |
-| Машина состояний разбора человеком | AeroBIM: `domain/review_state_machine.py` | `review/state_machine.py` | банковские роли, основание обязательно |
-| Псевдонимизация HMAC | AeroBIM: `domain/hybrid/privacy_guard.py`, `sensitive_entities.py` | `privacy/pii.py` | добавлены ИНН и СНИЛС с контрольными числами, паспорт РФ — в AeroBIM их не было |
-| OpenAI-совместимый клиент с белым списком хостов и маркерами данных | AeroBIM: `infrastructure/adapters/openai_compat_llm_provider.py` | `advisory/llm.py` | без облачного хоста по умолчанию, псевдонимизация перед отправкой |
+| Пакет правил с хешем и статусом | AeroBIM: `json_norm_rule_pack_loader.py`, `norm_pack_hash.py`, `norm_rule_eligibility.py` | `rules/pack.py`, `data/rules.json` | в `strict` неутверждённое правило не опровергает |
+| Машина состояний разбора | AeroBIM: `domain/review_state_machine.py` | `review/state_machine.py` | банковские роли, основание обязательно |
+| Псевдонимизация HMAC | AeroBIM: `domain/hybrid/privacy_guard.py`, `sensitive_entities.py` | `privacy/pii.py` | ИНН и СНИЛС с контрольными числами, паспорт РФ |
+| Клиент модели с белым списком хостов | AeroBIM: `infrastructure/adapters/openai_compat_llm_provider.py` | `advisory/llm.py` | без облачного хоста по умолчанию, псевдонимизация |
 | Интервал Вилсона, объём выборки, κ Коэна | AeroBIM: `domain/study_design.py`, `eval_statistics.py` | `eval/metrics.py` | только нужные функции |
-| Журнал решений: хеш-цепочка, HMAC, свидетель `.head`, внешний якорь | SynAPS-ProgramPlan: `src/synaps_programplan/journal.py` | `audit/journal.py` | банковские действия |
-| Пояснение моделью только по фактам, фильтр чисел и дат | SynAPS-ProgramPlan: `src/synaps_programplan/copilot.py` | `advisory/explainer.py` | факты — находки отчёта |
-| Реестр утверждений и запрещённые формулировки | SynAPS-ProgramPlan: `CLAIMS_REGISTRY.md`, `BANNED_CLAIMS.txt`, `scripts/lint_claims.py` | те же файлы | проверка без учёта регистра |
-| `evidence.json`: каждое число со слайда — с командой воспроизведения | SynAPS-ProgramPlan: `evidence.json`, `scripts/build_evidence.py` | `scripts/build_evidence.py` | — |
-| Удостоверение W3C VC с подписью Ed25519 | fsp-talent: `docs/adr/0007-w3c-verifiable-credentials.md`, `backend/app/services/vc/issuer.py` | `audit/attestation.py` | удостоверение о результате проверки полномочия, без ФИО |
-| Контрольное число ИНН | fsp-talent: `backend/app/services/inn.py` | `domain/identifiers.py` | добавлены ОГРН, ОГРНИП, СНИЛС, КПП и генераторы |
+| Журнал с хеш-цепочкой, HMAC и свидетелем | SynAPS-ProgramPlan: `src/synaps_programplan/journal.py` | `audit/journal.py` | банковские действия |
+| Пояснение только по фактам | SynAPS-ProgramPlan: `src/synaps_programplan/copilot.py` | `advisory/explainer.py` | факты — находки отчёта |
+| Реестр утверждений, запрещённые фразы, `evidence.json` | SynAPS-ProgramPlan: `CLAIMS_REGISTRY.md`, `BANNED_CLAIMS.txt`, `scripts/lint_claims.py`, `scripts/build_evidence.py` | те же файлы | проверка без учёта регистра, сверка чисел |
+| Вторая свёртка вердикта | SynAPS-ProgramPlan: проверка плана отдельно от решателя | `domain/verdict_oracle.py` | расхождение ловит `test_verdict_oracle_agrees_with_fold` |
+| Удостоверение W3C VC с Ed25519 | fsp-talent: `docs/adr/0007-w3c-verifiable-credentials.md`, `backend/app/services/vc/issuer.py` | `audit/attestation.py` | результат проверки полномочия, без ФИО |
+| Контрольное число ИНН | fsp-talent: `backend/app/services/inn.py` | `domain/identifiers.py` | добавлены ОГРН, ОГРНИП, СНИЛС, КПП |
 | CI с минимальными правами | fsp-talent: `.github/workflows/ci.yml` | `.github/workflows/ci.yml` | — |
-| Трассировка «норма → реализация → тест» | OpenRebar: `docs/NORMATIVE_TRACEABILITY.md` | `docs/RULES.md`, тест `test_every_rule_traces_to_an_existing_test` | генерируется из пакета, тест не даёт разойтись |
-| Хеш-набор доказательств, явные границы утверждений | другой репозиторий автора: проверка набора доказательств, границы утверждений | `reproducibility_hash`, `LIMITS.md` | — |
+| Подпись исходящих событий | fsp-talent: `backend/app/services/webhooks.py` | `services/webhooks.py` | Standard Webhooks, без следования редиректам |
+| Трассировка «норма → код → тест» | OpenRebar: `docs/NORMATIVE_TRACEABILITY.md` | [RULES](RULES.md), `test_every_rule_traces_to_an_existing_test` | генерируется из пакета |
+| Хеш набора доказательств, границы утверждений | другой репозиторий автора | `reproducibility_hash`, [LIMITS](../LIMITS.md) | — |
+| Любой сигнал может остановить решение | другой репозиторий автора | `services/monitoring.py` | отмена МЧД в одной пачке с захватом всё равно отзывает удостоверение |
+| Ненайденное значение — не соответствие | другой репозиторий автора | R-JNT-001, R-CHR-001 | пустой признак или пустая сумма не дают «подтверждено» |
+| Слова не шире доказательств | другой репозиторий автора | `advisory/explainer.py` (`_polarity`) | пояснение не скажет «подтверждено», цитируя опровержение |
+| Сильнейшее возражение до итога | другой репозиторий автора | `services/next_steps.py`, поле `objection` | у «подтверждено» сотрудник видит главный сигнал риска |
 
-## Что взято в 0.2.1 под требования ВТБ и хакатона
+Не из репозиториев автора, а из стандартов и статей: списки статусов (W3C Bitstring Status List), дерево Меркла (RFC 9162), перекрёстная проверка на Cedar, пара «риск — покрытие». Источники — [SOTA](SOTA.md) и [LITERATURE](LITERATURE.md).
 
-Критерий отбора: идея усиливает вертикальный срез спринта 1 (демо, журнал, удостоверение, честные границы) или пилот в контуре банка и не тащит чужую предметную область. Формулировки для жюри по-прежнему только из `CLAIMS_REGISTRY.md`.
+## Не взято
 
-| Идея | Откуда | Где в «Мандате» | Зачем банку |
-|---|---|---|---|
-| Вторая свёртка вердикта, расхождение ловит тест, а не молчаливый выбор | SynAPS-ProgramPlan: вторая проверка плана отдельно от решателя | `domain/verdict_oracle.py`, `test_verdict_oracle_agrees_with_fold` | вердикт, который увидит операционист, перепроверен другим кодом |
-| Любой сигнал может остановить решение; один сигнал не прячет другой | другой репозиторий автора: модуль симуляции, исход «вето» | `services/monitoring.py` | отмена МЧД в той же пачке, что и захват, по-прежнему отзывает удостоверение; окно захвата не требует, чтобы смена руководителя была первой |
-| Ненайденное значение не считается соответствием | другой репозиторий автора (не связан с СКБ «Контур»): «не найдено значение — это отказ, а не соответствие» | `R-JNT-001`, `R-CHR-001` | пустой признак совместных полномочий и пустая или неположительная сумма не дают «подтверждено» |
-| Язык публикации не шире доказательств | другой репозиторий автора: шлюз языка публикации | `advisory/explainer.py` (`_polarity`) | пояснение не может сказать «подтверждено», цитируя опровержение |
-| Рецензент называет сильнейшее возражение до показа итога | другой репозиторий автора: протокол рецензирования, роль рецензента | `services/next_steps.py`, поле `objection` в отчёте | на «подтверждено» сотрудник сразу видит снятую проверку профиля `demo` |
-| Подпись исходящего события по Standard Webhooks, без следования редиректам | fsp-talent: `backend/app/services/webhooks.py` | `services/webhooks.py`, `MANDAT_WEBHOOK_SECRET` | событие в антифрод можно проверить по подписи; ядро само никуда не ходит |
-
-## Что добавлено в 0.2.0 по ревизии мирового уровня (не из репозиториев автора)
-
-| Идея | Откуда | Где в «Мандате» |
-|---|---|---|
-| Списки статусов удостоверений | W3C Bitstring Status List v1.0 | `audit/status_list.py`, ADR-007 |
-| Дерево Меркла и доказательство включения | RFC 6962 / RFC 9162 (прозрачные журналы) | `audit/merkle.py`, ADR-007 |
-| Независимая проверка ядра правил | Cedar, verification-guided development | `rules/cedar_export.py`, `policies/cedar/`, ADR-006 |
-| Пара «риск — покрытие» | selective classification (Geifman, El-Yaniv, 2017) | `eval/run.py` |
-
-Развивает идеи AeroBIM и fsp-talent: свойство передоверия проверяется так же, как AeroBIM проверяет свёртку вердикта, а удостоверение из fsp-talent получило статус отзыва.
-
-## Что сознательно не взято
-
-- **SynAPS** (оптимизатор расписаний): для очереди из сотен кейсов избыточен; идея диспетчера ATCS — в дорожной карте для очереди исключений.
-- **OpenRebar** (C#, армирование): другая предметная область; ImageSharp под Split License не подходит банку.
-- **Lime**: только документация, кода нет.
-- **Тот репозиторий целиком**: облачные провайдеры моделей не подходят для контура банка. Взяты только шлюз языка утверждений и роль рецензента.
-- **fsp-talent, отзыв согласия маркетплейса** (`consent_effects.py`): у «Мандата» другое основание обработки. Документы клиента обрабатывает банк по своему заданию, отдельный кабинет согласия кандидата сюда не переносится.
-- **Форки клиентов Ethereum** (geth, reth, prysm, lighthouse и остальные в списке `KonkovDV`): это чужой код и другая задача. Проверяемое включение записи уже сделано по RFC 6962, а не копированием клиента.
-- **AeroBIM целиком**: модель находки пронизана IFC; переносились отдельные модули.
+- SynAPS — оптимизатор расписаний, для очереди из сотен кейсов избыточен.
+- OpenRebar целиком — другая предметная область (C#, армирование), а зависимость ImageSharp идёт под Six Labors Split License.
+- Lime — в репозитории нет кода.
+- AeroBIM целиком — модель находки завязана на IFC.
+- Согласия маркетплейса из fsp-talent (`consent_effects.py`) — у банка другое основание обработки.
+- Форки клиентов Ethereum из профиля `KonkovDV` — чужой код и другая задача.
+- Безымянный репозиторий целиком — он рассчитан на облачные модели, а банку нужен закрытый контур.
