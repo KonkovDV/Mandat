@@ -1,0 +1,34 @@
+{
+  "_comment": "Параметры сценариев слайда 9. Читают scripts/effect_model.py --scenarios и submission/deck/build_deck.js. Доли и минуты — гипотезы команды, не прогноз.",
+  "names": [
+    "Консервативный",
+    "Базовый",
+    "Оптимистичный"
+  ],
+  "clients": 1800000,
+  "clients_source": "M-09: около 1,8 млн корпоративных клиентов ВТБ, МСФО за 1П 2026",
+  "eventShare": [
+    0.1,
+    0.15,
+    0.25
+  ],
+  "minutesSaved": [
+    20,
+    30,
+    40
+  ],
+  "hoursPerFte": 1800,
+  "incidentsPerQuarter": 818,
+  "lossPerQuarterMln": 573,
+  "incidents_source": "Банк России, I кв. 2026, операции без согласия у юрлиц: 818 операций на 573 млн руб.",
+  "vtbShare": [
+    0.15,
+    0.2,
+    0.25
+  ],
+  "authorityShare": [
+    0.1,
+    0.25,
+    0.4
+  ]
+}

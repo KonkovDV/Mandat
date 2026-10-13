@@ -5,12 +5,47 @@
 
 Формула и источники параметров — docs/ECONOMICS.md. Сценарий предотвращённых инцидентов
 считается отдельно и в итог по умолчанию не входит.
+
+    python scripts/effect_model.py --scenarios
+
+печатает три сценария слайда 9 (ставки и предотвращённый ущерб) по параметрам из
+src/mandat/data/effect_scenarios.json — тот же файл читает submission/deck/build_deck.js.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
+
+SCENARIOS = Path(__file__).resolve().parents[1] / "src" / "mandat" / "data" / "effect_scenarios.json"
+
+
+def scenarios(path: Path = SCENARIOS) -> list[dict[str, object]]:
+    """Сценарии слайда 9. Минуты считаются на кейс, включая разбор, поэтому множителя покрытия нет."""
+    p = json.loads(path.read_text(encoding="utf-8"))
+    loss_per_incident = p["lossPerQuarterMln"] / p["incidentsPerQuarter"]
+    out = []
+    for i, name in enumerate(p["names"]):
+        fte = p["clients"] * p["eventShare"][i] * p["minutesSaved"][i] / 60 / p["hoursPerFte"]
+        incidents = p["incidentsPerQuarter"] * 4 * p["vtbShare"][i] * p["authorityShare"][i]
+        out.append(
+            {
+                "scenario": name,
+                "fte": round(fte),
+                "prevented_loss_mln_rub": round(incidents * loss_per_incident),
+                "incidents_per_year": round(incidents, 2),
+                "params": {
+                    "clients": p["clients"],
+                    "event_share": p["eventShare"][i],
+                    "minutes_saved": p["minutesSaved"][i],
+                    "hours_per_fte": p["hoursPerFte"],
+                    "vtb_share": p["vtbShare"][i],
+                    "authority_share": p["authorityShare"][i],
+                },
+            }
+        )
+    return out
 
 
 def effect(
@@ -41,7 +76,12 @@ def effect(
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="годовой эффект пилота «Мандата»")
+    import sys
+
+    if "--scenarios" in sys.argv[1:]:
+        print(json.dumps(scenarios(), ensure_ascii=False, indent=2))
+        return 0
+    p = argparse.ArgumentParser(description="годовой эффект пилота «Мандата»; --scenarios — сценарии слайда 9")
     p.add_argument("--cases", type=int, required=True, help="кейсов в год")
     p.add_argument("--coverage", type=float, required=True, help="доля автоматических вердиктов, 0..1")
     p.add_argument("--t-manual", type=float, required=True, help="минут на кейс вручную")
