@@ -53,18 +53,33 @@ def rule_count_hits() -> list[str]:
     return hits
 
 
-# Ключевые числа для жюри должны совпадать с evidence.json: число автотестов и демо-кейсов.
+# Ключевые числа для жюри должны совпадать с источником: автотесты и демо-кейсы — с evidence.json,
+# мутации фазза — с тестом tests/test_redteam_fuzz.py.
 EVIDENCE_COUNTS = {
     "автотест": re.compile(r"\b(\d+)\s+автотест"),
     "демо-кейс": re.compile(r"\b(\d+)\s+демо-кейс"),
+    "мутаци": re.compile(r"\b(\d+)\s+мутаци"),
 }
+
+
+def fuzz_runs() -> int:
+    """Число мутаций фазза берётся из теста, который его закрепляет."""
+    text = (ROOT / "tests" / "test_redteam_fuzz.py").read_text(encoding="utf-8")
+    match = re.search(r"assert len\(fuzz_rows\) == (\d+)", text)
+    if match is None:
+        raise SystemExit("в tests/test_redteam_fuzz.py не найдено закреплённое число мутаций")
+    return int(match.group(1))
 
 
 def evidence_count_hits() -> list[str]:
     import json
 
     evidence = json.loads((ROOT / "evidence.json").read_text(encoding="utf-8"))
-    expected = {"автотест": evidence["tests"]["passed"], "демо-кейс": len(evidence["demo_cases"]["results"])}
+    expected = {
+        "автотест": evidence["tests"]["passed"],
+        "демо-кейс": len(evidence["demo_cases"]["results"]),
+        "мутаци": fuzz_runs(),
+    }
     hits = []
     for path in sorted(ROOT.rglob("*.md")):
         rel = path.relative_to(ROOT).as_posix()
@@ -76,7 +91,7 @@ def evidence_count_hits() -> list[str]:
             for name, pattern in EVIDENCE_COUNTS.items():
                 for m in pattern.finditer(text):
                     if int(m.group(1)) != expected[name]:
-                        hits.append(f"{rel}:{i}: «{m.group(0)}», а в evidence.json {expected[name]}")
+                        hits.append(f"{rel}:{i}: «{m.group(0)}», а в источнике {expected[name]}")
     return hits
 
 
@@ -106,7 +121,8 @@ def main() -> int:
         return 1
     evidence_hits = evidence_count_hits()
     if evidence_hits:
-        sys.stderr.write("числа в текстах не совпадают с evidence.json:\n" + "\n".join(evidence_hits) + "\n")
+        message = "числа в текстах не совпадают с evidence.json или тестом фазза:\n"
+        sys.stderr.write(message + "\n".join(evidence_hits) + "\n")
         return 1
     print(f"проверено, запрещённых формулировок нет ({len(banned)} шаблонов)")
     return 0
