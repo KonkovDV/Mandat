@@ -90,6 +90,9 @@ def _event_time(value: Any, warnings: list[str] | None = None) -> datetime:
         parsed = datetime.fromisoformat(value)
     except ValueError as exc:
         raise ValueError(f"время события не разобрано: {value!r}") from exc
+    if not 1900 <= parsed.year <= 9998:
+        # На краях календаря сдвиг пояса и окно в сутки выходят за datetime: был OverflowError и 500.
+        raise ValueError(f"время события вне диапазона 1900–9998 годов: {value!r}")
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=MOSCOW)
         if warnings is not None:

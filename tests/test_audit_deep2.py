@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -93,3 +94,13 @@ def test_attest_verify_prints_the_verdict_and_unchecked_status(root: Path, tmp_p
     captured = capsys.readouterr()
     assert "вердикт в удостоверении: refuted" in captured.out
     assert "статус не проверялся" in captured.err
+
+
+@pytest.mark.parametrize("moment", ["9999-12-31T23:59:59+14:00", "0001-01-01T00:00:00"])
+def test_events_at_the_edge_of_the_calendar_are_422_not_500(root: Path, moment: str):
+    payload = json.loads((root / "examples" / "events" / "takeover.json").read_text(encoding="utf-8"))
+    payload["events"][0]["at"] = moment
+    client = TestClient(create_app(token="t", rate_per_min=0, store=MemoryStore()), raise_server_exceptions=False)
+    response = client.post("/v1/events", json=payload, headers={"Authorization": "Bearer t"})
+    assert response.status_code == 422
+    assert "1900–9998" in response.json()["detail"]
