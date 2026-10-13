@@ -8,7 +8,7 @@
 |---|---|---|
 | Жюри | [README](../README.md) | [реестр утверждений](../CLAIMS_REGISTRY.md), [конкуренты](COMPETITORS.md), [оценка](EVALUATION.md) |
 | Юрист банка | [вопросы юристу](LEGAL_REVIEW.md), [нормы](REGULATORY.md) | [правила](RULES.md), [формат МЧД](FORMAT_NOTES.md), [предметная модель](DOMAIN.md) |
-| ИБ банка | [модель угроз](THREAT_MODEL.md), [аудит октября 2026](audit/AUDIT.md) | [защита данных](DATA_PROTECTION.md), [риски ИИ](AI_RISKS.md), [SECURITY](../SECURITY.md) |
+| ИБ (информационная безопасность) банка | [модель угроз](THREAT_MODEL.md), [аудит октября 2026](audit/AUDIT.md) | [защита данных](DATA_PROTECTION.md), [риски ИИ](AI_RISKS.md), [SECURITY](../SECURITY.md) |
 | Владелец процесса | [пилот](PILOT.md) | [экономика](ECONOMICS.md), [дорожная карта](ROADMAP.md) |
 | Инженер | [запуск и API](RUN.md) | [архитектура](ARCHITECTURE.md), [каркас MVP](MVP.md), [перенос идей](PORTING.md) |
 
