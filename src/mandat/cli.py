@@ -278,7 +278,14 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
         seen_path = Path(args.seen_file) if args.seen_file else None
         seen = json.loads(seen_path.read_text(encoding="utf-8")) if seen_path and seen_path.exists() else {}
         try:
-            status = check_status(cred, Path(args.status_dir), key, seen=seen if seen_path else None)
+            # В защищённой среде список проверяется и на свежесть; демо-список можно проверить и через месяц.
+            status = check_status(
+                cred,
+                Path(args.status_dir),
+                key,
+                seen=seen if seen_path else None,
+                now=datetime.now(UTC) if protected() else None,
+            )
         except (OSError, ValueError, KeyError) as exc:
             print(f"статус не проверен: {exc}", file=sys.stderr)
             return 1

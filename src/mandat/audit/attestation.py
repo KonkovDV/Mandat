@@ -256,7 +256,7 @@ def validate_attestation(
         from mandat.audit.status_list import check_status
 
         try:
-            state = check_status(credential, status_dir, key)["state"]
+            state = check_status(credential, status_dir, key, now=now)["state"]
         except (OSError, ValueError, KeyError) as exc:
             problems.append(f"статус не проверен: {exc}")
         else:

@@ -21,7 +21,7 @@ def test_journal_needs_key_outside_demo(tmp_path, monkeypatch):
     with pytest.raises(journal.JournalKeyMissing):
         _append(tmp_path / "j.jsonl")
     assert not (tmp_path / "j.jsonl").exists()
-    monkeypatch.setenv("MANDAT_JOURNAL_KEY", "k")
+    monkeypatch.setenv("MANDAT_JOURNAL_KEY", "k" * 32)
     assert "sig" in _append(tmp_path / "j.jsonl")
     assert journal.verify_journal(tmp_path / "j.jsonl").ok
 

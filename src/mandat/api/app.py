@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -147,6 +148,10 @@ def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+# Сколько держится заявка на создание кейса: дольше, чем занимает проверка и запись в журнал.
+CREATE_CLAIM_SECONDS = 30.0
+
+
 def create_app(
     token: str | None = None,
     *,
@@ -224,8 +229,18 @@ def create_app(
             case = load_case_inline(manifest)
         except CaseError as exc:
             raise HTTPException(422, str(exc)) from exc
-        report = verify_case(case, profile=profile).as_dict()
+        # В pilot и prod снимки источников сверяются с часами сервера: снимок «из будущего» не доказательство.
+        if protected():
+            report = verify_case(case, profile=profile, now=datetime.now(UTC)).as_dict()
+        else:
+            report = verify_case(case, profile=profile).as_dict()
         case_id = report["case_id"]
+        # Атомарная заявка на создание: из двух одновременных запросов с одним case_id проходит один,
+        # второй получает 409, а не перезаписывает первый. first_seen атомарен во всех хранилищах.
+        if not replace and not shared.first_seen(f"create:{case_id}", CREATE_CLAIM_SECONDS):
+            raise HTTPException(
+                409, "кейс с таким case_id уже создаётся или создан: повторите позже или передайте replace=true"
+            )
         existing = shared.get(case_id)
         if existing is not None and not replace:
             raise HTTPException(409, "кейс с таким case_id уже есть: передайте replace=true, чтобы перезаписать")

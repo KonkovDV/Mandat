@@ -126,11 +126,11 @@ def test_revoked_or_suspended_is_rejected(tmp_path: Path, purpose, state):
         {"org_inn": report["organization"]["inn"], "verdict": report["verdict"], "poa_numbers": []}
     )
     cred = attestation.issue(report, key, now=NOW, status=registry.credential_status(index))
-    registry.save(key)
+    registry.save(key, now=NOW)
     assert _problems(cred, public, status_dir=tmp_path / "status") == []
     registry = StatusRegistry.open(tmp_path / "status")
     registry.mark(index, purpose, "test")
-    registry.save(key)
+    registry.save(key, now=NOW)
     assert any(state in p for p in _problems(cred, public, status_dir=tmp_path / "status"))
 
 

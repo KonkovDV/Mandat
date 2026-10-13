@@ -18,6 +18,7 @@ import base64
 import gzip
 import json
 import secrets
+import zlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -29,6 +30,8 @@ from mandat.audit import attestation
 from mandat.domain.identifiers import normalize_poa_number
 
 MIN_BITS = 131_072
+# Предел распаковки: сжатый список в несколько килобайт не должен раздуваться в гигабайты.
+MAX_LIST_BYTES = 1 << 20
 PURPOSES = ("revocation", "suspension")
 BASE_URL = "https://mandat.example/status"
 
@@ -42,7 +45,14 @@ def decode_bits(encoded: str) -> bytearray:
         raise ValueError("ожидалась multibase-строка base64url с префиксом u")
     body = encoded[1:]
     raw = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
-    return bytearray(gzip.decompress(raw))
+    inflater = zlib.decompressobj(wbits=31)
+    try:
+        bits = inflater.decompress(raw, MAX_LIST_BYTES + 1)
+    except zlib.error as exc:
+        raise ValueError(f"список статусов не распаковывается: {exc}") from exc
+    if len(bits) > MAX_LIST_BYTES or inflater.unconsumed_tail:
+        raise ValueError(f"список статусов больше {MAX_LIST_BYTES} байт после распаковки")
+    return bytearray(bits)
 
 
 def get_bit(bits: bytearray, index: int) -> bool:

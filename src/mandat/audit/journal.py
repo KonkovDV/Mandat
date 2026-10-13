@@ -51,6 +51,7 @@ def _digest(record: dict[str, Any]) -> str:
 
 # Режимы, в которых журнал можно вести без ключа HMAC. Всё остальное (pilot, prod) требует ключ.
 KEYLESS_MODES = frozenset({"", "demo", "dev", "test"})
+MIN_KEY_BYTES = 32
 
 
 class JournalKeyMissing(RuntimeError):
@@ -68,6 +69,9 @@ def _key(key: str | None) -> str | None:
         value = os.environ.get("MANDAT_JOURNAL_KEY", "").strip() or None
     if value is None and mode() not in KEYLESS_MODES:
         raise JournalKeyMissing(f"MANDAT_ENV={mode()}: журнал без подписи здесь не ведётся, задайте MANDAT_JOURNAL_KEY")
+    if value is not None and mode() not in KEYLESS_MODES and len(value.encode("utf-8")) < MIN_KEY_BYTES:
+        # RFC 2104, разд. 3: ключ HMAC короче длины выхода хеша (32 байта для SHA-256) не рекомендуется.
+        raise JournalKeyMissing(f"MANDAT_ENV={mode()}: MANDAT_JOURNAL_KEY короче {MIN_KEY_BYTES} байт")
     return value
 
 

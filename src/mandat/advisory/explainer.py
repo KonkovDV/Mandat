@@ -89,7 +89,7 @@ def _statements(raw: str) -> list[tuple[str, list[str]]]:
         return []
     try:
         rows = json.loads(raw[start : end + 1]).get("statements")
-    except (json.JSONDecodeError, AttributeError):
+    except (json.JSONDecodeError, AttributeError, RecursionError):
         return []
     if not isinstance(rows, list):
         return []

@@ -41,12 +41,20 @@ def _text(row: dict[str, Any], key: str, where: str) -> str | None:
     raise EgrulError(f"{where}.{key} должен быть строкой")
 
 
+def _flag(row: dict[str, Any], key: str, where: str) -> bool:
+    value = row.get(key, False)
+    if isinstance(value, bool):
+        return value
+    # Строка "false" через bool() дала бы True: признак принимается только как JSON-логическое значение.
+    raise EgrulError(f"{where}.{key} должен быть true или false")
+
+
 def parse_egrul(data: bytes | str, *, doc_id: str) -> EgrulSnapshot:
     raw = data.encode("utf-8") if isinstance(data, str) else data
     sha = hashlib.sha256(raw).hexdigest()
     try:
         payload = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
         raise EgrulError(f"JSON не разбирается: {exc}") from exc
     if not isinstance(payload, dict):
         raise EgrulError("ожидался JSON-объект")
@@ -75,7 +83,7 @@ def parse_egrul(data: bytes | str, *, doc_id: str) -> EgrulSnapshot:
                 record_date=_d(row.get("record_date")),
                 valid_from=_d(row.get("valid_from")),
                 valid_to=_d(row.get("valid_to")),
-                unreliable=bool(row.get("unreliable", False)),
+                unreliable=_flag(row, "unreliable", where),
                 ref=EvidenceRef(doc_id, sha, f"$.executives[{index}]", quote=f"ГРН {row.get('grn')}"),
             )
         )

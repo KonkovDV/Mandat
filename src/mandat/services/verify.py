@@ -162,6 +162,18 @@ def _untrusted(case: Case, chain: AuthorityChain, ports: Ports, trusted: frozens
                 (ref,),
             )
         )
+    if "bankruptcy" in applicable and "bankruptcy" not in trusted:
+        # Сведения о банкротстве из манифеста — слова клиента, а не ответ ЕФРСБ.
+        out.append(
+            Finding(
+                "R-BNK-001",
+                "bankruptcy",
+                LegalEffect.NOT_VERIFIED,
+                "Профиль strict: сведения о банкротстве не из доверенного источника (ЕФРСБ)",
+                "порт ЕФРСБ",
+                (ref,),
+            )
+        )
     if "signature" in applicable and "signature" not in trusted:
         out.append(
             Finding(
@@ -204,6 +216,8 @@ def verify_case(
         ports=ports,
         classifier=classifier,
         profile_name=prof.name,
+        # Сверка снимков с часами — только при явно переданном моменте: синтетика демо живёт в своих датах.
+        now=now,
     )
     findings = run_rules(ctx)
     if prof.name == "strict":

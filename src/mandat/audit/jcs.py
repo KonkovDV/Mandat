@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 import math
-from decimal import Decimal
+from decimal import Context, Decimal
 from typing import Any
 
 MAX_SAFE = 2**53
@@ -45,13 +45,17 @@ def _string(text: str) -> str:
     return "".join(out)
 
 
+# repr даёт не больше 17 значащих цифр; своя точность не зависит от decimal-контекста вызывающего кода.
+_EXACT = Context(prec=40)
+
+
 def _number(value: float) -> str:
     if math.isnan(value) or math.isinf(value):
         raise JcsError("NaN и бесконечность в JSON не допускаются")
     if value == 0:
         return "0"
     sign = "-" if value < 0 else ""
-    digits_tuple, exponent = Decimal(repr(abs(value))).normalize().as_tuple()[1:]
+    digits_tuple, exponent = Decimal(repr(abs(value))).normalize(_EXACT).as_tuple()[1:]
     digits = "".join(str(d) for d in digits_tuple)
     k = len(digits)
     n = int(exponent) + k

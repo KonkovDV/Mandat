@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 from mandat.data import load_json, sha256_json
 from mandat.domain.graph import AuthorityChain
@@ -43,6 +43,8 @@ class RuleContext:
     classifier: Classifier = field(default_factory=default_classifier)
     charter_facts: list[CandidateFact] = field(default_factory=list)
     profile_name: str = "demo"
+    # Момент проверки: снимок источника позже него — не наблюдение, а ошибка часов или подмена.
+    now: datetime | None = None
     _registry: dict[str, RegistryObservation] = field(default_factory=dict, repr=False)
 
     def registry(self, number: str | None) -> RegistryObservation:
@@ -516,6 +518,14 @@ def id_principal_name(ctx: RuleContext) -> list[Finding]:
 # --- реестр и срок ----------------------------------------------------------
 
 
+def _from_future(moment: datetime | None, now: datetime | None) -> bool:
+    """Снимок с отметкой позже момента проверки (допуск 5 минут на расхождение часов)."""
+    if moment is None or now is None:
+        return False
+    aware = moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+    return aware > now + timedelta(minutes=5)
+
+
 @rule("R-REG-001")
 def registry_status(ctx: RuleContext) -> list[Finding]:
     """Статус МЧД по снимку реестра на дату операции.
@@ -539,7 +549,10 @@ def registry_status(ctx: RuleContext) -> list[Finding]:
             quote=status.value,
         )
         seen = obs.observed_at.date() if obs.observed_at else None
-        if seen is not None and obs.event_date is not None and obs.event_date > seen:
+        if _from_future(obs.observed_at, ctx.now):
+            text = f"МЧД {number}: момент запроса к реестру {obs.observed_at:%d.%m.%Y %H:%M} позже момента проверки"
+            out.append(ctx.emit("R-REG-001", E.NOT_VERIFIED, text, [ref]))
+        elif seen is not None and obs.event_date is not None and obs.event_date > seen:
             text = (
                 f"МЧД {number}: дата события в реестре {obs.event_date:%d.%m.%Y} позже момента запроса {seen:%d.%m.%Y}"
             )
@@ -1309,6 +1322,19 @@ def sub_lost_authority(ctx: RuleContext) -> list[Finding]:
         if child.issue_date is not None and child.issue_date > on:
             continue
         when = f"{child.issue_date:%d.%m.%Y}" if child.issue_date else "дата не указана"
+        if not any(child.signer.match_status(rep) == "match" for rep in leaf.representatives):
+            # Утрату полномочий доказывает только МЧД, выданная представителем по этой доверенности.
+            # Посторонний документ со ссылкой на неё отказом не становится: это вопрос для разбора.
+            out.append(
+                ctx.emit(
+                    "R-SUB-007",
+                    E.NEEDS_REVIEW,
+                    f"МЧД {child.number} ссылается на МЧД {leaf.number} с утратой полномочий (ПрУтрПолн = 2), "
+                    "но подписана не представителем по ней: утрата полномочий не подтверждена",
+                    [child.ref("loses_authority"), child.ref("parent_number")],
+                )
+            )
+            continue
         out.append(
             ctx.emit(
                 "R-SUB-007",

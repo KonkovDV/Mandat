@@ -112,7 +112,8 @@ def parse_facts(raw: str) -> list[dict]:
         return []
     try:
         payload = json.loads(raw[start : end + 1])
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
+        # Ответ модели — недоверенный ввод: сверхглубокий JSON значит «фактов нет», а не падение.
         return []
     facts = payload.get("facts") if isinstance(payload, dict) else None
     return [f for f in facts if isinstance(f, dict)] if isinstance(facts, list) else []

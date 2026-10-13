@@ -30,7 +30,10 @@ def _confidence(raw: object) -> float | None:
     """Уверенность модели: конечное число от 0 до 1, не boolean и не строка. Иначе ``None``."""
     if isinstance(raw, bool) or not isinstance(raw, (int, float)):
         return None
-    value = float(raw)
+    try:
+        value = float(raw)
+    except OverflowError:
+        return None
     return value if math.isfinite(value) and 0.0 <= value <= 1.0 else None
 
 
@@ -47,6 +50,9 @@ def _amount(raw: object) -> int | None:
 
 def ground_candidates(raw: list[dict], doc: TextDocument, *, min_confidence: float = 0.5) -> GateResult:
     """Оставляем только кандидатов с цитатой из документа и достаточной уверенностью."""
+    if not (isinstance(min_confidence, (int, float)) and math.isfinite(min_confidence) and 0 <= min_confidence <= 1):
+        # NaN в пороге сделал бы сравнение всегда ложным: факт с любой уверенностью прошёл бы.
+        raise ValueError("min_confidence: конечное число от 0 до 1")
     accepted: list[CandidateFact] = []
     dropped: list[str] = []
     for item in raw:
