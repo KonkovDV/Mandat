@@ -90,6 +90,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
         if head.exists():
             head.replace(previous / f"journal-{stamp}.jsonl.head")
     key = attestation.load_or_create_key(out / "keys" / "attestation_ed25519.pem")
+    pseudonym_key = attestation.load_or_create_pseudonym_key(out / "keys" / "representative_hmac.key")
     status_dir = out / "status"
     for stale in ("registry.json", "revocation.json", "suspension.json"):
         (status_dir / stale).unlink(missing_ok=True)
@@ -110,7 +111,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
                 "attestation": f"attestations/{case_dir.name}.json",
             }
         )
-        cred = attestation.issue(report, key, status=status.credential_status(index))
+        cred = attestation.issue(report, key, status=status.credential_status(index), pseudonym_key=pseudonym_key)
         _write(out / "attestations" / f"{case_dir.name}.json", attestation.dump(cred))
         journal.append(
             log,
@@ -254,9 +255,21 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
     if trusted is None:
         print("предупреждение: ключ взят из самого удостоверения, издатель не проверен", file=sys.stderr)
     key = attestation.public_key_from_multibase(trusted or method.split("#", 1)[-1])
-    ok = attestation.verify(cred, key)
+    ok = attestation.verify_signature(cred, key)
     print("подпись верна" if ok else "подпись НЕ верна")
-    if ok and args.status_dir:
+    if not ok:
+        return 1
+    from datetime import UTC, datetime
+
+    from mandat.services.env_policy import protected
+
+    # Подпись верна — это ещё не «удостоверение принимается»: издатель, назначение, срок, профиль.
+    problems = attestation.validate_attestation(cred, [key], now=datetime.now(UTC), allow_demo=not protected())
+    for problem in problems:
+        print(f"не принимается: {problem}", file=sys.stderr)
+    if problems:
+        return 4
+    if args.status_dir:
         seen_path = Path(args.seen_file) if args.seen_file else None
         seen = json.loads(seen_path.read_text(encoding="utf-8")) if seen_path and seen_path.exists() else {}
         try:
@@ -268,7 +281,7 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
             seen_path.write_text(json.dumps(seen, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"статус удостоверения: {status['state']}")
         return 0 if status["state"] == "действует" else 3
-    return 0 if ok else 1
+    return 0
 
 
 def cmd_examples(args: argparse.Namespace) -> int:
@@ -340,7 +353,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     v = sub.add_parser("verify", help="проверить кейс из каталога с case.json")
     v.add_argument("case")
-    v.add_argument("--profile", default="demo", choices=["demo", "strict"])
+    v.add_argument("--profile", default=None, choices=["demo", "strict"])
     v.add_argument("--json")
     v.add_argument("--html")
     v.add_argument("--journal")
@@ -381,7 +394,7 @@ def build_parser() -> argparse.ArgumentParser:
     f = sub.add_parser("formats", help="поддерживаемые форматы МЧД")
     f.set_defaults(func=cmd_formats)
 
-    a = sub.add_parser("attest-verify", help="проверить подпись удостоверения")
+    a = sub.add_parser("attest-verify", help="проверить подпись, срок, издателя и статус удостоверения")
     a.add_argument("path")
     a.add_argument("--public-key", help="ключ издателя в multibase (public_key.txt рядом с удостоверениями)")
     a.add_argument("--public-key-file", help="файл с ключом издателя, например var/demo/public_key.txt")

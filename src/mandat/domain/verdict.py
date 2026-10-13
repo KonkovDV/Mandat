@@ -52,6 +52,7 @@ CHECK_LABEL_RU = {
     "charter": "Ограничения устава",
     "text": "Текстовые условия",
     "signature": "Электронная подпись",
+    "bankruptcy": "Сведения о банкротстве",
 }
 
 
@@ -71,14 +72,16 @@ class Profile:
 PROFILES: dict[str, Profile] = {
     "demo": Profile(
         name="demo",
-        mandatory=frozenset({"format", "identity", "registry", "term", "eio", "coverage", "subdelegation"}),
-        waived=frozenset({"signature"}),
+        mandatory=frozenset(
+            {"format", "identity", "registry", "term", "eio", "coverage", "subdelegation", "bankruptcy"}
+        ),
+        waived=frozenset({"signature", "bankruptcy"}),
         trust_draft_rules=True,
     ),
     "strict": Profile(
         name="strict",
         mandatory=frozenset(
-            {"format", "identity", "registry", "term", "eio", "coverage", "subdelegation", "signature"}
+            {"format", "identity", "registry", "term", "eio", "coverage", "subdelegation", "signature", "bankruptcy"}
         ),
         waived=frozenset(),
         trust_draft_rules=False,

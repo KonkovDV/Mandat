@@ -1,5 +1,5 @@
-"""Статичные карточки для жюри: копирует три отчёта `mandat demo` в docs/demo/ и, если есть
-Playwright с Chromium, снимает с них PNG 1280×800.
+"""Статичные карточки для жюри: копирует отчёты `mandat demo` из списка CARDS в docs/demo/ и,
+если есть Playwright с Chromium, снимает с них PNG 1280×800.
 
     mandat demo && python scripts/export_demo_cards.py
 """
@@ -53,7 +53,7 @@ def main() -> int:
     shots = screenshots(pages)
     for html in pages:
         print(html.relative_to(ROOT) if html.is_relative_to(ROOT) else html)
-    print("PNG сняты" if shots else "PNG не сняты")
+    print(f"карточек: {len(pages)}; " + ("PNG сняты" if shots else "PNG не сняты"))
     return 0
 
 

@@ -26,6 +26,33 @@ def pptx_text(path: Path) -> str:
     return " ".join(re.findall(r"<a:t>([^<]*)</a:t>", xml))
 
 
+# Число правил в текстах должно совпадать с пакетом. История (CHANGELOG, записи аудитов) не проверяется.
+RULE_COUNT = re.compile(r"\b(\d+)\s+правил\b")
+RULE_COUNT_SKIP = {"CHANGELOG.md"}
+RULE_COUNT_SKIP_PREFIXES = ("docs/AUDIT_", "docs/audit/")
+
+
+def rule_count_hits() -> list[str]:
+    import json
+
+    actual = len(json.loads((ROOT / "src" / "mandat" / "data" / "rules.json").read_text(encoding="utf-8"))["rules"])
+    hits = []
+    for path in sorted(ROOT.rglob("*.md")):
+        rel = path.relative_to(ROOT).as_posix()
+        if path.name in RULE_COUNT_SKIP or rel.startswith(RULE_COUNT_SKIP_PREFIXES):
+            continue
+        if any(part in SKIP_DIRS or part.endswith(".egg-info") for part in path.relative_to(ROOT).parts):
+            continue
+        for number, line in (
+            (int(m.group(1)), i)
+            for i, text in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1)
+            for m in RULE_COUNT.finditer(text)
+        ):
+            if number != actual:
+                hits.append(f"{rel}:{line}: «{number} правил», а в rules.json {actual}")
+    return hits
+
+
 def main() -> int:
     banned = [
         line.strip()
@@ -45,6 +72,10 @@ def main() -> int:
         hits += [f"{path.relative_to(ROOT)}: «{phrase}»" for phrase in banned if phrase.casefold() in text]
     if hits:
         sys.stderr.write("запрещённые формулировки:\n" + "\n".join(hits) + "\n")
+        return 1
+    count_hits = rule_count_hits()
+    if count_hits:
+        sys.stderr.write("число правил в текстах не совпадает с пакетом:\n" + "\n".join(count_hits) + "\n")
         return 1
     print(f"проверено, запрещённых формулировок нет ({len(banned)} шаблонов)")
     return 0

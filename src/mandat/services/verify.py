@@ -20,6 +20,7 @@ from mandat.ports import FixtureBankruptcy, FixtureRegistry, NotConnectedSignatu
 from mandat.rules.checks import RuleContext, run_rules
 from mandat.rules.classifier import Classifier, default_classifier
 from mandat.rules.pack import OperationCatalog, RulePack, default_catalog, default_pack
+from mandat.services.env_policy import resolve_profile
 from mandat.services.next_steps import SIGNAL_RULES, build_next_steps, route, strongest_objection
 from mandat.services.rights import propose_right
 
@@ -178,7 +179,7 @@ def _untrusted(case: Case, chain: AuthorityChain, ports: Ports, trusted: frozens
 def verify_case(
     case: Case,
     *,
-    profile: str = "demo",
+    profile: str | None = None,
     ports: Ports | None = None,
     pack: RulePack | None = None,
     catalog: OperationCatalog | None = None,
@@ -188,7 +189,8 @@ def verify_case(
     now: datetime | None = None,
 ) -> CaseReport:
     """``advisory`` — находки модели: попадают в отчёт как справка и не влияют на вердикт (ADR-001)."""
-    prof = get_profile(profile)
+    # Профиль проверяется серверной политикой: в pilot/prod demo недоступен ни явно, ни по умолчанию.
+    prof = get_profile(resolve_profile(profile))
     pack = pack or default_pack()
     catalog = catalog or default_catalog()
     classifier = classifier or default_classifier()

@@ -72,34 +72,47 @@ class Person:
     position: str | None = None
 
     def _pairs(self, other: Person) -> list[bool]:
-        from mandat.domain.identifiers import normalize_snils
+        """Сравнимые пары сильных идентификаторов.
+
+        Пара сравнима, только если обе стороны дают правильно сформированное значение:
+        ИНН из 10 или 12 цифр ASCII, СНИЛС из 11 цифр ASCII после удаления пробелов и дефисов.
+        Неправильно сформированное значение не сравнивается (в том числе не «совпадает» с другим
+        неправильным значением, которое после очистки стало пустой строкой).
+        """
+        from mandat.domain.identifiers import comparable_inn, comparable_snils
 
         out = []
-        if self.inn and other.inn:
-            out.append(self.inn == other.inn)
-        if self.snils and other.snils:
-            out.append(normalize_snils(self.snils) == normalize_snils(other.snils))
+        a, b = comparable_inn(self.inn), comparable_inn(other.inn)
+        if a and b:
+            out.append(a == b)
+        a, b = comparable_snils(self.snils), comparable_snils(other.snils)
+        if a and b:
+            out.append(a == b)
         return out
 
+    def match_status(self, other: Person) -> str:
+        """``match``, ``mismatch``, ``conflict`` или ``insufficient``. ФИО в сравнении не участвует."""
+        pairs = self._pairs(other)
+        if not pairs:
+            return "insufficient"
+        if all(pairs):
+            return "match"
+        if not any(pairs):
+            return "mismatch"
+        return "conflict"
+
     def same_as(self, other: Person) -> bool | None:
-        """Одно лицо, только если совпали все идентификаторы, указанные с обеих сторон.
+        """Одно лицо, только если совпали все сравнимые идентификаторы, указанные с обеих сторон.
 
         True — все совпали; False — ни один не совпал; None — сравнить нечем (ФИО не доказательство)
         или идентификаторы противоречат друг другу (ИНН одного человека, СНИЛС другого).
         """
-        pairs = self._pairs(other)
-        if not pairs:
-            return None
-        if all(pairs):
-            return True
-        if not any(pairs):
-            return False
-        return None
+        status = self.match_status(other)
+        return {"match": True, "mismatch": False}.get(status)
 
     def conflicts_with(self, other: Person) -> bool:
         """ИНН и СНИЛС указывают на разных людей: один идентификатор совпал, другой нет."""
-        pairs = self._pairs(other)
-        return any(pairs) and not all(pairs)
+        return self.match_status(other) == "conflict"
 
     def label(self) -> str:
         return self.full_name or self.inn or "лицо без ФИО"
@@ -144,6 +157,12 @@ class PowerOfAttorney:
     original_number: str | None = None  # номер первоначальной доверенности цепочки
     irrevocable_subdelegation: str | None = None  # Безотзыв/@ПрПерБезДов
     kind_code: str | None = None  # ВидДовер
+    format_gaps: tuple[str, ...] = ()  # обязательные по формату 003 поля, которых нет
+    format_questions: tuple[str, ...] = ()  # поля, обязательность которых не установлена: решает юрист
+    representative_kinds: tuple[str, ...] = ()  # вид каждого представителя по элементу внутри Пред
+    notarized: bool = False  # в МЧД есть сведения о нотариальном удостоверении (СвНотУд)
+    policy_gaps: tuple[str, ...] = ()  # по схеме поле необязательно, но без него проверку не провести
+    subdelegator_kind: str | None = None  # вид передоверителя по самой МЧД (ветвь Передов), иначе None
 
     def ref(self, key: str) -> EvidenceRef:
         return self.refs.get(key) or EvidenceRef(self.doc_id, self.sha256, "document")
@@ -232,11 +251,13 @@ class Case:
     egrul: EgrulSnapshot | None = None
     charter: TextDocument | None = None
     paper_poas: tuple[TextDocument, ...] = ()
-    registry: dict[str, str] = field(default_factory=dict)
+    registry: dict[str, str | dict[str, str]] = field(default_factory=dict)  # номер -> статус или снимок
     bankruptcy: dict[str, str] = field(default_factory=dict)
     intake_errors: tuple[IntakeError, ...] = ()
     inputs: tuple[dict[str, str], ...] = ()
     charter_disposition: str | None = None
+    # Форма передоверия (п. 3 ст. 187 ГК РФ) со слов клиента: номер дочерней МЧД -> форма
+    subdelegation_forms: dict[str, str] = field(default_factory=dict)
     duplicates: tuple[tuple[str, str], ...] = ()  # (doc_id, kind) второго документа вида, который должен быть один
 
 

@@ -9,10 +9,11 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from mandat.domain.identifiers import normalize_poa_number
 from mandat.domain.model import Case, IntakeError, Operation, Organization, Person, TextDocument
 from mandat.intake.egrul import EgrulError, parse_egrul
 from mandat.intake.emchd import EmchdError
@@ -20,6 +21,7 @@ from mandat.intake.formats import parse_poa
 from mandat.intake.xml_safety import XmlRejected
 
 KINDS = {"emchd_xml", "egrul_json", "charter_text", "paper_poa_text"}
+MAX_DOCUMENTS = 500  # длинные цепочки до 300 звеньев проверяет test_long_expired_chain_is_bounded
 MAX_DOC_BYTES = 4 * 1024 * 1024
 
 
@@ -43,12 +45,78 @@ def _registry(value: Any, field_name: str = "registry") -> dict[str, str]:
     return {str(k): str(v) for k, v in value.items()}
 
 
+def _iso_day(value: Any) -> bool:
+    if not isinstance(value, str) or len(value) != 10:
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+_REGISTRY_KEYS = {"status", "event_date", "observed_at"}
+
+
+def _registry_entries(value: Any) -> dict[str, str | dict[str, str]]:
+    """Реестр МЧД в манифесте: номер -> статус или {status, event_date?, observed_at?}.
+
+    ``event_date`` — дата отмены или истечения по реестру (ГГГГ-ММ-ДД), ``observed_at`` — момент запроса
+    с часовым поясом. Неразборчивое значение — ошибка кейса, а не «нет сведений».
+    """
+    out: dict[str, str | dict[str, str]] = {}
+    if value is None:
+        return out
+    if not isinstance(value, dict):
+        raise CaseError("registry должен быть объектом")
+    for number, entry in value.items():
+        if not isinstance(entry, dict):
+            out[str(number)] = str(entry)
+            continue
+        if set(entry) - _REGISTRY_KEYS or not isinstance(entry.get("status"), str):
+            raise CaseError(f"registry[{number}]: поля status, event_date, observed_at")
+        clean = {"status": entry["status"]}
+        event = entry.get("event_date")
+        if event is not None:
+            if not _iso_day(event):
+                raise CaseError(f"registry[{number}].event_date: ГГГГ-ММ-ДД")
+            clean["event_date"] = event
+        observed = entry.get("observed_at")
+        if observed is not None:
+            try:
+                stamp = datetime.fromisoformat(observed) if isinstance(observed, str) else None
+            except ValueError:
+                stamp = None
+            if stamp is None or stamp.tzinfo is None:
+                raise CaseError(f"registry[{number}].observed_at: дата и время с часовым поясом")
+            clean["observed_at"] = observed
+        out[str(number)] = clean
+    return out
+
+
 def _disposition(value: Any) -> str | None:
     if value is None:
         return None
     if value != "no_applicable_restriction":
         raise CaseError("charter_disposition: no_applicable_restriction или пусто")
     return value
+
+
+SUBDELEGATION_FORMS = ("notarized", "legal_entity", "branch_head")
+
+
+def _subdelegation_forms(value: Any) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise CaseError("subdelegation_forms должен быть объектом: номер МЧД -> форма")
+    out: dict[str, str] = {}
+    for number, form in value.items():
+        key = normalize_poa_number(number)
+        if key is None or form not in SUBDELEGATION_FORMS:
+            raise CaseError("subdelegation_forms: форма " + ", ".join(SUBDELEGATION_FORMS))
+        out[key] = form
+    return out
 
 
 def _rubles(value: Any) -> int | None:
@@ -97,10 +165,20 @@ def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, 
     documents = manifest.get("documents") or []
     if not isinstance(documents, list):
         raise CaseError("documents должен быть списком")
+    if len(documents) > MAX_DOCUMENTS:
+        raise CaseError(f"в кейсе больше {MAX_DOCUMENTS} документов")
+    seen_ids: set[str] = set()
     for doc in documents:
         if not isinstance(doc, dict):
             raise CaseError("документ в списке должен быть объектом")
-        doc_id, kind = str(doc.get("id")), str(doc.get("kind"))
+        raw_id = doc.get("id")
+        # Идентификатор — локатор доказательства: без него или при повторе ссылки в отчёте неоднозначны.
+        if not isinstance(raw_id, str) or not raw_id.strip():
+            raise CaseError("у каждого документа должен быть непустой строковый id")
+        if raw_id in seen_ids:
+            raise CaseError(f"повторный id документа: {raw_id!r}")
+        seen_ids.add(raw_id)
+        doc_id, kind = raw_id, str(doc.get("kind"))
         if kind not in KINDS:
             errors.append(IntakeError(doc_id, kind, f"неизвестный вид документа {kind!r}"))
             continue
@@ -146,11 +224,12 @@ def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, 
         egrul=egrul,
         charter=charter,
         paper_poas=tuple(papers),
-        registry=_registry(manifest.get("registry")),
+        registry=_registry_entries(manifest.get("registry")),
         bankruptcy=_registry(manifest.get("bankruptcy"), "bankruptcy"),
         intake_errors=tuple(errors),
         inputs=tuple(inputs),
         charter_disposition=_disposition(manifest.get("charter_disposition")),
+        subdelegation_forms=_subdelegation_forms(manifest.get("subdelegation_forms")),
         duplicates=tuple(duplicates),
     )
 
@@ -159,6 +238,8 @@ def load_case_dir(path: Path) -> Case:
     manifest_path = path / "case.json"
     if not manifest_path.is_file():
         raise CaseError(f"нет {manifest_path}")
+    if manifest_path.stat().st_size > MAX_DOC_BYTES:
+        raise CaseError("case.json больше допустимого размера")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     base = path.resolve()
 
@@ -166,7 +247,13 @@ def load_case_dir(path: Path) -> Case:
         target = (base / str(doc["path"])).resolve()
         if base not in target.parents:
             raise ValueError("путь документа выходит за каталог кейса")
-        return target.read_bytes()
+        # Только обычный файл: FIFO и устройства не читаются, размер проверяется до чтения.
+        if not target.is_file():
+            raise ValueError("документ не является обычным файлом")
+        if target.stat().st_size > MAX_DOC_BYTES:
+            raise ValueError("документ больше допустимого размера")
+        with target.open("rb") as handle:
+            return handle.read(MAX_DOC_BYTES + 1)
 
     return load_case_from_manifest(manifest, read)
 

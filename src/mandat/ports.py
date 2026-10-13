@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Protocol
 
@@ -35,6 +36,27 @@ class SignatureResult:
     detail: str
 
 
+@dataclass(frozen=True)
+class RegistryObservation:
+    """Один ответ реестра МЧД по номеру: статус, дата события (отмены, истечения) и момент запроса.
+
+    Дату события и момент запроса реестр может не сообщить: тогда они ``None`` и не выдумываются.
+    """
+
+    number: str
+    status: RegistryStatus
+    event_date: date | None = None
+    observed_at: datetime | None = None
+
+    def as_dict(self) -> dict[str, str | None]:
+        return {
+            "number": self.number,
+            "status": self.status.value,
+            "event_date": self.event_date.isoformat() if self.event_date else None,
+            "observed_at": self.observed_at.isoformat() if self.observed_at else None,
+        }
+
+
 class PoaRegistryPort(Protocol):
     name: str
 
@@ -53,17 +75,27 @@ class FixtureRegistry:
     name = "fixture-registry"
     is_stub = True
 
-    def __init__(self, statuses: dict[str, str]):
+    def __init__(self, statuses: dict[str, str | dict[str, str]]):
         self._statuses = {normalize_poa_number(k) or "": v for k, v in statuses.items()}
 
-    def status(self, number: str) -> RegistryStatus:
+    def observe(self, number: str) -> RegistryObservation:
         raw = self._statuses.get(normalize_poa_number(number) or "")
-        if raw is None:
-            return RegistryStatus.UNAVAILABLE
+        entry = raw if isinstance(raw, dict) else {"status": raw} if raw is not None else {}
         try:
-            return RegistryStatus(raw)
+            status = RegistryStatus(entry.get("status") or "")
         except ValueError:
-            return RegistryStatus.UNAVAILABLE
+            return RegistryObservation(number, RegistryStatus.UNAVAILABLE)
+        event = entry.get("event_date")
+        observed = entry.get("observed_at")
+        return RegistryObservation(
+            number,
+            status,
+            date.fromisoformat(event) if event else None,
+            datetime.fromisoformat(observed) if observed else None,
+        )
+
+    def status(self, number: str) -> RegistryStatus:
+        return self.observe(number).status
 
 
 class NotConnectedSignature:
@@ -93,6 +125,8 @@ class BankruptcyStatus(StrEnum):
     DEBT_RESTRUCTURING = "debt_restructuring"  # реструктуризация долгов, ст. 213.11
     PROPERTY_SALE = "property_sale"  # реализация имущества, ст. 213.25
     NOT_CHECKED = "not_checked"
+    # Значение источника вне словаря: это не «не проверено» и не «банкротства нет», решает человек.
+    UNRECOGNIZED = "unrecognized"
 
 
 class BankruptcyPort(Protocol):
@@ -130,9 +164,13 @@ class FixtureBankruptcy:
         if raw is None:
             return BankruptcyStatus.NOT_CHECKED
         try:
-            return BankruptcyStatus(raw)
+            status = BankruptcyStatus(raw)
         except ValueError:
-            return BankruptcyStatus.NOT_CHECKED
+            return BankruptcyStatus.UNRECOGNIZED
+        # Служебные значения порта не принимаются как сведения из источника.
+        if status in (BankruptcyStatus.NOT_CHECKED, BankruptcyStatus.UNRECOGNIZED):
+            return BankruptcyStatus.UNRECOGNIZED
+        return status
 
 
 @dataclass(frozen=True)

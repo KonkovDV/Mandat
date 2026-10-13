@@ -20,6 +20,8 @@ import hashlib
 import hmac
 import json
 import os
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -127,13 +129,25 @@ def _write_witness(path: Path, records: int, head: str, key: str | None = None) 
     tmp.replace(witness)
 
 
+LOCK_WAIT_SECONDS = 5.0
+
+
 def _acquire_lock(path: Path) -> tuple[int, Path]:
-    """Эксклюзивная блокировка. Чужой lock не снимается по возрасту: это не доказательство, что писатель умер."""
+    """Эксклюзивная блокировка с ожиданием до ``LOCK_WAIT_SECONDS``.
+
+    Чужой lock не снимается по возрасту: это не доказательство, что писатель умер.
+    """
     lock = path.with_name(path.name + ".lock")
-    try:
-        return os.open(lock, os.O_CREAT | os.O_EXCL | os.O_RDWR), lock
-    except FileExistsError:
-        raise ValueError("журнал занят другой записью") from None
+    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+    delay = 0.001
+    while True:
+        try:
+            return os.open(lock, os.O_CREAT | os.O_EXCL | os.O_RDWR), lock
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                raise ValueError("журнал занят другой записью") from None
+            time.sleep(delay)
+            delay = min(delay * 2, 0.05)
 
 
 def append(
@@ -148,14 +162,30 @@ def append(
     details: dict[str, Any] | None = None,
     key: str | None = None,
     now: datetime | None = None,
+    precondition: Callable[[list[dict[str, Any]]], dict[str, Any] | None] | None = None,
 ) -> dict[str, Any]:
+    """Добавить запись под блокировкой журнала.
+
+    ``precondition`` вызывается под той же блокировкой с уже проверенной историей. Исключение из неё отменяет
+    запись; возвращённая запись означает «уже записано» — она возвращается, новая не добавляется. Так проверка
+    и запись не разделены окном, в которое успевает другой писатель.
+    """
     if action not in ACTIONS:
         raise ValueError(f"action must be one of {ACTIONS}")
     signing = _key(key)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, lock = _acquire_lock(path)
     try:
+        if path.exists() or witness_path(path).exists():
+            # Новая запись продолжает только целую историю: битый префикс или срезанный хвост — отказ.
+            check = verify_journal(path, key=signing or "")
+            if not check.ok:
+                raise JournalError(check.broken_at or 0, f"журнал не цел, запись не добавлена: {check.reason}")
         records = read_journal(path)
+        if precondition is not None:
+            done = precondition(records)
+            if done is not None:
+                return done
         record: dict[str, Any] = {
             "seq": len(records) + 1,
             "at": (now or datetime.now(UTC)).isoformat(timespec="seconds"),

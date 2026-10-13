@@ -21,11 +21,15 @@ import binascii
 import hashlib
 import hmac
 import json
+import logging
 import re
 import secrets
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from typing import Any, Protocol
+
+from mandat.audit.journal import mode
+from mandat.services.env_policy import protected
 
 SKEW_SECONDS = 300
 PREFIX = "whsec_"
@@ -43,7 +47,11 @@ def decode_secret(secret: str) -> bytes:
     if not secret:
         raise ValueError("пустой секрет вебхука")
     if not secret.startswith(PREFIX):
-        return secret.encode("utf-8")
+        key = secret.encode("utf-8")
+        # Старый формат без префикса: в защищённом режиме короткий секрет не принимается.
+        if len(key) < MIN_KEY and protected():
+            raise ValueError(f"секрет без whsec_ короче {MIN_KEY} байт запрещён при MANDAT_ENV={mode()}")
+        return key
     try:
         body = secret[len(PREFIX) :]
         # Эталонная библиотека принимает base64 и без выравнивания «=», принимаем и мы.
@@ -72,6 +80,9 @@ def canonical_body(payload: dict[str, Any]) -> bytes:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
+log = logging.getLogger(__name__)
+
+
 def _sign(key: bytes, delivery_id: str, stamp: str, body: bytes) -> str:
     mac = hmac.new(key, f"{delivery_id}.{stamp}.".encode() + body, hashlib.sha256).digest()
     return "v1," + base64.b64encode(mac).decode("ascii")
@@ -98,6 +109,10 @@ def signature_ok(
     skew: int = SKEW_SECONDS,
     seen: SeenStore | None = None,
 ) -> bool:
+    if seen is None and protected():
+        # Без общего хранилища повтор того же сообщения не отличить от нового: это отказ, а не ошибка 500.
+        log.warning("MANDAT_ENV=%s: проверка вебхука без хранилища повторов отклонена", mode())
+        return False
     lower = {k.lower(): v for k, v in headers.items()}
     delivery_id = lower.get("webhook-id") or ""
     stamp = lower.get("webhook-timestamp") or ""

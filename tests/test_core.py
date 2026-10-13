@@ -85,7 +85,8 @@ def test_xml_safety_rejects_entities_and_depth():
 def test_mapping_marks_unverified_fields():
     spec = load_json("emchd_003_mapping.json")
     assert spec["fields"]["number"]["verified"] is True
-    assert spec["lists"]["representatives"]["verified"] is False
+    assert spec["lists"]["representatives"]["verified"] is True
+    assert spec["fields"]["joint"]["path"].endswith("СвПолн/@ПрСовмПолн")
     assert spec["subdelegation_values_verified"] is True
     assert spec["fields"]["parent_number"]["verified"] is False
     assert spec["irrevocable_subdelegation_allowed_verified"] is False

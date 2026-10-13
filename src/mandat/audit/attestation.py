@@ -5,12 +5,20 @@
 
 Схема подписи повторяет криптонабор ``eddsa-jcs-2022``: хеш канонической
 конфигурации доказательства и хеш канонического документа, подпись Ed25519,
-значение в base58btc с префиксом ``z``. Каноническая запись — сортировка ключей
-без пробелов (совпадает с RFC 8785 для строк и целых чисел). Совместимость с
-внешними верификаторами VC ещё не проверялась — это задача спринта 2.
+значение в base58btc с префиксом ``z``. Каноническая запись — RFC 8785 (``audit/jcs.py``,
+проверена на примерах из текста RFC). Для ключей ASCII, строк и целых она совпадает с прежней
+записью ``sort_keys``, поэтому подпись ранее выданных удостоверений проверяется без переподписи.
+Принимаются они не будут: в них нет ``validUntil`` (тест ``test_attestation_signed_before_rfc8785_*``).
+Совместимость с внешними верификаторами VC не проверялась. Ed25519 — не квалифицированная
+электронная подпись по 63-ФЗ и не ГОСТ.
 
-В удостоверение не попадают ФИО и паспортные данные: только ИНН организации,
-хеш ИНН представителя, операция, вердикт, номера МЧД цепочки и хеши входов.
+``verify_signature`` отвечает только на вопрос «подписано этим ключом»; принимать ли удостоверение,
+решает ``validate_attestation``: доверенный ключ издателя, издатель, назначение, криптонабор, срок,
+профиль и статус.
+
+В удостоверение не попадают ФИО и паспортные данные: только ИНН организации, токен представителя
+(HMAC-SHA256 на ключе издателя, а не хеш ИНН: хеш 12 цифр перебирается словарём), операция,
+вердикт, номера МЧД цепочки и хеши входов.
 Статус удостоверения (отозвано, приостановлено) — по спискам W3C Bitstring Status List
 (``audit/status_list.py``).
 """
@@ -18,8 +26,11 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
-from datetime import UTC, datetime
+import os
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -27,11 +38,14 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
-from mandat.data import canonical_json
+from mandat.audit.jcs import canonicalize
 
 _B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 ISSUER = "did:web:mandat.example"
 CONTEXTS = ["https://www.w3.org/ns/credentials/v2"]
+CRYPTOSUITE = "eddsa-jcs-2022"
+PURPOSE = "assertionMethod"
+VALID_FOR = timedelta(days=30)  # срок принятия удостоверения; параметр банка
 
 
 def b58encode(data: bytes) -> str:
@@ -53,19 +67,37 @@ def b58decode(text: str) -> bytes:
     return b"\0" * pad + body
 
 
+def _read_signing_key(path: Path) -> Ed25519PrivateKey:
+    key = serialization.load_pem_private_key(path.read_bytes(), password=None)
+    if not isinstance(key, Ed25519PrivateKey):
+        raise ValueError("ключ подписи должен быть Ed25519")
+    return key
+
+
 def load_or_create_key(path: Path) -> Ed25519PrivateKey:
     if path.exists():
-        key = serialization.load_pem_private_key(path.read_bytes(), password=None)
-        if not isinstance(key, Ed25519PrivateKey):
-            raise ValueError("ключ подписи должен быть Ed25519")
-        return key
+        return _read_signing_key(path)
     key = Ed25519PrivateKey.generate()
+    pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+    return key if _write_private(path, pem) else _read_signing_key(path)
+
+
+def _write_private(path: Path, data: bytes) -> bool:
+    """Новый файл ключа сразу с правами 0600 (в Windows права POSIX не действуют).
+
+    Файл открывается в двоичном режиме, байты пишутся без замены перевода строки.
+    Существующий файл не перезаписывается: если его успел создать другой процесс,
+    возвращается False, и вызывающий читает уже записанный ключ.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(
-        key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
-    )
-    path.chmod(0o600)
-    return key
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    try:
+        fd = os.open(path, flags, 0o600)
+    except FileExistsError:
+        return False
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(data)
+    return True
 
 
 def public_key_multibase(key: Ed25519PrivateKey | Ed25519PublicKey) -> str:
@@ -76,8 +108,8 @@ def public_key_multibase(key: Ed25519PrivateKey | Ed25519PublicKey) -> str:
 
 def _hash_data(document: dict[str, Any], proof_config: dict[str, Any]) -> bytes:
     return (
-        hashlib.sha256(canonical_json(proof_config).encode("utf-8")).digest()
-        + hashlib.sha256(canonical_json(document).encode("utf-8")).digest()
+        hashlib.sha256(canonicalize(proof_config).encode("utf-8")).digest()
+        + hashlib.sha256(canonicalize(document).encode("utf-8")).digest()
     )
 
 
@@ -87,10 +119,10 @@ def sign(document: dict[str, Any], key: Ed25519PrivateKey, *, now: datetime | No
     proof_config = {
         "@context": CONTEXTS,
         "type": "DataIntegrityProof",
-        "cryptosuite": "eddsa-jcs-2022",
+        "cryptosuite": CRYPTOSUITE,
         "created": created,
         "verificationMethod": f"{ISSUER}#{public_key_multibase(key)}",
-        "proofPurpose": "assertionMethod",
+        "proofPurpose": PURPOSE,
     }
     signature = key.sign(_hash_data(document, proof_config))
     return {**document, "proof": {**proof_config, "proofValue": "z" + b58encode(signature)}}
@@ -102,30 +134,120 @@ def issue(
     *,
     now: datetime | None = None,
     status: list[dict[str, str]] | None = None,
+    pseudonym_key: bytes | None = None,
+    valid_for: timedelta = VALID_FOR,
 ) -> dict[str, Any]:
-    created = (now or datetime.now(UTC)).isoformat(timespec="seconds")
+    """Удостоверение по отчёту. Без ``pseudonym_key`` представитель в удостоверение не попадает."""
+    moment = now or datetime.now(UTC)
+    created = moment.isoformat(timespec="seconds")
     rep_inn = (report.get("requester") or {}).get("inn") or ""
+    subject: dict[str, Any] = {
+        "organizationInn": (report.get("organization") or {}).get("inn"),
+        "operation": (report.get("operation") or {}).get("code"),
+        "operationDate": (report.get("operation") or {}).get("date"),
+        "verdict": report.get("verdict"),
+        "profile": report.get("profile"),
+        "ruleSetSha256": (report.get("rule_pack") or {}).get("sha256"),
+        "reportSha256": report.get("reproducibility_hash"),
+        "authorityChain": list((report.get("chain") or {}).get("poa_numbers") or []),
+        "inputs": [row.get("sha256") for row in report.get("inputs") or []],
+    }
+    if pseudonym_key and rep_inn:
+        subject["representativeToken"] = representative_token(rep_inn, pseudonym_key)
     credential: dict[str, Any] = {
         "@context": CONTEXTS,
         "type": ["VerifiableCredential", "MandatAuthorityAttestation"],
         "issuer": ISSUER,
         "validFrom": created,
-        "credentialSubject": {
-            "organizationInn": (report.get("organization") or {}).get("inn"),
-            "representativeInnSha256": hashlib.sha256(rep_inn.encode()).hexdigest() if rep_inn else None,
-            "operation": (report.get("operation") or {}).get("code"),
-            "operationDate": (report.get("operation") or {}).get("date"),
-            "verdict": report.get("verdict"),
-            "profile": report.get("profile"),
-            "ruleSetSha256": (report.get("rule_pack") or {}).get("sha256"),
-            "reportSha256": report.get("reproducibility_hash"),
-            "authorityChain": list((report.get("chain") or {}).get("poa_numbers") or []),
-            "inputs": [row.get("sha256") for row in report.get("inputs") or []],
-        },
+        "validUntil": (moment + valid_for).isoformat(timespec="seconds"),
+        "credentialSubject": subject,
     }
     if status:
         credential["credentialStatus"] = status
     return sign(credential, key, now=now)
+
+
+def representative_token(inn: str, key: bytes) -> str:
+    """Токен представителя: HMAC-SHA256 на ключе издателя. Без ключа ИНН по токену не подобрать."""
+    return hmac.new(key, inn.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+PSEUDONYM_KEY_MIN_BYTES = 32
+
+
+def _read_pseudonym_key(path: Path) -> bytes:
+    key = path.read_bytes()
+    if len(key) < PSEUDONYM_KEY_MIN_BYTES:
+        raise ValueError(f"ключ HMAC короче {PSEUDONYM_KEY_MIN_BYTES} байт: токен представителя был бы слабым")
+    return key
+
+
+def load_or_create_pseudonym_key(path: Path) -> bytes:
+    if path.exists():
+        return _read_pseudonym_key(path)
+    import secrets
+
+    key = secrets.token_bytes(PSEUDONYM_KEY_MIN_BYTES)
+    return key if _write_private(path, key) else _read_pseudonym_key(path)
+
+
+def verify_signature(credential: dict[str, Any], public_key: Ed25519PublicKey) -> bool:
+    """Только подпись: «подписано этим ключом». Не означает, что удостоверение можно принять."""
+    return verify(credential, public_key)
+
+
+def _when(value: Any) -> datetime | None:
+    try:
+        moment = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
+
+
+def validate_attestation(
+    credential: dict[str, Any],
+    trusted_keys: Iterable[Ed25519PublicKey],
+    *,
+    now: datetime,
+    status_dir: Path | None = None,
+    allow_demo: bool = False,
+) -> list[str]:
+    """Можно ли принять удостоверение. Пустой список — можно; иначе причины отказа."""
+    problems: list[str] = []
+    proof = credential.get("proof") or {}
+    method = str(proof.get("verificationMethod") or "")
+    keys = {public_key_multibase(k): k for k in trusted_keys}
+    key = keys.get(method.split("#", 1)[-1]) if method.startswith(f"{ISSUER}#") else None
+    if credential.get("issuer") != ISSUER:
+        problems.append(f"издатель {credential.get('issuer')!r} не {ISSUER}")
+    if key is None:
+        problems.append("ключ подписи не из списка доверенных ключей издателя")
+    elif not verify(credential, key):
+        problems.append("подпись не верна")
+    if proof.get("cryptosuite") != CRYPTOSUITE or proof.get("type") != "DataIntegrityProof":
+        problems.append(f"криптонабор {proof.get('cryptosuite')!r} не {CRYPTOSUITE}")
+    if proof.get("proofPurpose") != PURPOSE:
+        problems.append(f"назначение подписи {proof.get('proofPurpose')!r} не {PURPOSE}")
+    if "MandatAuthorityAttestation" not in (credential.get("type") or []):
+        problems.append("тип удостоверения не MandatAuthorityAttestation")
+    start, end = _when(credential.get("validFrom")), _when(credential.get("validUntil"))
+    if start is None or end is None:
+        problems.append("срок действия не указан или без часового пояса")
+    elif not start <= now < end:
+        problems.append(f"срок действия {start:%d.%m.%Y %H:%M}–{end:%d.%m.%Y %H:%M} не включает момент проверки")
+    if (credential.get("credentialSubject") or {}).get("profile") == "demo" and not allow_demo:
+        problems.append("удостоверение выпущено по профилю demo: для решения в банке не принимается")
+    if status_dir is not None and key is not None and not problems:
+        from mandat.audit.status_list import check_status
+
+        try:
+            state = check_status(credential, status_dir, key)["state"]
+        except (OSError, ValueError, KeyError) as exc:
+            problems.append(f"статус не проверен: {exc}")
+        else:
+            if state != "действует":
+                problems.append(f"статус удостоверения: {state}")
+    return problems
 
 
 def verify(credential: dict[str, Any], public_key: Ed25519PublicKey) -> bool:

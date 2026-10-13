@@ -1,19 +1,18 @@
 """Дифференциальная проверка: решения Cedar по экспортированным политикам и вердикты «Мандата».
 
-Нужен extra ``cedar`` (pip install -e ".[cedar]"); без него тест пропускается.
+Нужен extra ``cedar`` (pip install -e ".[cedar]"), он входит в dev.
 """
 
 from __future__ import annotations
 
 from datetime import date, timedelta
 
+import cedarpy
 import pytest
 from conftest import chain_matrix, chain_scenario, verify_scenario
 
 from mandat.eval.synth import OP_DATE
 from mandat.rules.cedar_export import day_number, export_policies, export_schema
-
-cedarpy = pytest.importorskip("cedarpy")
 
 
 def _link(codes: frozenset[str], until: date, issue: date, flag: int) -> dict:
@@ -74,6 +73,8 @@ def _link_scenario(*, bad_signer: bool, early: bool, joint: bool):
     sc.manifest["charter_disposition"] = "no_applicable_restriction"
     root = parse_emchd(sc.files["poa-root.xml"], doc_id="poa-root")
     leaf = parse_emchd(sc.files["poa-child.xml"], doc_id="poa-child")
+    # Форма передоверия по отметке кейса: в Cedar её нет, сравниваются правила звена.
+    sc.manifest["subdelegation_forms"] = {leaf.number: "notarized"}
     issue = root.issue_date - timedelta(days=10) if early else leaf.issue_date
     sc.files["poa-child.xml"] = build_emchd_xml(
         number=leaf.number,

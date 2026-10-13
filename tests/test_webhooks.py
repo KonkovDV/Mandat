@@ -113,3 +113,11 @@ def test_delivery_id_depends_only_on_body():
     a = delivery({"a": 1}, "s", now=NOW)["headers"]["webhook-id"]
     b = delivery({"a": 1}, "s", now=NOW + timedelta(hours=1))["headers"]["webhook-id"]
     assert a == b and canonical_body({"a": 1}) == b'{"a":1}'
+
+
+def test_missing_replay_store_in_protected_mode_is_a_refusal(monkeypatch):
+    monkeypatch.setenv("MANDAT_ENV", "prod")
+    secret = new_secret()
+    body = b"{}"
+    headers = sign_headers(secret, "evt_1", body, NOW)
+    assert signature_ok(secret, headers, body, NOW) is False

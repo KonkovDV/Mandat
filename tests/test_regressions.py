@@ -1,14 +1,8 @@
-"""Регрессионные тесты по аудиту версии 0.2.1 (октябрь 2026).
+"""Регрессионные тесты: пути к ложному «подтверждено», строгость разбора, объяснение,
+мониторинг, API, отказ в обслуживании, целостность журнала, доказательства и материалы для жюри.
 
-Каждый тест закрепляет один найденный дефект; номер в имени совпадает с таблицей
-находок в задании на доработку (F — ложное «подтверждено», M — мониторинг,
-D — отказ в обслуживании, C — падения API, I — целостность, A — доступ к API,
-L — строгость разбора, K — объяснение и вторая свёртка, E — доказательства,
-H — чистота материалов для жюри).
-
-На версии 0.2.1 эти тесты падают. После доработки все должны проходить.
-Ослаблять проверки нельзя: если меняется сигнатура функции, меняется вызов,
-но не утверждение.
+Каждый тест закрепляет один исправленный дефект. Ослаблять проверки нельзя: если меняется
+сигнатура функции, меняется вызов, но не утверждение.
 """
 
 from __future__ import annotations
@@ -86,17 +80,17 @@ def api_client():
 AUTH = {"Authorization": "Bearer t"}
 
 
-# --------------------------------------------------------------------------- F: ложное «подтверждено»
+# --------------------------------------------------------------------------- ложное «подтверждено»
 
 
-def test_f01_subdelegation_signer_must_be_parent_representative():
+def test_subdelegation_signer_must_be_parent_representative():
     m = manifest("ok_subdelegation")
     xml_set(doc(m, "poa-child"), SIGNER, "ИННФЛ", W.stranger.inn)
     xml_set(doc(m, "poa-child"), SIGNER, "СНИЛС", W.stranger.snils)
     assert verdict(m) == "refuted"
 
 
-def test_f02_child_issued_before_parent_is_not_confirmed():
+def test_child_issued_before_parent_is_not_confirmed():
     m = manifest("ok_subdelegation")
     assert xml_get(doc(m, "poa-root"), SV, "ДатаВыдДовер") == "2026-03-01"
     xml_set(doc(m, "poa-child"), SV, "ДатаВыдДовер", "2026-02-01")
@@ -105,25 +99,25 @@ def test_f02_child_issued_before_parent_is_not_confirmed():
 
 @pytest.mark.parametrize("profile", ["demo", "strict"])
 @pytest.mark.parametrize("base", ["ok", "ok_director"])
-def test_f03_inn_and_snils_of_different_people_is_not_confirmed(base, profile):
+def test_inn_and_snils_of_different_people_is_not_confirmed(base, profile):
     m = manifest(base)
     m["requester"]["snils"] = W.stranger.snils
     assert verdict(m, profile) != "confirmed"
 
 
 EGRUL_GAPS = {
-    "f04_extract_2024": lambda e: e.update(extracted_at="2024-06-01"),
-    "f04_extract_missing": lambda e: e.pop("extracted_at"),
-    "f05_status_missing": lambda e: e.pop("status"),
-    "f06_recorded_after_operation": lambda e: e["executives"][0].update(valid_from=None, record_date="2026-10-25"),
-    "f06_no_dates_at_all": lambda e: e["executives"][0].update(valid_from=None, record_date=None, valid_to=None),
-    "f13_ogrn_of_another_company": lambda e: e.update(ogrn="1027700132195"),
+    "extract_2024": lambda e: e.update(extracted_at="2024-06-01"),
+    "extract_missing": lambda e: e.pop("extracted_at"),
+    "status_missing": lambda e: e.pop("status"),
+    "recorded_after_operation": lambda e: e["executives"][0].update(valid_from=None, record_date="2026-10-25"),
+    "no_dates_at_all": lambda e: e["executives"][0].update(valid_from=None, record_date=None, valid_to=None),
+    "ogrn_of_another_company": lambda e: e.update(ogrn="1027700132195"),
 }
 
 
 @pytest.mark.parametrize("profile", ["demo", "strict"])
 @pytest.mark.parametrize("gap", sorted(EGRUL_GAPS))
-def test_f04_f05_f06_f13_egrul_gaps_fail_closed(gap, profile):
+def test_egrul_gaps_fail_closed(gap, profile):
     m = manifest("ok_director")
     EGRUL_GAPS[gap](doc(m, "egrul")["content"])
     assert verdict(m, profile) != "confirmed"
@@ -150,12 +144,12 @@ def _freshly_appointed_director(operation: str) -> dict:
 
 @pytest.mark.parametrize("profile", ["demo", "strict"])
 @pytest.mark.parametrize("operation", ["REQUISITES_CHANGE", "USER_ADMIN"])
-def test_f07_fresh_director_high_risk_operation_goes_to_review(operation, profile):
+def test_fresh_director_high_risk_operation_goes_to_review(operation, profile):
     """Руководитель назначен 2 дня назад и сразу меняет реквизиты — картина захвата."""
     assert verdict(_freshly_appointed_director(operation), profile) == "needs_review"
 
 
-def test_f08_fresh_change_flagged_even_if_old_record_not_closed():
+def test_fresh_change_flagged_even_if_old_record_not_closed():
     m = manifest("director_changed")
     assert verdict(m) == "needs_review"
     doc(m, "egrul")["content"]["executives"][0]["valid_to"] = None
@@ -163,7 +157,7 @@ def test_f08_fresh_change_flagged_even_if_old_record_not_closed():
 
 
 @pytest.mark.parametrize("profile", ["demo", "strict"])
-def test_f09_duplicate_egrul_is_not_resolved_silently(profile):
+def test_duplicate_egrul_is_not_resolved_silently(profile):
     m = manifest("ok_director")
     first = copy.deepcopy(doc(m, "egrul"))
     first["id"] = "egrul-0"
@@ -172,7 +166,7 @@ def test_f09_duplicate_egrul_is_not_resolved_silently(profile):
     assert verdict(m, profile) != "confirmed"
 
 
-def test_f10_duplicate_charter_is_not_resolved_silently():
+def test_duplicate_charter_is_not_resolved_silently():
     m = manifest("ok_director")
     first = copy.deepcopy(doc(m, "charter"))
     first["id"] = "charter-0"
@@ -207,7 +201,7 @@ CHARTER_VARIANTS = {
 
 
 @pytest.mark.parametrize("variant", sorted(CHARTER_VARIANTS))
-def test_f11_charter_restriction_phrasings_go_to_review(variant):
+def test_charter_restriction_phrasings_go_to_review(variant):
     """Сумма операции 480 000 ₽ выше порога 300 000 ₽ при любой записи порога.
 
     Ограничение, которое не удалось разобрать, — тоже повод для разбора, а не «подтверждено».
@@ -217,7 +211,7 @@ def test_f11_charter_restriction_phrasings_go_to_review(variant):
     assert verdict(m, "strict") == "needs_review"
 
 
-def test_f12_same_poa_number_with_different_content_is_not_confirmed():
+def test_same_poa_number_with_different_content_is_not_confirmed():
     m = manifest("ok_subdelegation")
     twin = copy.deepcopy(doc(m, "poa-root"))
     twin["id"] = "poa-root-twin"
@@ -226,13 +220,13 @@ def test_f12_same_poa_number_with_different_content_is_not_confirmed():
     assert verdict(m) != "confirmed"
 
 
-def test_f14_original_number_must_match_chain_root():
+def test_original_number_must_match_chain_root():
     m = manifest("ok_subdelegation")
     xml_set(doc(m, "poa-child"), SV, "НомДоверПерв", "11111111-2222-3333-4444-555555555555")
     assert verdict(m) != "confirmed"
 
 
-def test_f15_attribute_and_element_with_different_values_is_not_confirmed():
+def test_attribute_and_element_with_different_values_is_not_confirmed():
     m = manifest("ok")
     root = ET.fromstring(doc(m, "poa-root")["content"].encode("utf-8"))
     ET.SubElement(root.find(SV), "СрокДейст").text = "2026-01-01"
@@ -240,7 +234,7 @@ def test_f15_attribute_and_element_with_different_values_is_not_confirmed():
     assert verdict(m) != "confirmed"
 
 
-def test_f16_guid_letter_case_does_not_hide_transfer_with_loss():
+def test_guid_letter_case_does_not_hide_transfer_with_loss():
     from mandat.domain.model import Organization
     from mandat.intake.emchd import build_emchd_xml
 
@@ -261,7 +255,7 @@ def test_f16_guid_letter_case_does_not_hide_transfer_with_loss():
     assert verdict(m) == "refuted"
 
 
-def test_f17_joint_powers_of_parent_apply_to_subdelegation():
+def test_joint_powers_of_parent_apply_to_subdelegation():
     """У родительской МЧД два представителя с совместными полномочиями, передоверие подписал один."""
     m = manifest("ok_subdelegation")
     root = ET.fromstring(doc(m, "poa-root")["content"].encode("utf-8"))
@@ -279,7 +273,7 @@ def test_f17_joint_powers_of_parent_apply_to_subdelegation():
     assert verdict(m) != "confirmed"
 
 
-# --------------------------------------------------------------------------- L: строгость разбора
+# --------------------------------------------------------------------------- строгость разбора
 
 
 @pytest.mark.parametrize(
@@ -290,20 +284,20 @@ def test_f17_joint_powers_of_parent_apply_to_subdelegation():
         (SIGNER + "/СведФЛ/ФИО", "Фамилия"),
     ],
 )
-def test_l1_mandatory_format_fields_missing_is_not_confirmed(path, attr):
+def test_mandatory_format_fields_missing_is_not_confirmed(path, attr):
     m = manifest("ok")
     xml_set(doc(m, "poa-root"), path, attr, None)
     assert verdict(m) != "confirmed"
 
 
 @pytest.mark.parametrize("value", ["2026-03-01garbage", "2026-W09-7", "20260301", "1.3.2026"])
-def test_l2_malformed_issue_date_is_not_accepted(value):
+def test_malformed_issue_date_is_not_accepted(value):
     m = manifest("ok")
     xml_set(doc(m, "poa-root"), SV, "ДатаВыдДовер", value)
     assert verdict(m) != "confirmed"
 
 
-def test_l2_fullwidth_digits_are_not_a_valid_inn():
+def test_fullwidth_digits_are_not_a_valid_inn():
     from mandat.domain.identifiers import inn_valid
 
     fullwidth = W.org.inn.translate(str.maketrans("0123456789", "０１２３４５６７８９"))
@@ -312,13 +306,13 @@ def test_l2_fullwidth_digits_are_not_a_valid_inn():
 
 
 @pytest.mark.parametrize("amount", [-5, 0, "1e3", "много", True])
-def test_l2_invalid_amount_is_rejected(amount):
+def test_invalid_amount_is_rejected(amount):
     m = manifest("ok")
     m["operation"]["amount_rub"] = amount
     assert verdict(m) == "insufficient_data"
 
 
-def test_l2_amount_with_kopecks_is_not_truncated():
+def test_amount_with_kopecks_is_not_truncated():
     m = manifest("ok")
     m["operation"]["amount_rub"] = 1.9
     try:
@@ -329,7 +323,7 @@ def test_l2_amount_with_kopecks_is_not_truncated():
     assert float(report["operation"]["amount_rub"]) == pytest.approx(1.9)
 
 
-def test_l3_leaf_choice_does_not_depend_on_document_order():
+def test_leaf_choice_does_not_depend_on_document_order():
     m = manifest("ok")
     twin = copy.deepcopy(doc(m, "poa-root"))
     twin["id"] = "poa-twin"
@@ -342,7 +336,7 @@ def test_l3_leaf_choice_does_not_depend_on_document_order():
     assert verdict(first) == verdict(last)
 
 
-# --------------------------------------------------------------------------- K: объяснение и вторая свёртка
+# --------------------------------------------------------------------------- объяснение и вторая свёртка
 
 
 @pytest.mark.parametrize(
@@ -354,11 +348,8 @@ def test_l3_leaf_choice_does_not_depend_on_document_order():
         "Платёж можно провести.",
     ],
 )
-def test_k01_explainer_drops_permission_language_against_refuted_verdict(statement):
-    try:
-        from mandat.advisory.explainer import Fact, explain
-    except ImportError:  # до переименования модуля
-        from mandat.advisory.copilot import Fact, explain
+def test_explainer_drops_permission_language_against_refuted_verdict(statement):
+    from mandat.advisory.explainer import Fact, explain
 
     facts = [Fact("verdict", "Вердикт: ОПРОВЕРГНУТО"), Fact("f1", "МЧД 123 отменена в реестре")]
     raw = json.dumps({"statements": [{"text": statement, "fact_ids": ["verdict"]}]}, ensure_ascii=False)
@@ -366,7 +357,7 @@ def test_k01_explainer_drops_permission_language_against_refuted_verdict(stateme
     assert kept == [] and dropped == 1
 
 
-def test_k02_disagreement_of_two_folds_never_confirms(monkeypatch):
+def test_disagreement_of_two_folds_never_confirms(monkeypatch):
     """Вторая свёртка работает и в рабочем коде: расхождение даёт «недостаточно данных»."""
     import mandat.services.verify as verify_module
     from mandat.domain.verdict import Verdict
@@ -376,7 +367,7 @@ def test_k02_disagreement_of_two_folds_never_confirms(monkeypatch):
     assert report.verdict.value == "insufficient_data"
 
 
-# --------------------------------------------------------------------------- M: мониторинг
+# --------------------------------------------------------------------------- мониторинг
 
 RIGHTS = [
     {
@@ -413,11 +404,11 @@ def _alerts(events: list[dict]) -> list[str]:
     ],
     ids=["guid_upper", "inn_space", "inn_int", "guid_braces"],
 )
-def test_m2_revocation_matches_regardless_of_formatting(event):
+def test_revocation_matches_regardless_of_formatting(event):
     assert "poa_invalidated" in _alerts([event])
 
 
-def test_m2_revocation_without_number_is_not_silently_dropped():
+def test_revocation_without_number_is_not_silently_dropped():
     try:
         alerts = _alerts([{**REVOKED, "payload": {}}])
     except (KeyError, ValueError):
@@ -425,7 +416,7 @@ def test_m2_revocation_without_number_is_not_silently_dropped():
     assert alerts, "событие отмены без номера МЧД пропало без следа"
 
 
-def test_m1_mixed_naive_and_aware_time_keeps_revocation():
+def test_mixed_naive_and_aware_time_keeps_revocation():
     naive = {"kind": "NEW_POA", "org_inn": "7732542572", "at": "2026-10-20T10:00:00"}
     response = api_client().post("/v1/events", json={"rights": RIGHTS, "events": [REVOKED, naive]}, headers=AUTH)
     assert response.status_code == 200, response.text
@@ -433,21 +424,21 @@ def test_m1_mixed_naive_and_aware_time_keeps_revocation():
 
 
 @pytest.mark.parametrize("window", ["-1", "0", "1000000000000"])
-def test_a3_window_hours_is_validated(window):
+def test_window_hours_is_validated(window):
     response = api_client().post(
         f"/v1/events?window_hours={window}", json={"rights": RIGHTS, "events": [REVOKED]}, headers=AUTH
     )
     assert response.status_code == 422
 
 
-def test_a3_event_time_of_wrong_type_is_422():
+def test_event_time_of_wrong_type_is_422():
     response = api_client().post(
         "/v1/events", json={"rights": RIGHTS, "events": [{**REVOKED, "at": 1700000000}]}, headers=AUTH
     )
     assert response.status_code == 422
 
 
-# --------------------------------------------------------------------------- C, A: API
+# --------------------------------------------------------------------------- API
 
 
 def _egrul_of(m: dict) -> dict:
@@ -467,7 +458,7 @@ MALFORMED = {
 
 
 @pytest.mark.parametrize("name", sorted(MALFORMED))
-def test_c1_malformed_manifest_is_not_500(name):
+def test_malformed_manifest_is_not_500(name):
     m = manifest("ok")
     MALFORMED[name](m)
     response = api_client().post("/v1/cases", json=m, headers=AUTH)
@@ -476,7 +467,7 @@ def test_c1_malformed_manifest_is_not_500(name):
         assert response.json()["verdict"] == "insufficient_data"
 
 
-def test_c1_infinite_amount_is_not_500():
+def test_infinite_amount_is_not_500():
     body = json.dumps(manifest("ok"), ensure_ascii=False).replace('"amount_rub": 480000', '"amount_rub": Infinity')
     assert "Infinity" in body
     response = api_client().post(
@@ -487,7 +478,7 @@ def test_c1_infinite_amount_is_not_500():
         assert response.json()["verdict"] == "insufficient_data"
 
 
-def test_c1_issue_year_9999_without_term_is_not_500():
+def test_issue_year_9999_without_term_is_not_500():
     m = manifest("ok")
     xml_set(doc(m, "poa-root"), SV, "ДатаВыдДовер", "9999-03-01")
     xml_set(doc(m, "poa-root"), SV, "СрокДейст", None)
@@ -498,11 +489,11 @@ def test_c1_issue_year_9999_without_term_is_not_500():
 
 
 @pytest.mark.parametrize("path", ["/openapi.json", "/docs"])
-def test_a2_api_description_requires_token(path):
+def test_api_description_requires_token(path):
     assert api_client().get(path).status_code in (401, 404)
 
 
-def test_a1_unauthenticated_chunked_body_is_not_buffered():
+def test_unauthenticated_chunked_body_is_not_buffered():
     from mandat.api.app import create_app
 
     app = create_app(token="t")
@@ -540,7 +531,7 @@ def test_a1_unauthenticated_chunked_body_is_not_buffered():
     assert state["consumed"] <= 9 << 20, f"прочитано {state['consumed'] >> 20} МБ до отказа"
 
 
-# --------------------------------------------------------------------------- D: отказ в обслуживании
+# --------------------------------------------------------------------------- отказ в обслуживании
 
 
 def _long_chain(links: int, operation_date: str) -> dict:
@@ -577,7 +568,7 @@ def _long_chain(links: int, operation_date: str) -> dict:
     }
 
 
-def test_d1_long_expired_chain_is_bounded():
+def test_long_expired_chain_is_bounded():
     m = _long_chain(300, "2027-06-01")
     started = time.perf_counter()
     report = verify_case(load_case_inline(m)).as_dict()
@@ -589,7 +580,7 @@ def test_d1_long_expired_chain_is_bounded():
 
 
 @pytest.mark.parametrize("stem", ["совместн", "крупн"])
-def test_d2_charter_parsing_is_linear(stem):
+def test_charter_parsing_is_linear(stem):
     from mandat.domain.model import TextDocument
     from mandat.intake.charter import extract_charter_facts
 
@@ -598,10 +589,10 @@ def test_d2_charter_parsing_is_linear(stem):
     assert time.perf_counter() - started < 0.5
 
 
-# --------------------------------------------------------------------------- I, L4: целостность
+# --------------------------------------------------------------------------- целостность
 
 
-def test_i1_replayed_older_status_list_is_rejected(tmp_path):
+def test_replayed_older_status_list_is_rejected(tmp_path):
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     from mandat.audit import attestation
@@ -635,7 +626,7 @@ def test_i1_replayed_older_status_list_is_rejected(tmp_path):
     assert state != "действует"
 
 
-def test_i2_attest_verify_without_trusted_key_fails(tmp_path):
+def test_attest_verify_without_trusted_key_fails(tmp_path):
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     from mandat.audit import attestation
@@ -650,7 +641,7 @@ def test_i2_attest_verify_without_trusted_key_fails(tmp_path):
     assert done.returncode != 0
 
 
-def test_i3_truncation_with_rewritten_witness_is_detected_when_key_is_set(tmp_path, monkeypatch):
+def test_truncation_with_rewritten_witness_is_detected_when_key_is_set(tmp_path, monkeypatch):
     from mandat.audit import journal
 
     monkeypatch.delenv("MANDAT_JOURNAL_KEY", raising=False)
@@ -664,7 +655,7 @@ def test_i3_truncation_with_rewritten_witness_is_detected_when_key_is_set(tmp_pa
     assert not journal.verify_journal(path, key="k3y").ok
 
 
-def test_l4_journal_line_with_duplicate_keys_is_rejected(tmp_path, monkeypatch):
+def test_journal_line_with_duplicate_keys_is_rejected(tmp_path, monkeypatch):
     from mandat.audit import journal
 
     monkeypatch.delenv("MANDAT_JOURNAL_KEY", raising=False)
@@ -675,7 +666,7 @@ def test_l4_journal_line_with_duplicate_keys_is_rejected(tmp_path, monkeypatch):
     assert not journal.verify_journal(path).ok
 
 
-def test_l4_malformed_journal_line_is_reported_not_raised(tmp_path, monkeypatch):
+def test_malformed_journal_line_is_reported_not_raised(tmp_path, monkeypatch):
     from mandat.audit import journal
 
     monkeypatch.delenv("MANDAT_JOURNAL_KEY", raising=False)
@@ -684,10 +675,10 @@ def test_l4_malformed_journal_line_is_reported_not_raised(tmp_path, monkeypatch)
     assert not journal.verify_journal(path).ok
 
 
-# --------------------------------------------------------------------------- E: доказательства
+# --------------------------------------------------------------------------- доказательства
 
 
-def test_e01_evidence_matches_current_engine():
+def test_evidence_matches_current_engine():
     from mandat import ENGINE
     from mandat.intake.case_loader import load_case_dir
 
@@ -699,7 +690,7 @@ def test_e01_evidence_matches_current_engine():
         assert report.reproducibility_hash == row["reproducibility_hash"], name
 
 
-# --------------------------------------------------------------------------- H: материалы для жюри
+# --------------------------------------------------------------------------- материалы для жюри
 
 _FORBIDDEN_TRACES = re.compile("clau" + "de|anthr" + "opic|co-authored-by|/tmp/|ivan ivanov", re.IGNORECASE)
 _SKIP_DIRS = {".git", ".venv", "venv", "var", "build", "dist", "node_modules", "__pycache__"}
@@ -731,7 +722,7 @@ def _pdf_text(path: Path) -> str:
     return "\n".join(parts)
 
 
-def test_h01_no_assistant_traces_or_local_paths_in_repository():
+def test_no_assistant_traces_or_local_paths_in_repository():
     hits = []
     for path in _repo_files():
         if path.name == Path(__file__).name:
@@ -755,13 +746,13 @@ def _deck() -> Path:
     return decks[0]
 
 
-def test_h02_deck_images_have_meaningful_alt_text():
+def test_deck_images_have_meaningful_alt_text():
     xml = _office_xml(_deck())
     bad = [d for d in re.findall(r'descr="([^"]*)"', xml) if re.search(r"[/\\]|\.(png|jpe?g|svg|gif)$", d, re.I)]
     assert not bad, bad[:5]
 
 
-def test_h03_deck_text_passes_claims_lint_and_has_no_stale_numbers():
+def test_deck_text_passes_claims_lint_and_has_no_stale_numbers():
     with zipfile.ZipFile(_deck()) as archive:
         text = " ".join(
             re.sub(r"<[^>]+>", " ", archive.read(name).decode("utf-8"))

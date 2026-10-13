@@ -85,6 +85,21 @@ def normalize_snils(value: str | None) -> str:
     return _digits(value)
 
 
+def comparable_inn(value: str | None) -> str | None:
+    """ИНН для сравнения лиц: ровно 10 или 12 цифр ASCII, иначе ``None`` (сравнивать нечего)."""
+    if value and re.fullmatch(r"[0-9]{10}|[0-9]{12}", value):
+        return value
+    return None
+
+
+def comparable_snils(value: str | None) -> str | None:
+    """СНИЛС для сравнения лиц: 11 цифр ASCII, допускаются только пробелы и дефисы между ними."""
+    if not value or not re.fullmatch(r"[0-9 \-]+", value):
+        return None
+    digits = _digits(value)
+    return digits if len(digits) == 11 else None
+
+
 def normalize_poa_number(value: object) -> str | None:
     """Номер МЧД для сравнения: без пробелов и фигурных скобок, в нижнем регистре.
 

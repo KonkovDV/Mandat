@@ -16,7 +16,11 @@ def load_json(name: str) -> dict[str, Any]:
 
 
 def canonical_json(payload: Any) -> str:
-    """Каноническая запись: сортировка ключей, без пробелов (совпадает с RFC 8785 для строк и целых)."""
+    """Внутренняя запись для хешей: сортировка ключей по кодовым точкам, без пробелов.
+
+    Это не RFC 8785: порядок ключей вне BMP и запись чисел другие. Подписи удостоверений
+    используют ``mandat.audit.jcs``.
+    """
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 

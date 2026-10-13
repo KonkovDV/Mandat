@@ -34,11 +34,14 @@ class AuthorityChain:
 
     def applicable_checks(self, case: Case) -> set[str]:
         if self.kind == "paper":
-            checks = {"format", "identity", "text"}
+            checks = {"format", "identity", "text", "bankruptcy"}
             return checks | ({"charter"} if case.charter is not None else set())
-        checks = {"format", "identity", "eio", "coverage"}
+        checks = {"format", "identity", "eio", "coverage", "bankruptcy"}
         if self.kind in {"poa", "none"}:
             checks |= {"registry", "term", "signature"}
+        if self.kind == "eio_direct":
+            # Статус ЕИО по ЕГРЮЛ не доказывает, что распоряжение подписал именно он.
+            checks.add("signature")
         if self.kind == "poa" and (len(self.links) > 1 or self.missing_parents):
             checks.add("subdelegation")
         if case.charter is not None:
@@ -85,6 +88,17 @@ def build_chain(case: Case, *, max_links: int = MAX_CHAIN_LINKS) -> AuthorityCha
     )
     top = leaves[0]
     rivals = [p for p in leaves[1:] if p.issue_date == top.issue_date and p.sha256 != top.sha256]
+    others = [p for p in leaves[1:] if p.sha256 != top.sha256 and p not in rivals]
+    if others and not rivals:
+        # Несколько разных МЧД на представителя: самая новая может быть отозвана или не покрывать операцию,
+        # а более старая — действовать. Произвольный выбор листа даёт ложный отказ или ложное подтверждение,
+        # поэтому до оценки независимых цепочек решает сотрудник.
+        numbers = ", ".join(str(p.number) for p in (top, *others))
+        return AuthorityChain(
+            kind="none",
+            undecided="tie",
+            notes=(f"На представителя несколько разных МЧД ({numbers}): какую применить, решает сотрудник",),
+        )
     if rivals:
         numbers = ", ".join(str(p.number) for p in (top, *rivals))
         return AuthorityChain(

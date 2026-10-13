@@ -6,8 +6,8 @@ install:
 	$(PY) -m pip install -e ".[dev,api,cedar]"
 
 lint:
-	$(PY) -m ruff check src tests scripts
-	$(PY) -m ruff format --check src tests scripts
+	$(PY) -m ruff check src tests scripts tools
+	$(PY) -m ruff format --check src tests scripts tools
 	$(PY) -m mypy
 
 test:

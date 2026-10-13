@@ -58,7 +58,8 @@ def test_bankruptcy_port_is_honestly_not_connected():
 
 @pytest.fixture
 def api(monkeypatch):
-    pytest.importorskip("fastapi")
+    import fastapi  # noqa: F401  # защитный тест не пропускается без зависимости
+
     import mandat.api.app as module
 
     class Stub:

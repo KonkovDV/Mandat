@@ -126,7 +126,13 @@ class StatusRegistry:
         ]
 
     def mark(self, index: int, purpose: str, reason: str) -> bool:
-        """Выставляет бит; возвращает True, если статус изменился."""
+        """Выставляет бит; возвращает True, если статус изменился.
+
+        Индекс должен быть выдан через ``allocate``: иначе список не меняется. Отрицательный
+        индекс в Python адресовал бы конец строки, поэтому он отвергается до записи.
+        """
+        if not 0 <= index < self.size or str(index) not in self.entries:
+            raise ValueError(f"индекс {index} не выдан: статус не меняется")
         bits = self.lists[purpose]
         if get_bit(bits, index):
             return False

@@ -15,8 +15,9 @@ def store(request, tmp_path):
         return MemoryStore()
     if request.param == "sqlite":
         return SQLiteStore(tmp_path / "api.db")
-    fakeredis = pytest.importorskip("fakeredis")
-    pytest.importorskip("lupa")
+    import fakeredis
+    import lupa  # noqa: F401  # защитный тест не пропускается без зависимости
+
     return RedisStore(fakeredis.FakeRedis())
 
 
@@ -86,10 +87,10 @@ def test_open_store_specs(tmp_path):
 
 
 def test_api_reports_survive_between_app_instances(tmp_path):
-    pytest.importorskip("fastapi")
     import json
     from pathlib import Path
 
+    import fastapi  # noqa: F401  # защитный тест не пропускается без зависимости
     from fastapi.testclient import TestClient
 
     from mandat.api.app import create_app
@@ -107,7 +108,7 @@ def test_api_reports_survive_between_app_instances(tmp_path):
 
 
 def test_api_rate_limit_is_shared(tmp_path):
-    pytest.importorskip("fastapi")
+    import fastapi  # noqa: F401  # защитный тест не пропускается без зависимости
     from fastapi.testclient import TestClient
 
     from mandat.api.app import create_app
@@ -127,6 +128,7 @@ def test_serve_refuses_workers_without_shared_store(monkeypatch, capsys):
     monkeypatch.setenv("MANDAT_API_TOKEN", "t")
     monkeypatch.delenv("MANDAT_API_USERS", raising=False)
     monkeypatch.delenv("MANDAT_API_STORE", raising=False)
-    pytest.importorskip("uvicorn")
+    import uvicorn  # noqa: F401  # защитный тест не пропускается без зависимости
+
     assert cli.main(["serve", "--workers", "2"]) == 2
     assert "MANDAT_API_STORE" in capsys.readouterr().err

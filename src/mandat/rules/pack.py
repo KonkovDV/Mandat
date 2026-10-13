@@ -23,6 +23,7 @@ CHECKS = {
     "charter",
     "text",
     "signature",
+    "bankruptcy",
 }
 STATUSES = {"draft", "approved", "retired"}
 EFFECTS = {"supports", "refutes", "needs_review", "not_verified", "info"}

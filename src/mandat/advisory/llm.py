@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -20,6 +21,22 @@ from mandat.privacy.pii import pseudonymize
 
 DATA_BEGIN = "<<<MANDAT_DOCUMENT_DATA_BEGIN>>>"
 DATA_END = "<<<MANDAT_DOCUMENT_DATA_END>>>"
+
+
+# Ответ модели читается не больше этого объёма: больший ответ — ошибка, а не обрезанный JSON.
+MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Переадресация не выполняется: разрешённый хост не может увести запрос за контур."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        raise urllib.error.HTTPError(req.full_url, code, f"переадресация запрещена: {newurl}", headers, fp)
+
+
+def _opener() -> urllib.request.OpenerDirector:
+    # Пустой ProxyHandler: переменные HTTP(S)_PROXY окружения не перенаправляют данные клиента.
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
 
 
 class LlmDisabled(RuntimeError):
@@ -63,8 +80,11 @@ class OpenAICompatClient:
             headers["Authorization"] = f"Bearer {self.api_key}"
         url = self.base_url.rstrip("/") + "/chat/completions"
         request = urllib.request.Request(url, data=payload, headers=headers, method="POST")  # noqa: S310
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:  # noqa: S310
-            body = json.loads(response.read().decode("utf-8"))
+        with _opener().open(request, timeout=self.timeout) as response:
+            raw = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(raw) > MAX_RESPONSE_BYTES:
+            raise ValueError(f"ответ модели больше {MAX_RESPONSE_BYTES} байт")
+        body = json.loads(raw.decode("utf-8"))
         return str(body["choices"][0]["message"]["content"])
 
 
@@ -78,7 +98,8 @@ CHARTER_PROMPT = (
 
 
 def charter_messages(text: str) -> list[dict[str, str]]:
-    safe = pseudonymize(text)
+    # Маркеры границ данных в самом тексте убираются: документ не может «закрыть» блок данных.
+    safe = pseudonymize(text).replace(DATA_BEGIN, "").replace(DATA_END, "")
     return [
         {"role": "system", "content": CHARTER_PROMPT},
         {"role": "user", "content": f"{DATA_BEGIN}\n{safe}\n{DATA_END}"},

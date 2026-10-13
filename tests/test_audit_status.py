@@ -196,3 +196,19 @@ def test_effect_model_has_no_hidden_defaults(root: Path):
     assert out["incident_scenario_rub"] == 0
     with pytest.raises(ValueError):
         effect(cases=1, coverage=1.5, t_manual=1, t_auto=0, rate=1)
+
+
+def test_repeated_classifier_code_is_rejected():
+    payload = {
+        "classifier_id": "c",
+        "version": "1",
+        "entries": [
+            {"code": "1_X", "name": "a", "started": "2022-03-01", "revoked": "2024-01-01"},
+            {"code": "1_X", "name": "a", "started": "2022-03-01", "revoked": None},
+        ],
+    }
+    with pytest.raises(ValueError, match="1_X"):
+        from_payload(payload)
+    raw = b"CODE;NAME;STARTED;REVOKED\n1_X;a;2022-03-01;2024-01-01\n1_X;a;2022-03-01;\n"
+    with pytest.raises(ValueError, match="1_X"):
+        import_esnsi(raw, source="dup.csv")

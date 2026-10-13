@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-10-13T10:17:00+00:00",
+  "generated_at": "2026-10-13T11:57:11+00:00",
   "engine": "mandat/0.3.0",
   "python": "3.13.5",
   "rule_pack": {
     "pack_id": "mandat-rules-ru",
     "version": "2026.10.2",
     "status": "draft",
-    "sha256": "aa0b6d71998aad4055e1079006664173a619f8b5414fcdbdd9d393c7379d9675",
-    "rules": 36
+    "sha256": "c4992b50ed8715b652f752c1576416fba7762dc8776fb2b5da99fc9d7385a1eb",
+    "rules": 39
   },
   "operations_catalog": {
     "version": "2026.10.2",
@@ -19,59 +19,59 @@
     "results": {
       "01_ok": {
         "verdict": "needs_review",
-        "reproducibility_hash": "23547465ed2bb1a1e5fa645b7a38cd051a501da5a03d3b779aa322b873ac6564"
+        "reproducibility_hash": "d42cffdcc4ac5b41b90a7640224e456e459fd475a6e92ea767c514334c7eb48a"
       },
       "02_director_without_poa": {
         "verdict": "needs_review",
-        "reproducibility_hash": "bb0c8abbd8136e362e443c178e24ca855c2006da1a5fd27b1ffaae838307c99b"
+        "reproducibility_hash": "e517608293df33d28c52f22bd94a3d97ff725df0b4c71bf8852a2088709b8f6a"
       },
       "03_subdelegation_ok": {
         "verdict": "needs_review",
-        "reproducibility_hash": "457b7a5a15ce06013ac63666c117a031938fb3d29f41b3a7020ebad82fe48490"
+        "reproducibility_hash": "00eb587f477b4edde811e5a086e084cc824393dbb78a5eeed5e24ce848080608"
       },
       "04_subdelegation_forbidden": {
         "verdict": "refuted",
-        "reproducibility_hash": "7b3edac8367dd3d72bd0bff2179cf4cc6aacb87a1405b46848b27e65912cce76"
+        "reproducibility_hash": "3a847c49de440fb84fdb831f3311331abc471582ce550075d29c6489f672a768"
       },
       "05_director_changed": {
         "verdict": "needs_review",
-        "reproducibility_hash": "cf739c6d0fa788a81b85e70f3b311c785d5e9c1828d881a3e81cd3899242a0e4"
+        "reproducibility_hash": "c209c8d55f4f2bd8f6f7d2ba77c1905e04dab87de66232ed33f9342c103251e3"
       },
       "06_text_authority": {
         "verdict": "needs_review",
-        "reproducibility_hash": "da6d393b862f031bd4ff4c8650239a3bdcc783dd79bd1e7bb39059e2f1344087"
+        "reproducibility_hash": "6475dc69f7c36f79f6c5836e6bed2dd56ec57cb40872bb0ae7e91c1e0de358a3"
       },
       "07_revoked": {
         "verdict": "refuted",
-        "reproducibility_hash": "f633a9267020cb16d5104db66dd0e9c9d3961ba5745f5c6d6da57ff369f31bf3"
+        "reproducibility_hash": "9dd536cd428230a78d060ab75a752d5ea9e6facb244d3da3820f69923d5781c3"
       },
       "08_registry_unavailable": {
         "verdict": "insufficient_data",
-        "reproducibility_hash": "33a6c46ed25d29e8283ca81638f65506b23999bdae45d34c8c99d06d6b570b06"
+        "reproducibility_hash": "5892148f1838138ecf8f22bfb7d79bbd98a5c068b9c2a39d61cccb74c357f56e"
       },
       "09_charter_limit": {
         "verdict": "needs_review",
-        "reproducibility_hash": "ab1c6865a33a5a481bd73137ad3b1fcc2675cafc22d996d8c3c3272031113494"
+        "reproducibility_hash": "974ad1c7f5e8696dbbcac2b68c1bece36b47ba2f5dbc520d07d7a072316bf8cc"
       },
       "10_old_director_poa": {
         "verdict": "needs_review",
-        "reproducibility_hash": "c2a58e5392987620ec74e6725ce7a0e5ffe2cfe90f22090bd1d82dd4d73345d7"
+        "reproducibility_hash": "2ce3f814effe7b0562f4567652dc7a9cafcfa50d11f02e57faefda2847ce7aa6"
       },
       "11_parent_revoked": {
         "verdict": "refuted",
-        "reproducibility_hash": "c1385bbc68db24e7748e238ed3095308cd41510dfb7d73dc62d25e246b868af0"
+        "reproducibility_hash": "69ed3cd135a1402e188eeee4314e0ade4d758c0f7e72289e26512ac68a5f226e"
       },
       "12_no_term": {
         "verdict": "needs_review",
-        "reproducibility_hash": "2fa304f8aeddf96fb93c7091090a22c75f9871d38c6171362dc5854ff4c46af9"
+        "reproducibility_hash": "e898a902e98b6c9d83609f4fcc3165a056777ab3cc064c014feee10dde0c4a78"
       },
       "13_bankruptcy": {
         "verdict": "refuted",
-        "reproducibility_hash": "509fc87216ba117743f2a1854a35051439ef4f87aa57151a786ad9e1714dbb72"
+        "reproducibility_hash": "9ffec41c7933a5477b4629a81f0e731a919686d3d906254077534f3ab26bc810"
       },
       "14_old_director_charter_cleared": {
         "verdict": "confirmed",
-        "reproducibility_hash": "b338868cb798d53ea625eb9019c25a58657573b8e1a9f1172310c6ef9e42eb7f"
+        "reproducibility_hash": "cd0b43a4db119c23c93a5a02b569b27129f3be49533aa0af235f8b792936b239"
       }
     }
   },
@@ -128,15 +128,15 @@
   "latency": {
     "command": "python scripts/bench.py --rounds 20",
     "cases": 280,
-    "median_ms": 1.67,
-    "p95_ms": 2.35,
+    "median_ms": 1.93,
+    "p95_ms": 2.82,
     "machine": "x86_64, Python 3.13.5",
-    "scope": "разбор XML и JSON, 36 правил, свёртка, отчёт; без сети и без модели"
+    "scope": "разбор XML и JSON, 39 правил, свёртка, отчёт; без сети и без модели"
   },
   "tests": {
     "command": "python -m pytest -q",
     "returncode": 0,
-    "summary": "322 passed in 6.32s",
-    "passed": 322
+    "summary": "584 passed in 48.89s",
+    "passed": 584
   }
 }

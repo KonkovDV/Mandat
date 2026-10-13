@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -27,14 +28,41 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from mandat import ENGINE, __version__
 from mandat.api.principals import Directory, Principal, load_users
 from mandat.api.storage import Store, open_store
+from mandat.audit import journal
 from mandat.intake.case_loader import CaseError, load_case_inline
 from mandat.report.html import render
+from mandat.services.env_policy import PROFILES, ProfileNotAllowed, protected, resolve_profile
 from mandat.services.monitoring import evaluate, parse_events
 from mandat.services.verify import verify_case
 
 MAX_BODY = 8 * 1024 * 1024
 OPEN_PATHS = {"/health"}
+# Глубина вложенности JSON. Глубокий массив в 2 КБ вызывал RecursionError при разборе ошибки валидации (500).
+MAX_JSON_DEPTH = 64
 SECURITY_HEADERS = [(b"cache-control", b"no-store"), (b"x-content-type-options", b"nosniff")]
+
+
+def json_depth_exceeds(body: bytes, limit: int = MAX_JSON_DEPTH) -> bool:
+    """Глубина скобок ``[`` и ``{`` вне строк превышает ``limit``. Линейный проход без разбора JSON."""
+    depth = 0
+    in_string = escaped = False
+    for byte in body:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif byte == 0x5C:  # обратная косая черта
+                escaped = True
+            elif byte == 0x22:
+                in_string = False
+        elif byte == 0x22:
+            in_string = True
+        elif byte in (0x5B, 0x7B):
+            depth += 1
+            if depth > limit:
+                return True
+        elif byte in (0x5D, 0x7D):
+            depth -= 1
+    return False
 
 
 class Guard:
@@ -96,6 +124,10 @@ class Guard:
                 if not message.get("more_body", False):
                     break
 
+        if messages and json_depth_exceeds(b"".join(m.get("body", b"") for m in messages)):
+            await reply(400, f"слишком глубокая вложенность JSON (более {MAX_JSON_DEPTH})")
+            return
+
         async def replay() -> dict[str, Any]:
             return messages.pop(0) if messages else await receive()
 
@@ -122,6 +154,7 @@ def create_app(
     docs: bool | None = None,
     rate_per_min: int | None = None,
     store: Store | None = None,
+    journal_path: Path | None = None,
 ) -> FastAPI:
     expected = token if token is not None else os.environ.get("MANDAT_API_TOKEN", "")
     directory = Directory(load_users(users), expected)
@@ -135,6 +168,8 @@ def create_app(
         redoc_url=None,
     )
     shared = store if store is not None else open_store()
+    env_journal = os.environ.get("MANDAT_API_JOURNAL", "").strip()
+    audit_log = journal_path if journal_path is not None else (Path(env_journal) if env_journal else None)
 
     app.add_middleware(Guard, directory=directory, limit=limit, store=shared)
 
@@ -172,12 +207,16 @@ def create_app(
     @app.post("/v1/cases")
     def create_case(
         manifest: dict[str, Any],
-        profile: str = "demo",
+        profile: str | None = None,
         replace: bool = False,
         principal: Principal = Depends(writer),
     ) -> dict[str, Any]:
-        if profile not in {"demo", "strict"}:
+        if profile is not None and profile not in PROFILES:
             raise HTTPException(422, "profile: demo или strict")
+        try:
+            profile = resolve_profile(profile)
+        except ProfileNotAllowed as exc:
+            raise HTTPException(403, str(exc)) from exc
         client_ref = manifest.get("case_id")
         if directory.multi_user:
             manifest = {**manifest, "case_id": f"case-{secrets.token_hex(8)}"}
@@ -194,6 +233,23 @@ def create_app(
             raise HTTPException(409, "кейс с таким case_id принадлежит другому пользователю")
         if directory.multi_user and client_ref is not None:
             report = {**report, "client_case_id": str(client_ref)}
+        if audit_log is None and protected():
+            raise HTTPException(503, "журнал аудита не настроен: задайте MANDAT_API_JOURNAL")
+        if audit_log is not None:
+            # Сначала журнал, потом хранилище: отчёт без записи в журнале не появляется. Если хранилище
+            # упадёт после журнала, в журнале останется запись о проверке без сохранённого отчёта — это видно.
+            try:
+                journal.append(
+                    audit_log,
+                    action="verify",
+                    actor=principal.name,
+                    role=principal.role,
+                    case_id=case_id,
+                    payload_hash=report["reproducibility_hash"],
+                    details={"verdict": report["verdict"], "profile": report["profile"], "via": "api"},
+                )
+            except (ValueError, OSError, journal.JournalKeyMissing) as exc:
+                raise HTTPException(503, f"журнал аудита недоступен, кейс не сохранён: {exc}") from exc
         shared.put(case_id, report, principal.name, MAX_REPORTS)
         return report
 

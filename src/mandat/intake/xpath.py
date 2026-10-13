@@ -23,16 +23,19 @@ def _split(path: str) -> tuple[list[str], str | None]:
 def _walk(node: Element, parts: list[str]) -> tuple[Element | None, list[int]]:
     indexes: list[int] = []
     for part in parts:
-        found = node.find(part)
-        if found is None:
+        found = node.findall(part)
+        if not found:
             return None, indexes
-        node = found
+        if len(found) > 1:
+            # Одиночный элемент записан дважды (схема это запрещает): первое значение не выбираем молча.
+            raise AmbiguousField(f"элемент {part} повторяется {len(found)} раза")
+        node = found[0]
         indexes.append(1)
     return node, indexes
 
 
 class AmbiguousField(ValueError):
-    """Поле записано и атрибутом, и элементом: какое значение верное, решать не нам."""
+    """Поле записано и атрибутом, и элементом или элемент повторяется: какое значение верное, решать не нам."""
 
 
 def read(node: Element, path: str) -> str | None:

@@ -336,3 +336,28 @@ def test_unknown_egrul_history_is_not_active():
     assert unknown.active_on(date(2026, 10, 20)) is False
     known = snapshot.executives[0]
     assert known.valid_from is not None and known.active_on(date(2026, 10, 20)) is True
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "Иванов уполномочен подписывать платёжные поручения.",
+        "Представитель имеет полномочия подписать платёж.",
+        "Иванов наделён полномочиями на подписание платежей.",
+        "Представитель правомочен подписать платёж.",
+    ],
+)
+def test_explainer_drops_authority_wording_when_verdict_is_not_confirmed(statement):
+    facts = [Fact("verdict", "Вердикт: на разбор"), Fact("f1", "Полномочие из МЧД покрывает подписание платежей")]
+    raw = json.dumps({"statements": [{"text": statement, "fact_ids": ["f1"]}]}, ensure_ascii=False)
+    kept, dropped = explain("Можно ли подписывать?", facts, lambda _messages: raw)
+    assert kept == [] and dropped == 1
+
+
+def test_explainer_keeps_negated_authority_wording():
+    facts = [Fact("verdict", "Вердикт: опровергнуто"), Fact("f1", "МЧД отменена, представитель не уполномочен")]
+    raw = json.dumps(
+        {"statements": [{"text": "Представитель не уполномочен.", "fact_ids": ["f1"]}]}, ensure_ascii=False
+    )
+    kept, _ = explain("почему?", facts, lambda _messages: raw)
+    assert [s.text for s in kept] == ["Представитель не уполномочен."]

@@ -1,0 +1,43 @@
+{
+  "credential": {
+    "@context": [
+      "https://www.w3.org/ns/credentials/v2"
+    ],
+    "credentialSubject": {
+      "authorityChain": [
+        "1e49fe86-a74e-ae72-3582-75872dfaf26b"
+      ],
+      "inputs": [
+        "c0ec25637c754543014e28e9432aa005e9c6d4a0021148ac7b251654126ac4df",
+        "9f31ea4ff4ba83230f36e6b238106835153d63454d6ff43f1ce636cdda2a7ca0",
+        "ecc56d3e858431a0c24c88d84a8321914b7fdcb841a7a254bd8f4834396bef36"
+      ],
+      "operation": "PAYMENT_SIGN",
+      "operationDate": "2026-10-20",
+      "organizationInn": "7732542572",
+      "profile": "demo",
+      "reportSha256": "ac4c223bc2312360ab02f94b27bdd6c3c1f4d9dc9182ecf4b3f28b562ab35097",
+      "representativeInnSha256": "de2b92eee867762d73b8a8bf78e2fa1f06f6eb36d7e15f93678aa03160fafcbd",
+      "ruleSetSha256": "49217ed8b0e3dcf772468ad7f545eec5767878ec550d7f0dd1311ab307c4bdda",
+      "verdict": "needs_review"
+    },
+    "issuer": "did:web:mandat.example",
+    "proof": {
+      "@context": [
+        "https://www.w3.org/ns/credentials/v2"
+      ],
+      "created": "2026-10-01T09:00:00+00:00",
+      "cryptosuite": "eddsa-jcs-2022",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "z58J7vtVc1uBEAkEMTiuK9qQEtM9rULz7gKnYatVzcgPJEQgxf1MD9nDHu63w3HsGiiqoWBHkmBekmPeWB3Lj3yDT",
+      "type": "DataIntegrityProof",
+      "verificationMethod": "did:web:mandat.example#z6MkfqPhyoyqLu1sSaRtCoKC7jRdp14me8o34LAFvFQjeRBg"
+    },
+    "type": [
+      "VerifiableCredential",
+      "MandatAuthorityAttestation"
+    ],
+    "validFrom": "2026-10-01T09:00:00+00:00"
+  },
+  "publicKeyMultibase": "z6MkfqPhyoyqLu1sSaRtCoKC7jRdp14me8o34LAFvFQjeRBg"
+}

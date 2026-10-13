@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from mandat.domain.model import EvidenceRef, ExtractionMethod, Finding, TextDocument
@@ -25,6 +26,25 @@ class GateResult:
     dropped: tuple[str, ...]
 
 
+def _confidence(raw: object) -> float | None:
+    """Уверенность модели: конечное число от 0 до 1, не boolean и не строка. Иначе ``None``."""
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    value = float(raw)
+    return value if math.isfinite(value) and 0.0 <= value <= 1.0 else None
+
+
+def _amount(raw: object) -> int | None:
+    """Сумма из ответа модели: только целое неотрицательное число без потери точности, не boolean."""
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        return raw if raw >= 0 else None
+    if isinstance(raw, float) and math.isfinite(raw) and raw.is_integer() and raw >= 0:
+        return int(raw)
+    return None
+
+
 def ground_candidates(raw: list[dict], doc: TextDocument, *, min_confidence: float = 0.5) -> GateResult:
     """Оставляем только кандидатов с цитатой из документа и достаточной уверенностью."""
     accepted: list[CandidateFact] = []
@@ -32,12 +52,15 @@ def ground_candidates(raw: list[dict], doc: TextDocument, *, min_confidence: flo
     for item in raw:
         quote = str(item.get("quote") or "")
         kind = str(item.get("kind") or "")
-        confidence = float(item.get("confidence", 0.0) or 0.0)
+        confidence = _confidence(item.get("confidence"))
         if kind not in {"approval_threshold", "joint_signature", "large_deal_approval"}:
             dropped.append(f"неизвестный вид факта {kind!r}")
             continue
         if not quote_is_grounded(quote, doc.text):
             dropped.append("цитата не найдена в документе")
+            continue
+        if confidence is None:
+            dropped.append("уверенность не число от 0 до 1: кейс уходит человеку")
             continue
         if confidence < min_confidence:
             dropped.append("низкая уверенность: кейс уходит человеку")
@@ -48,7 +71,7 @@ def ground_candidates(raw: list[dict], doc: TextDocument, *, min_confidence: flo
         accepted.append(
             CandidateFact(
                 kind,
-                int(value) if isinstance(value, (int, float)) else None,
+                _amount(value),
                 quote,
                 EvidenceRef(doc.doc_id, doc.sha256, locator, quote=quote[:400]),
                 ExtractionMethod.LLM_ADVISORY,

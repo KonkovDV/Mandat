@@ -73,7 +73,7 @@ def test_numeric_identifiers_are_rejected(root, section, key):
 
 
 def test_api_rejects_numeric_inn_with_422(root):
-    pytest.importorskip("fastapi")
+    import fastapi  # noqa: F401  # защитный тест не пропускается без зависимости
     from fastapi.testclient import TestClient
 
     from mandat.api.app import create_app
@@ -87,7 +87,7 @@ def test_api_rejects_numeric_inn_with_422(root):
 
 
 def test_shared_token_does_not_work_next_to_users():
-    pytest.importorskip("fastapi")
+    import fastapi  # noqa: F401  # защитный тест не пропускается без зависимости
     from fastapi.testclient import TestClient
 
     from mandat.api.app import create_app
@@ -100,7 +100,7 @@ def test_shared_token_does_not_work_next_to_users():
 
 
 def test_rate_limit_ignores_forwarded_for():
-    pytest.importorskip("fastapi")
+    import fastapi  # noqa: F401  # защитный тест не пропускается без зависимости
     from fastapi.testclient import TestClient
 
     from mandat.api.app import create_app
@@ -114,7 +114,7 @@ def test_rate_limit_ignores_forwarded_for():
 
 
 def test_chunked_body_over_limit_is_rejected():
-    pytest.importorskip("fastapi")
+    import fastapi  # noqa: F401  # защитный тест не пропускается без зависимости
     from fastapi.testclient import TestClient
 
     from mandat.api.app import MAX_BODY, create_app

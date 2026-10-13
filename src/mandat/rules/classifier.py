@@ -61,7 +61,21 @@ def _d(value: Any) -> date | None:
     return date.fromisoformat(text[:10])
 
 
+def _no_repeats(codes: list[str]) -> None:
+    """Код классификатора встречается один раз: какая из двух записей верна, не выбираем."""
+    seen: set[str] = set()
+    repeated: set[str] = set()
+    for code in codes:
+        if code in seen:
+            repeated.add(code)
+        seen.add(code)
+    if repeated:
+        raise ValueError("коды классификатора повторяются: " + ", ".join(sorted(repeated)))
+
+
 def from_payload(payload: dict[str, Any]) -> Classifier:
+    rows = payload.get("entries") or []
+    _no_repeats([str(row["code"]) for row in rows])
     entries = {
         str(row["code"]): ClassifierEntry(
             code=str(row["code"]),
@@ -70,7 +84,7 @@ def from_payload(payload: dict[str, Any]) -> Classifier:
             started=_d(row.get("started")),
             revoked=_d(row.get("revoked")),
         )
-        for row in payload.get("entries") or []
+        for row in rows
     }
     return Classifier(
         classifier_id=str(payload.get("classifier_id")),
@@ -115,6 +129,7 @@ def import_esnsi(raw: bytes, *, source: str) -> dict[str, Any]:
         entries.append(entry)
     if not entries:
         raise ValueError("в выгрузке нет записей с полем CODE")
+    _no_repeats([str(entry["code"]) for entry in entries])
     return {
         "classifier_id": "esnsi-authority-classifier",
         "version": date.today().isoformat(),

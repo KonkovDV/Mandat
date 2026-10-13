@@ -20,7 +20,7 @@ def h(name):
 
 @pytest.fixture
 def client(monkeypatch):
-    pytest.importorskip("fastapi")
+    import fastapi  # noqa: F401  # защитный тест не пропускается без зависимости
     from fastapi.testclient import TestClient
 
     import mandat.api.app as module
@@ -67,7 +67,7 @@ def test_unknown_token_and_health(client):
 
 
 def test_single_token_mode_still_works(monkeypatch):
-    pytest.importorskip("fastapi")
+    import fastapi  # noqa: F401  # защитный тест не пропускается без зависимости
     from fastapi.testclient import TestClient
 
     import mandat.api.app as module

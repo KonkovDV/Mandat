@@ -29,8 +29,8 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install --upgrade pip "setuptools>=83"
       - run: python -m pip install -e ".[dev,api,cedar,redis]"
-      - run: python -m ruff check src tests scripts
-      - run: python -m ruff format --check src tests scripts
+      - run: python -m ruff check src tests scripts tools
+      - run: python -m ruff format --check src tests scripts tools
       - run: python -m mypy
       - run: python -m pytest
       - run: python scripts/lint_claims.py

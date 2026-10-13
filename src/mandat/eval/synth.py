@@ -80,7 +80,7 @@ DEFECTS: dict[str, str] = {
     "missing_parent": "insufficient_data",
     "malformed_xml": "insufficient_data",
     "xml_bomb": "insufficient_data",
-    # Виды 0.3.0: пути к ложному «подтверждено», найденные аудитом 13.10.2026 (tests/test_audit_regressions.py).
+    # Виды 0.3.0: пути к ложному «подтверждено», закреплённые в tests/test_regressions.py.
     "sub_signer_stranger": "refuted",
     "sub_child_before_parent": "refuted",
     "snils_of_other_person": "needs_review",
@@ -172,11 +172,13 @@ class World:
             rng=rng,
             org=org,
             director=person(False, "Генеральный директор"),
-            accountant=person(True),
-            deputy=person(False),
+            # Должности нужны МЧД в порядке передоверия: её подписывает представитель, и должность
+            # подписанта у такой МЧД — открытый вопрос формата (без неё проверка уходит на разбор).
+            accountant=person(True, "Главный бухгалтер"),
+            deputy=person(False, "Заместитель генерального директора"),
             stranger=person(False),
-            clerk1=person(True),
-            clerk2=person(False),
+            clerk1=person(True, "Специалист"),
+            clerk2=person(False, "Специалист"),
         )
 
     @property

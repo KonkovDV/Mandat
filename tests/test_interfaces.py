@@ -64,7 +64,7 @@ def test_case_loader_blocks_path_traversal(tmp_path: Path):
 
 
 def test_api_closed_without_token_and_works_with_token():
-    pytest.importorskip("fastapi")
+    import fastapi  # noqa: F401  # защитный тест не пропускается без зависимости
     from fastapi.testclient import TestClient
 
     from mandat.api.app import create_app
@@ -93,8 +93,9 @@ def test_api_closed_without_token_and_works_with_token():
 
 
 def test_api_caps_body_and_rejects_odd_token():
-    pytest.importorskip("fastapi")
     import asyncio
+
+    import fastapi  # noqa: F401  # защитный тест не пропускается без зависимости
 
     from mandat.api.app import create_app
 
@@ -146,7 +147,7 @@ def test_rules_doc_is_up_to_date(root: Path):
 
 
 def test_api_keeps_a_bounded_number_of_reports(monkeypatch):
-    pytest.importorskip("fastapi")
+    import fastapi  # noqa: F401  # защитный тест не пропускается без зависимости
     from fastapi.testclient import TestClient
 
     import mandat.api.app as api

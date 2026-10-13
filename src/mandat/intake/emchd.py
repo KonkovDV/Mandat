@@ -1,8 +1,12 @@
 """Разбор единой МЧД (формат 003, EMCHD_1) по файлу соответствия ``data/emchd_003_mapping.json``.
 
-Код не знает имён тегов: они лежат в файле соответствия. Когда появится официальная
-XSD, правится только JSON. Писатель ``build_emchd_xml`` использует тот же файл и
-нужен синтетическому корпусу и тестам.
+Код не знает имён тегов: они лежат в файле соответствия, сверенном с XSD EMCHD_1. Разбираются обе ветви
+схемы: ``Документ/Довер`` (первичная доверенность) и ``Документ/Передов`` (в порядке передоверия).
+Документ может быть в пространстве имён EMCHD_1 или без него; другое пространство имён — ошибка.
+
+Писатель ``build_emchd_xml`` использует тот же файл и нужен синтетическому корпусу и тестам. Он пишет
+только ветвь ``Довер`` без пространства имён и без реквизитов, которые проверки не читают, поэтому его
+вывод схему XSD не проходит: совпадение писателя и разборщика соответствия формату не доказывает.
 """
 
 from __future__ import annotations
@@ -20,6 +24,20 @@ from mandat.intake import xpath
 from mandat.intake.xml_safety import safe_fromstring
 
 REQUIRED = ("number", "issue_date", "principal.inn", "signer.inn")
+# Без этих полей документ разбирается, но формат не соблюдён: R-FMT-001 не даёт по нему «подтверждено».
+FORMAT_REQUIRED = (
+    "subdelegation",
+    "kind",
+    "principal_type",
+    "principal.name",
+    "signer.last_name",
+    "signer.first_name",
+)
+# СрокДейст и ВерсФорм по XSD тоже обязательны, их отсутствие разбирают R-TERM-001 и R-FMT-002.
+# ПрСовмПолн обязателен, без него R-SUB-009 и проверка нескольких представителей не дают подтверждения.
+
+# По XSD необязательны, но без них проверки цепочки и реестра не провести: МЧД без них не подтверждается.
+POLICY_REQUIRED = ("principal.ogrn",)
 
 
 class EmchdError(ValueError):
@@ -48,44 +66,137 @@ def _fio(values: dict[str, str | None]) -> str | None:
     return joined or None
 
 
+def _strip_namespace(root: Element, namespace: str) -> None:
+    """Снимает пространство имён EMCHD_1 с элементов. Элементы чужого пространства имён остаются как есть."""
+    prefix = "{" + namespace + "}"
+    for node in root.iter():
+        if isinstance(node.tag, str) and node.tag.startswith(prefix):
+            node.tag = node.tag[len(prefix) :]
+
+
+def _read_any(root: Element, paths: str | list[str] | None) -> tuple[str | None, str | None]:
+    """Значение по одному из путей. Если значение есть по двум путям сразу, какое верное — не выбираем."""
+    if paths is None:
+        return None, None
+    found = [(xpath.read(root, p), p) for p in ([paths] if isinstance(paths, str) else paths)]
+    found = [(v, p) for v, p in found if v is not None]
+    if len(found) > 1:
+        raise xpath.AmbiguousField("значение указано в нескольких местах")
+    return found[0] if found else (None, None)
+
+
+def _layout(root: Element, spec: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str], str | None]:
+    """Пути полей и списков для ветви документа. Возвращает поля, списки и признак ветви ``Передов``."""
+    fields: dict[str, Any] = {key: field["path"] for key, field in spec["fields"].items()}
+    lists = {key: item["path"] for key, item in spec["lists"].items()}
+    transfer = spec["transfer"]
+    if root.find(transfer["marker"]) is None:
+        return fields, lists, None
+    if root.find(spec["direct_marker"]) is not None:
+        raise EmchdError("в документе одновременно ветви Довер и Передов")
+    fields.update(transfer["fields"])
+    lists.update(transfer["lists"])
+    return fields, lists, transfer["marker"]
+
+
 def parse_emchd(data: bytes | str, *, doc_id: str) -> PowerOfAttorney:
     raw = data.encode("utf-8") if isinstance(data, str) else data
     sha = hashlib.sha256(raw).hexdigest()
     root = safe_fromstring(raw)
     spec = mapping()
     root_tag = spec["root"]
+    if root.tag == "{" + spec["namespace"] + "}" + root_tag:
+        _strip_namespace(root, spec["namespace"])
     if root.tag != root_tag:
-        raise EmchdError(f"корневой элемент {root.tag!r}, ожидался {root_tag!r}")
+        namespace = spec["namespace"]
+        raise EmchdError(f"корневой элемент {root.tag!r}, ожидался {root_tag!r} в пространстве имён {namespace}")
 
+    paths, list_paths, transfer = _layout(root, spec)
     values: dict[str, str | None] = {}
     refs: dict[str, EvidenceRef] = {}
-    for key, field in spec["fields"].items():
+    for key, field_paths in paths.items():
         try:
-            value = xpath.read(root, field["path"])
+            value, used = _read_any(root, field_paths)
         except xpath.AmbiguousField as exc:
             raise EmchdError(f"поле {key}: {exc}") from exc
         values[key] = value
-        if value is not None:
-            refs[key] = EvidenceRef(doc_id, sha, xpath.locator(root_tag, field["path"]), quote=value)
+        if value is not None and used is not None:
+            refs[key] = EvidenceRef(doc_id, sha, xpath.locator(root_tag, used), quote=value)
+    if transfer and not values.get("parent_number"):
+        # Передоверие первичной доверенности: номер родителя совпадает с номером первоначальной.
+        values["parent_number"] = values.get("original_number")
+        if "original_number" in refs:
+            refs["parent_number"] = refs["original_number"]
 
     missing = [key for key in REQUIRED if not values.get(key)]
     if missing:
         raise EmchdError("нет обязательных полей: " + ", ".join(missing))
 
+    gaps = [key for key in FORMAT_REQUIRED if not values.get(key)]
+    for key, allowed in spec["enums"].items():
+        if values.get(key) is not None and values[key] not in allowed:
+            gaps.append(f"{key}.value")
+    rep_type_path = spec["transfer"]["representative_type_path"] if transfer else spec["representative_type_path"]
+    holder_path, rep_attr = rep_type_path.rsplit("/@", 1)
+    for index, holder in enumerate(root.findall(holder_path), start=1):
+        code = holder.get(rep_attr)
+        if code not in spec["enums"]["representative_type"]:
+            gaps.append(f"representative_type.{index}" + ("" if code is None else ".value"))
+    subdelegator_kind = None
+    if transfer:
+        sub_spec = spec["transfer"]
+        type_holder, type_attr = sub_spec["subdelegator_type_path"].rsplit("/@", 1)
+        sub_type = root.findall(type_holder)
+        sub_code = sub_type[0].get(type_attr) if len(sub_type) == 1 else None
+        if sub_code not in spec["enums"]["subdelegator_type"]:
+            gaps.append("subdelegator_type" + ("" if sub_code is None else ".value"))
+        sub_nodes = root.findall(sub_spec["subdelegator_path"])
+        subdelegator_kind = (
+            _representative_kind(sub_nodes[0], sub_spec["subdelegator_kinds"]) if len(sub_nodes) == 1 else "unknown"
+        )
+    # Нотариальное удостоверение принимается только с реквизитами, обязательными по XSD.
+    # Пустой элемент или элемент без реквизитов — пробел формата.
+    notary_nodes = root.findall(spec["transfer"]["notarization_path"] if transfer else spec["notarization_path"])
+    notarized = False
+    if len(notary_nodes) > 1:
+        raise EmchdError("сведения о нотариальном удостоверении указаны несколько раз")
+    if notary_nodes:
+        try:
+            details = [xpath.read(notary_nodes[0], path) for path in spec["notarization_details"]]
+        except xpath.AmbiguousField as exc:
+            raise EmchdError(f"нотариальное удостоверение: {exc}") from exc
+        notarized = all(details)
+        if not notarized:
+            gaps.append("notarization.details")
+    policy = [key for key in POLICY_REQUIRED if not values.get(key)]
+    questions: list[str] = []
+    if not values.get("signer.position"):
+        # По XSD должность подписанта необязательна в обеих ветвях. При передоверии подписывает представитель:
+        # нужна ли тогда должность, решает юрист, до ответа МЧД уходит на разбор. В первичной МЧД без должности
+        # не проверить, что подписал руководитель, поэтому подтверждения нет.
+        if values.get("parent_number"):
+            questions.append("signer.position")
+        else:
+            policy.append("signer.position")
     reps: list[Person] = []
+    kinds: list[str] = []
     rep_spec = spec["lists"]["representatives"]
-    for index, node in enumerate(root.findall(rep_spec["path"]), start=1):
+    for index, node in enumerate(root.findall(list_paths["representatives"]), start=1):
+        kinds.append(_representative_kind(node, spec["representative_kinds"]))
         fields = {name: xpath.read(node, sub) for name, sub in rep_spec["fields"].items()}
         reps.append(Person(full_name=_fio(fields), inn=fields.get("inn"), snils=fields.get("snils")))
+        if not fields.get("last_name") or not fields.get("first_name"):
+            gaps.append(f"representative.{index}.fio")
         refs[f"representative.{index}"] = EvidenceRef(
-            doc_id, sha, xpath.locator(root_tag, rep_spec["path"], index), quote=_fio(fields)
+            doc_id, sha, xpath.locator(root_tag, list_paths["representatives"], index), quote=_fio(fields)
         )
 
     authorities: list[Authority] = []
     machine = spec["lists"]["authorities_machine"]
-    for index, node in enumerate(root.findall(machine["path"]), start=1):
+    for index, node in enumerate(root.findall(list_paths["authorities_machine"]), start=1):
         fields = {name: xpath.read(node, sub) for name, sub in machine["fields"].items()}
-        ref = EvidenceRef(doc_id, sha, xpath.locator(root_tag, machine["path"], index), quote=fields.get("name"))
+        locator = xpath.locator(root_tag, list_paths["authorities_machine"], index)
+        ref = EvidenceRef(doc_id, sha, locator, quote=fields.get("name"))
         authorities.append(
             Authority(
                 kind="machine",
@@ -95,11 +206,11 @@ def parse_emchd(data: bytes | str, *, doc_id: str) -> PowerOfAttorney:
                 ref=ref,
             )
         )
-    text_spec = spec["lists"]["authorities_text"]
-    for index, node in enumerate(root.findall(text_spec["path"]), start=1):
+    text_path = list_paths["authorities_text"]
+    for index, node in enumerate(root.findall(text_path), start=1):
         text = (node.text or "").strip()
         if text:
-            ref = EvidenceRef(doc_id, sha, xpath.locator(root_tag, text_spec["path"], index), quote=text[:300])
+            ref = EvidenceRef(doc_id, sha, xpath.locator(root_tag, text_path, index), quote=text[:300])
             authorities.append(Authority(kind="text", text=text, ref=ref))
 
     sub_code = values.get("subdelegation")
@@ -144,7 +255,19 @@ def parse_emchd(data: bytes | str, *, doc_id: str) -> PowerOfAttorney:
         original_number=normalize_poa_number(values.get("original_number")),
         irrevocable_subdelegation=values.get("irrevocable_subdelegation"),
         kind_code=values.get("kind"),
+        format_gaps=tuple(gaps),
+        format_questions=tuple(questions),
+        representative_kinds=tuple(kinds),
+        notarized=notarized,
+        policy_gaps=tuple(policy),
+        subdelegator_kind=subdelegator_kind,
     )
+
+
+def _representative_kind(node: Element, kinds: dict[str, str]) -> str:
+    """Вид представителя по элементу внутри ``Пред``; если элементов вида несколько или нет ни одного — ``unknown``."""
+    found = {kinds[child.tag] for child in node if child.tag in kinds}
+    return found.pop() if len(found) == 1 else "unknown"
 
 
 def _split_fio(full_name: str | None) -> dict[str, str | None]:
@@ -174,7 +297,7 @@ def build_emchd_xml(
     joint_code: str | None = "1",
     original_number: str | None = None,
     irrevocable_subdelegation_code: str | None = None,
-    kind_code: str | None = None,
+    kind_code: str | None = "1",
 ) -> str:
     """Синтетическая МЧД по тому же файлу соответствия. Только для тестов и корпуса."""
     spec = mapping()
@@ -196,6 +319,7 @@ def build_emchd_xml(
     put("joint", joint_code)
     put("parent_number", parent_number)
     put("original_number", original_number)
+    put("principal_type", "1")
     put("principal.name", principal.name)
     put("principal.inn", principal.inn)
     put("principal.kpp", principal.kpp)
@@ -213,6 +337,7 @@ def build_emchd_xml(
         for part in parent_path.split("/"):
             found = holder.find(part)
             holder = found if found is not None else _sub(holder, part)
+        holder.set(spec["representative_type_path"].rsplit("@", 1)[1], "3")
         node = _sub(holder, leaf)
         values = {"inn": person.inn, "snils": person.snils, **_split_fio(person.full_name)}
         for name, sub in rep_spec["fields"].items():

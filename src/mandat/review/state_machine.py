@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from mandat.audit import journal
+from mandat.services.env_policy import protected
 
 
 class ReviewState(StrEnum):
@@ -48,6 +49,7 @@ JOURNAL_ACTION = {
     "request_docs": "review_request_docs",
     "close": "review_close",
 }
+REVIEW_ACTIONS = set(JOURNAL_ACTION.values())
 ROLES = {"operator", "lawyer", "compliance", "security", "client_service"}
 
 
@@ -75,6 +77,12 @@ class ReviewCase:
     ) -> ReviewState:
         if role not in ROLES:
             raise ReviewError(f"роль {role!r} не может разбирать кейсы")
+        if protected():
+            # В защищённом режиме решение без версии и без журнала не принимается: гонка и потеря аудита.
+            if expected_version is None:
+                raise ReviewError("в защищённом режиме нужна версия кейса (expected_version)")
+            if journal_path is None:
+                raise ReviewError("в защищённом режиме решение пишется в журнал: передайте journal_path")
         if expected_version is not None and expected_version != self.version:
             raise ReviewError(f"версия {expected_version} устарела, сейчас {self.version}")
         target = TRANSITIONS.get((self.state, action))
@@ -93,37 +101,50 @@ class ReviewCase:
             "engine_report_hash": self.report_hash,
         }
         if journal_path is not None:
-            existing = _committed(journal_path, self.case_id, self.version, action)
-            if existing is None:
-                journal.append(
-                    journal_path,
-                    action=JOURNAL_ACTION[action],
-                    actor=actor,
-                    role=role,
-                    case_id=self.case_id,
-                    payload_hash=self.report_hash,
-                    reason=reason,
-                    details={"state": target.value, "version": self.version, "actor": actor},
-                )
-            elif existing.get("payload_hash") != self.report_hash or existing.get("reason") != reason:
-                raise ReviewError("конфликт: эта версия уже записана с другим решением")
-            elif (existing.get("details") or {}).get("actor") not in {None, actor}:
-                raise ReviewError("конфликт: эту версию записал другой сотрудник")
+            self._journal(journal_path, action, actor=actor, role=role, reason=reason, target=target)
         self.history.append(decision)
         self.state = target
         self.version += 1
         return target
 
+    def _journal(self, path: Path, action: str, *, actor: str, role: str, reason: str, target: ReviewState) -> None:
+        """Проверка «по версии ещё нет решения» и запись делаются под одной блокировкой журнала."""
+        version = self.version
+        report_hash = self.report_hash
 
-def _committed(path: Path, case_id: str, version: int, action: str) -> dict[str, Any] | None:
-    if not path.exists():
-        return None
-    check = journal.verify_journal(path)
-    if not check.ok:
-        raise ReviewError(f"журнал не цел, решение не принято: {check.reason}")
-    for record in journal.read_journal(path):
+        def no_other_decision(records: list[dict[str, Any]]) -> dict[str, Any] | None:
+            existing = _decision_for(records, self.case_id, version)
+            if existing is None:
+                return None
+            if existing.get("action") != JOURNAL_ACTION[action]:
+                raise ReviewError(f"конфликт: версия {version} уже записана с решением {existing.get('action')}")
+            if existing.get("payload_hash") != report_hash or existing.get("reason") != reason:
+                raise ReviewError("конфликт: эта версия уже записана с другим решением")
+            if (existing.get("details") or {}).get("actor") not in {None, actor}:
+                raise ReviewError("конфликт: эту версию записал другой сотрудник")
+            return existing  # повтор того же решения: новой записи нет
+
+        try:
+            journal.append(
+                path,
+                action=JOURNAL_ACTION[action],
+                actor=actor,
+                role=role,
+                case_id=self.case_id,
+                payload_hash=report_hash,
+                reason=reason,
+                details={"state": target.value, "version": version, "actor": actor},
+                precondition=no_other_decision,
+            )
+        except journal.JournalError as exc:
+            raise ReviewError(f"журнал не цел, решение не принято: {exc}") from exc
+
+
+def _decision_for(records: list[dict[str, Any]], case_id: str, version: int) -> dict[str, Any] | None:
+    """Решение по этой версии кейса, какое бы оно ни было: одна версия — одно решение."""
+    for record in records:
         details = record.get("details") or {}
-        same = record.get("case_id") == case_id and record.get("action") == JOURNAL_ACTION[action]
+        same = record.get("case_id") == case_id and record.get("action") in REVIEW_ACTIONS
         if same and details.get("version") == version:
             return record
     return None

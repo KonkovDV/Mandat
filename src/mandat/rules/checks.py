@@ -14,13 +14,21 @@ from datetime import date
 
 from mandat.data import load_json, sha256_json
 from mandat.domain.graph import AuthorityChain
-from mandat.domain.identifiers import inn_valid, kpp_valid, ogrn_valid, snils_valid
+from mandat.domain.identifiers import (
+    comparable_snils,
+    inn_valid,
+    kpp_valid,
+    normalize_poa_number,
+    ogrn_valid,
+    snils_valid,
+)
 from mandat.domain.model import Case, EvidenceRef, Finding, PowerOfAttorney, Subdelegation
 from mandat.domain.verdict import LegalEffect
 from mandat.intake.charter import CandidateFact, extract_charter_facts
-from mandat.ports import BankruptcyStatus, Ports, RegistryStatus, SignatureStatus
+from mandat.ports import BankruptcyStatus, Ports, RegistryObservation, RegistryStatus, SignatureStatus
 from mandat.rules.classifier import Classifier, default_classifier
 from mandat.rules.pack import OperationCatalog, RulePack
+from mandat.services.env_policy import protected
 
 E = LegalEffect
 
@@ -35,6 +43,20 @@ class RuleContext:
     classifier: Classifier = field(default_factory=default_classifier)
     charter_facts: list[CandidateFact] = field(default_factory=list)
     profile_name: str = "demo"
+    _registry: dict[str, RegistryObservation] = field(default_factory=dict, repr=False)
+
+    def registry(self, number: str | None) -> RegistryObservation:
+        """Один снимок реестра на проверку: каждый номер запрашивается один раз, правила читают один ответ."""
+        key = normalize_poa_number(number) or ""
+        if key not in self._registry:
+            port = self.ports.registry
+            observe = getattr(port, "observe", None)
+            self._registry[key] = (
+                observe(number or "")
+                if callable(observe)
+                else RegistryObservation(number or "", port.status(number or ""))
+            )
+        return self._registry[key]
 
     @property
     def case_ref(self) -> EvidenceRef:
@@ -123,8 +145,43 @@ def fmt_parsed(ctx: RuleContext) -> list[Finding]:
                     [],
                 )
             )
+    for poa in ctx.case.poas:
+        if poa.format_gaps:
+            out.append(
+                ctx.emit(
+                    "R-FMT-001",
+                    E.NOT_VERIFIED,
+                    f"МЧД {poa.number}: нет обязательных по формату полей: " + ", ".join(poa.format_gaps),
+                    [poa.ref("document")],
+                )
+            )
+        if poa.policy_gaps:
+            out.append(
+                ctx.emit(
+                    "R-FMT-001",
+                    E.NOT_VERIFIED,
+                    f"МЧД {poa.number}: нет полей, без которых проверку не провести (по схеме они необязательны): "
+                    + ", ".join(poa.policy_gaps),
+                    [poa.ref("document")],
+                )
+            )
+    questions = [
+        ctx.emit(
+            "R-FMT-001",
+            E.NEEDS_REVIEW,
+            f"МЧД {poa.number} выдана в порядке передоверия, должность подписанта не указана. Обязательна ли "
+            "она в такой МЧД, не установлено: открытый вопрос к юристу, до ответа — разбор",
+            [poa.ref("document")],
+        )
+        for poa in ctx.case.poas
+        if "signer.position" in poa.format_questions
+    ]
     if out:
-        return out
+        return out + questions
+    return _format_supports(ctx) + questions
+
+
+def _format_supports(ctx: RuleContext) -> list[Finding]:
     if ctx.chain.kind == "eio_direct" and ctx.case.egrul is not None:
         eg = ctx.case.egrul
         return [ctx.emit("R-FMT-001", E.SUPPORTS, "Сведения ЕГРЮЛ приняты", [EvidenceRef(eg.doc_id, eg.sha256, "$")])]
@@ -299,11 +356,33 @@ def id_principal(ctx: RuleContext) -> list[Finding]:
                     [ogrn_ref],
                 )
             )
+        elif not (eg.organization.ogrn and org.ogrn):
+            # Как и для МЧД: без пары ОГРН выписка сверена с клиентом только по ИНН.
+            missing = "в выписке ЕГРЮЛ" if not eg.organization.ogrn else "в заявке"
+            out.append(
+                ctx.emit(
+                    "R-ID-002",
+                    E.NOT_VERIFIED,
+                    f"ОГРН организации не указан {missing}, выписка ЕГРЮЛ сверена с клиентом только по ИНН",
+                    [EvidenceRef(eg.doc_id, eg.sha256, "$.ogrn")],
+                )
+            )
     for poa in _poas_in_scope(ctx):
         ref = poa.ref("principal.inn")
         same_inn = poa.principal.inn == org.inn
         same_ogrn = not (poa.principal.ogrn and org.ogrn) or poa.principal.ogrn == org.ogrn
-        if same_inn and same_ogrn:
+        if same_inn and same_ogrn and not (poa.principal.ogrn and org.ogrn):
+            # Без пары ОГРН принадлежность сверена только по ИНН: автоматического подтверждения нет.
+            missing = "в МЧД" if not poa.principal.ogrn else "в заявке"
+            out.append(
+                ctx.emit(
+                    "R-ID-002",
+                    E.NOT_VERIFIED,
+                    f"МЧД {poa.number}: ОГРН доверителя не указан {missing}, сверка выполнена только по ИНН",
+                    [poa.ref("principal.ogrn")],
+                )
+            )
+        elif same_inn and same_ogrn:
             out.append(ctx.emit("R-ID-002", E.SUPPORTS, f"МЧД {poa.number} выдана организацией клиента", [ref]))
         else:
             out.append(
@@ -439,21 +518,51 @@ def id_principal_name(ctx: RuleContext) -> list[Finding]:
 
 @rule("R-REG-001")
 def registry_status(ctx: RuleContext) -> list[Finding]:
+    """Статус МЧД по снимку реестра на дату операции.
+
+    Отмена с датой позже операции не опровергает историческую операцию, но и не подтверждает её: разбор.
+    Дата события позже момента запроса или снимок «действует», снятый раньше даты операции больше чем на
+    ``max_snapshot_age_days``, — сведения реестра не на дату операции. Вне профиля demo снимок «действует»
+    без момента запроса тоже не принимается: неизвестно, на какую дату он верен.
+    """
+    on = ctx.case.operation.on_date
+    max_age = int(ctx.pack.get("R-REG-001").param("max_snapshot_age_days"))
     out = []
     for poa in _poas_in_scope(ctx):
         number = poa.number or ""
-        status = ctx.ports.registry.status(number)
+        obs = ctx.registry(number)
+        status = obs.status
         ref = EvidenceRef(
             f"registry:{ctx.ports.registry.name}",
-            sha256_json({"number": number, "status": status.value}),
+            sha256_json(obs.as_dict()),
             f"registry:{number}",
             quote=status.value,
         )
-        if status is RegistryStatus.ACTIVE:
-            out.append(ctx.emit("R-REG-001", E.SUPPORTS, f"МЧД {number} действует в реестре", [ref]))
+        seen = obs.observed_at.date() if obs.observed_at else None
+        if seen is not None and obs.event_date is not None and obs.event_date > seen:
+            text = (
+                f"МЧД {number}: дата события в реестре {obs.event_date:%d.%m.%Y} позже момента запроса {seen:%d.%m.%Y}"
+            )
+            out.append(ctx.emit("R-REG-001", E.NOT_VERIFIED, text, [ref]))
+        elif status is RegistryStatus.ACTIVE:
+            if seen is None and ctx.profile_name != "demo":
+                text = f"МЧД {number}: в снимке реестра нет момента запроса, на дату операции он не привязан"
+                out.append(ctx.emit("R-REG-001", E.NOT_VERIFIED, text, [ref]))
+            elif seen is not None and (on - seen).days > max_age:
+                text = f"МЧД {number}: снимок реестра от {seen:%d.%m.%Y} старше даты операции {on:%d.%m.%Y}"
+                out.append(ctx.emit("R-REG-001", E.NOT_VERIFIED, text, [ref]))
+            else:
+                out.append(ctx.emit("R-REG-001", E.SUPPORTS, f"МЧД {number} действует в реестре", [ref]))
         elif status in (RegistryStatus.REVOKED, RegistryStatus.EXPIRED):
             word = "отменена" if status is RegistryStatus.REVOKED else "истекла"
-            out.append(ctx.emit("R-REG-001", E.REFUTES, f"МЧД {number} {word} по данным реестра", [ref]))
+            if obs.event_date is not None and obs.event_date > on:
+                text = (
+                    f"МЧД {number} {word} {obs.event_date:%d.%m.%Y}, после даты операции {on:%d.%m.%Y}: "
+                    "действие на дату операции реестр не подтверждает"
+                )
+                out.append(ctx.emit("R-REG-001", E.NEEDS_REVIEW, text, [ref]))
+            else:
+                out.append(ctx.emit("R-REG-001", E.REFUTES, f"МЧД {number} {word} по данным реестра", [ref]))
         elif status is RegistryStatus.NOT_FOUND:
             out.append(ctx.emit("R-REG-001", E.NEEDS_REVIEW, f"МЧД {number} не найдена в реестре", [ref]))
         else:
@@ -606,12 +715,30 @@ def eio_changed(ctx: RuleContext) -> list[Finding]:
         )
         effect = E.NOT_VERIFIED if unknown else E.NEEDS_REVIEW
         return [ctx.emit("R-EIO-002", effect, text, [_egrul_ref(ctx, "$.executives")])]
+    fresh_days = int(ctx.pack.get("R-EIO-002").param("fresh_change_days"))
     if any(rec.person.same_as(root.signer) for rec in current):
-        return []
+        # Подписант ещё числится руководителем, но рядом свежая запись другого руководителя:
+        # старую запись могли не закрыть. Это та же свежая смена, что и при закрытой записи.
+        newcomers = [
+            rec
+            for rec in current
+            if rec.person.same_as(root.signer) is not True
+            and (since := rec.valid_from or rec.record_date) is not None
+            and 0 <= (on - since).days <= fresh_days
+            # Дата выдачи МЧД не снимает сигнал: подпись прежнего руководителя после назначения нового — худший вариант.
+        ]
+        if not newcomers:
+            return []
+        rec = newcomers[0]
+        text = (
+            f"В ЕГРЮЛ одновременно открыта запись подписанта МЧД {root.number} и свежая запись руководителя "
+            f"{rec.person.label()} (ГРН {rec.grn}, с {rec.valid_from or rec.record_date:%d.%m.%Y}): "
+            f"смена не более {fresh_days} дн. назад, прежняя запись не закрыта, нужен разбор"
+        )
+        return [ctx.emit("R-EIO-002", E.NEEDS_REVIEW, text, [rec.ref or _egrul_ref(ctx), root.ref("signer.inn")])]
     rec = current[0]
     since = rec.valid_from or rec.record_date
     when = f"{since:%d.%m.%Y}" if since else "дата не указана"
-    fresh_days = int(ctx.pack.get("R-EIO-002").param("fresh_change_days"))
     op = ctx.catalog.get(ctx.case.operation.code)
     fresh = since is None or (on - since).days <= fresh_days
     risky = bool(op and op.high_risk)
@@ -751,6 +878,10 @@ def _bankruptcy(ctx: RuleContext) -> list[Finding]:
             f"efrsb:{inn}",
             quote=status.value,
         )
+        if status is BankruptcyStatus.UNRECOGNIZED:
+            text = f"{who} (ИНН {inn}): статус банкротства из источника не распознан, сведения нужно перепроверить"
+            out.append(ctx.emit("R-EIO-004", E.NEEDS_REVIEW, text, [ref]))
+            continue
         effect, why = BANKRUPTCY_RULES[status]
         if is_org != (status in ORG_PROCEDURES):
             # Процедура не того вида лица: данные противоречат друг другу, решает человек.
@@ -758,6 +889,34 @@ def _bankruptcy(ctx: RuleContext) -> list[Finding]:
             why = f"процедура {status.value} не подходит к этому лицу, сведения нужно перепроверить"
         out.append(ctx.emit("R-EIO-004", effect, f"{who} (ИНН {inn}): {why}", [ref]))
     return out
+
+
+@rule("R-BNK-001")
+def bankruptcy_checked(ctx: RuleContext) -> list[Finding]:
+    """Проверка банкротства выполнена, только если источник дал распознанный ответ по доверителю и заявителю.
+
+    Отсутствие ответа не означает отсутствия процедуры. Последствия найденной процедуры оценивает R-EIO-004.
+    """
+    port = ctx.ports.bankruptcy
+    parties = [("Доверитель", ctx.case.organization.inn), ("Заявитель", ctx.case.requester.inn)]
+    statuses = {inn: port.status(inn) for _, inn in parties if inn}
+    unchecked = [
+        f"{who} (ИНН {inn or 'не указан'})"
+        for who, inn in parties
+        if not inn or statuses[inn] in (BankruptcyStatus.NOT_CHECKED, BankruptcyStatus.UNRECOGNIZED)
+    ]
+    ref = EvidenceRef(
+        f"efrsb:{port.name}",
+        sha256_json({inn: st.value for inn, st in sorted(statuses.items())}),
+        "efrsb:" + ",".join(sorted(statuses)),
+    )
+    if unchecked:
+        # Пробел источника (ЕФРСБ не подключён или ответ не распознан), а не документов кейса:
+        # ссылка source-trust делает его пробелом профиля, см. ``domain.verdict.profile_gap``.
+        gap = EvidenceRef("source-trust", ref.doc_sha256, ref.locator)
+        text = "Сведения о банкротстве не получены или не распознаны: " + ", ".join(unchecked)
+        return [ctx.emit("R-BNK-001", E.NOT_VERIFIED, text, [gap])]
+    return [ctx.emit("R-BNK-001", E.SUPPORTS, "Сведения о банкротстве получены по доверителю и заявителю", [ref])]
 
 
 def _org_status_egrul(ctx: RuleContext) -> list[Finding]:
@@ -808,12 +967,57 @@ def eio_direct(ctx: RuleContext) -> list[Finding]:
     rec = ctx.chain.eio_record
     if ctx.chain.kind != "eio_direct" or rec is None:
         return []
-    return [
+    ref = rec.ref or _egrul_ref(ctx)
+    out = [
         ctx.emit(
             "R-EIO-005",
             E.SUPPORTS,
             f"Заявитель — руководитель по ЕГРЮЛ на дату операции (ГРН {rec.grn}), действует без доверенности",
-            [rec.ref or _egrul_ref(ctx)],
+            [ref],
+        )
+    ]
+    req = ctx.case.requester
+    if comparable_snils(req.snils) and not comparable_snils(rec.person.snils):
+        # СНИЛС заявителя сверить не с чем, личность установлена только по ИНН.
+        out.append(
+            ctx.emit(
+                "R-EIO-005",
+                E.NEEDS_REVIEW,
+                "СНИЛС заявителя не с чем сверить: в записи ЕГРЮЛ о руководителе СНИЛС нет, "
+                "совпадение установлено только по ИНН",
+                [ref],
+            )
+        )
+    on = ctx.case.operation.on_date
+    others = [r for r in ctx.case.egrul.executives_on(on) if r is not rec] if ctx.case.egrul else []
+    if others:
+        # Несколько действующих ЕИО: совместно или раздельно, из выписки не следует.
+        names = ", ".join(r.person.label() for r in others)
+        out.append(
+            ctx.emit(
+                "R-EIO-005",
+                E.NEEDS_REVIEW,
+                f"На дату операции в ЕГРЮЛ есть и другие руководители ({names}): порядок совместных или "
+                "раздельных действий выпиской не установлен",
+                [ref, *(r.ref for r in others if r.ref)],
+            )
+        )
+    return out
+
+
+@rule("R-SIG-002")
+def eio_instruction_signature(ctx: RuleContext) -> list[Finding]:
+    """Руководитель действует без МЧД: проверять нужно подпись самого распоряжения, а её в кейс не передают."""
+    if ctx.chain.kind != "eio_direct":
+        return []
+    return [
+        ctx.emit(
+            "R-SIG-002",
+            E.NOT_VERIFIED,
+            "Подпись распоряжения руководителя не проверялась: в кейс не передана; статус ЕИО в ЕГРЮЛ "
+            "не доказывает, что распоряжение подписал он",
+            # Проверка подписи распоряжения — шаг ДБО банка, на стенде его нет: пробел источника, как у R-SIG-001.
+            [EvidenceRef("source-trust", sha256_json({"rule": "R-SIG-002"}), "dbo:instruction-signature")],
         )
     ]
 
@@ -1064,8 +1268,15 @@ def sub_cascade(ctx: RuleContext) -> list[Finding]:
     out = []
     links = ctx.chain.links
     for i, parent, _child in _pairs(ctx.chain):
-        status = ctx.ports.registry.status(parent.number or "")
+        obs = ctx.registry(parent.number)
+        status = obs.status
         until = parent.effective_until()
+        if (
+            status in (RegistryStatus.REVOKED, RegistryStatus.EXPIRED)
+            and obs.event_date is not None
+            and obs.event_date > on
+        ):
+            continue  # отмена позже операции: это разбор по R-REG-001, а не каскад
         if status in (RegistryStatus.REVOKED, RegistryStatus.EXPIRED):
             why = "отменена" if status is RegistryStatus.REVOKED else "истекла"
         elif until is not None and on > until:
@@ -1127,7 +1338,7 @@ def sub_long_chain(ctx: RuleContext) -> list[Finding]:
     links = ctx.chain.links
     if len(links) <= max_links:
         return []
-    statuses = {p.number: ctx.ports.registry.status(p.number or "") for p in links}
+    statuses = {p.number: ctx.registry(p.number).status for p in links}
     unconfirmed = [n for n, st in statuses.items() if st is not RegistryStatus.ACTIVE]
     refs = [p.ref("number") for p in links]
     if unconfirmed:
@@ -1149,6 +1360,91 @@ def sub_long_chain(ctx: RuleContext) -> list[Finding]:
             refs,
         )
     ]
+
+
+_FORM_TEXT = {
+    "notarized": "удостоверена нотариально",
+    "legal_entity": "передоверие юридическим лицом",
+    "branch": "передоверие филиалом или представительством через его руководителя",
+}
+_KIND_TEXT = {
+    "individual": "физическое лицо",
+    "entrepreneur": "индивидуальный предприниматель",
+    "foreign_branch": "филиал иностранного юрлица",
+    "unknown": "не определяется",
+}
+
+
+def _subdelegator_kind(parent: PowerOfAttorney, child: PowerOfAttorney) -> str:
+    """Кто передоверяет: по дочерней МЧД (ветвь ``Передов``) и по представителям родительской МЧД.
+
+    Если представителей несколько и они разного вида или дочерняя МЧД называет другой вид, передоверителя
+    по документам не определить.
+    """
+    kinds = set(parent.representative_kinds)
+    by_parent = kinds.pop() if len(kinds) == 1 else "unknown"
+    if child.subdelegator_kind is None:
+        return by_parent
+    if by_parent not in ("unknown", child.subdelegator_kind):
+        return "unknown"
+    return child.subdelegator_kind
+
+
+@rule("R-SUB-010")
+def sub_form(ctx: RuleContext) -> list[Finding]:
+    """П. 3 ст. 187 ГК РФ: доверенность в порядке передоверия удостоверяется нотариально.
+
+    Исключение — передоверие юридическим лицом, руководителем филиала или представительства. Вид передоверителя
+    берётся из самой МЧД: в ветви ``Передов`` его задаёт элемент внутри ``ПередПолн``, иначе это представитель
+    по родительской доверенности и его вид задаёт элемент внутри ``Пред``. Если оба источника есть и расходятся,
+    вид не определяется.
+    Нотариальное удостоверение — элемент ``СвНотУд`` дочерней МЧД с реквизитами, обязательными по XSD.
+    Со слов клиента вид передоверителя не принимается. Отметку ``subdelegation_forms`` = ``notarized``
+    принимает только профиль demo: у неё нет документа-основания.
+    """
+    trusted = ctx.profile_name == "demo" and not protected()
+    out = []
+    for _, parent, child in _pairs(ctx.chain):
+        kind = _subdelegator_kind(parent, child)
+        if child.notarized:
+            form = "notarized"
+            source = "по реквизитам в МЧД; с реестром нотариальных действий не сверялось"
+        elif kind in ("legal_entity", "branch"):
+            form = kind
+            source = f"по родительской МЧД {parent.number}"
+        elif trusted and ctx.case.subdelegation_forms.get(child.number or "") == "notarized":
+            form = "notarized"
+            source = "по отметке в кейсе, документ-основание не проверялся"
+        else:
+            form = None
+        if form:
+            out.append(
+                ctx.emit(
+                    "R-SUB-010",
+                    E.INFO,
+                    f"МЧД {child.number}: {_FORM_TEXT[form]} (п. 3 ст. 187 ГК РФ), {source}",
+                    [child.ref("document")],
+                )
+            )
+            continue
+        mark = ctx.case.subdelegation_forms.get(child.number or "")
+        if mark in ("legal_entity", "branch_head"):
+            why = f"по МЧД передоверитель — {_KIND_TEXT[kind]}, отметка в кейсе о виде передоверителя не принимается"
+        elif mark:
+            why = "отметка в кейсе в этом профиле не принимается"
+        else:
+            why = f"нотариального удостоверения в МЧД нет, передоверитель по МЧД — {_KIND_TEXT[kind]}"
+        out.append(
+            ctx.emit(
+                "R-SUB-010",
+                E.NEEDS_REVIEW,
+                f"МЧД {child.number} выдана в порядке передоверия: нужно нотариальное удостоверение или "
+                f"подтверждение, что передоверитель — юрлицо, руководитель филиала или представительства "
+                f"(п. 3 ст. 187 ГК РФ); {why}",
+                [child.ref("document")],
+            )
+        )
+    return out
 
 
 @rule("R-SUB-009")
@@ -1287,6 +1583,25 @@ def charter_limits(ctx: RuleContext) -> list[Finding]:
 
 @rule("R-CHR-002")
 def charter_info(ctx: RuleContext) -> list[Finding]:
+    """Отметка ``charter_disposition`` приходит из манифеста клиента.
+
+    Принимает её только профиль demo: у отметки нет согласующего, основания, версии документа и
+    области действия. Профиль demo вне demo/dev/test не запускается (``services.env_policy``), а
+    ``protected()`` оставлен как второй рубеж для прямых вызовов. Об игнорировании сказано в отчёте.
+    """
+    if ctx.case.charter_disposition is None or (ctx.profile_name == "demo" and not protected()):
+        return _charter_info(ctx, cleared=ctx.case.charter_disposition == "no_applicable_restriction")
+    note = ctx.emit(
+        "R-CHR-002",
+        E.NEEDS_REVIEW,
+        "Отметка манифеста об отсутствии ограничений устава в этом профиле не принимается: "
+        "нужно заключение уполномоченного сотрудника",
+        [],
+    )
+    return [note, *_charter_info(ctx, cleared=False)]
+
+
+def _charter_info(ctx: RuleContext, *, cleared: bool) -> list[Finding]:
     doc = ctx.case.charter
     op = ctx.catalog.get(ctx.case.operation.code)
     required = bool(op and op.charter_required)
@@ -1324,7 +1639,7 @@ def charter_info(ctx: RuleContext) -> list[Finding]:
             for fact in unparsed
         ]
     if not ctx.charter_facts:
-        if ctx.case.charter_disposition == "no_applicable_restriction":
+        if cleared:
             return [
                 ctx.emit(
                     "R-CHR-002",
@@ -1351,7 +1666,7 @@ def charter_info(ctx: RuleContext) -> list[Finding]:
             )
         ]
     kinds = ", ".join(sorted({f.kind for f in ctx.charter_facts}))
-    if op and op.high_risk and ctx.case.charter_disposition != "no_applicable_restriction":
+    if op and op.high_risk and not cleared:
         return [
             ctx.emit(
                 "R-CHR-002",

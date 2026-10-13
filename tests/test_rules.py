@@ -205,17 +205,20 @@ def test_r_eio_004_bankruptcy_mapping(who, status, effect):
     assert effects == ({effect} if effect else set())
 
 
-def test_r_eio_004_unknown_bankruptcy_status_is_silent():
+def test_r_eio_004_unknown_bankruptcy_status_goes_to_review():
+    # Неизвестный статус нельзя молча считать «не проверено»: это путь к ложному confirmed.
     def mutate(sc):
         sc.manifest["bankruptcy"] = {sc.manifest["organization"]["inn"]: "что-то странное"}
 
-    assert "R-EIO-004" not in {f.rule_id for f in run("ok", mutate=mutate).findings}
+    assert rule_effects(run("ok", mutate=mutate), "R-EIO-004") == {"needs_review"}
 
 
 def test_r_eio_005_director_acts_without_poa():
     report = run("ok_director")
     assert report.chain.kind == "eio_direct"
-    assert rule_effects(report, "R-EIO-005") == {"supports"}
+    # В синтетической выписке нет СНИЛС руководителя, а заявитель его указал: сверить не с чем.
+    assert rule_effects(report, "R-EIO-005") == {"supports", "needs_review"}
+    assert any("СНИЛС заявителя не с чем сверить" in f.message for f in report.findings if f.rule_id == "R-EIO-005")
     assert report.verdict.value == "needs_review"
 
 
@@ -464,7 +467,7 @@ def test_once_subdelegation_cannot_be_used_twice():
     assert report.verdict.value == "refuted"
 
 
-# --- 0.3.0: правила по аудиту 13.10.2026 -------------------------------------
+# --- 0.3.0: правила против ложного «подтверждено» -------------------------------------
 
 
 def test_r_fmt_005_duplicate_egrul_is_not_resolved():
