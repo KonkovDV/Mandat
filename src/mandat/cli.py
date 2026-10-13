@@ -171,7 +171,11 @@ def cmd_monitor(args: argparse.Namespace) -> int:
         result["status_changes"] = changes
     secret = os.environ.get("MANDAT_WEBHOOK_SECRET", "").strip()
     if secret and result["alerts"]:
-        result["webhook"] = delivery({"alerts": result["alerts"]}, secret)
+        try:
+            result["webhook"] = delivery({"alerts": result["alerts"]}, secret)
+        except ValueError as exc:
+            print(f"ошибка: MANDAT_WEBHOOK_SECRET: {exc}", file=sys.stderr)
+            return 2
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -272,9 +276,32 @@ def cmd_serve(args: argparse.Namespace) -> int:
     except ModuleNotFoundError:
         print("установите extra: pip install -e '.[api]'", file=sys.stderr)
         return 2
-    from mandat.api.app import create_app
+    from mandat.api.storage import open_store
 
-    uvicorn.run(create_app(), host=args.host, port=args.port)
+    try:
+        store = open_store()
+    except ValueError as exc:
+        print(f"ошибка: {exc}", file=sys.stderr)
+        return 2
+    if args.workers > 1 and store.name == "memory":
+        print(
+            "ошибка: у нескольких воркеров память не общая, задайте MANDAT_API_STORE=sqlite:///… или redis://…",
+            file=sys.stderr,
+        )
+        return 2
+    if args.workers > 1:
+        uvicorn.run("mandat.api.app:create_app", factory=True, host=args.host, port=args.port, workers=args.workers)
+    else:
+        from mandat.api.app import create_app
+
+        uvicorn.run(create_app(store=store), host=args.host, port=args.port)
+    return 0
+
+
+def cmd_webhook_secret(args: argparse.Namespace) -> int:
+    from mandat.services.webhooks import new_secret
+
+    print(new_secret())
     return 0
 
 
@@ -357,7 +384,10 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("serve", help="запустить HTTP API")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8000)
+    s.add_argument("--workers", type=int, default=1, help="больше одного нужен MANDAT_API_STORE")
     s.set_defaults(func=cmd_serve)
+    w = sub.add_parser("webhook-secret", help="новый секрет вебхука в формате whsec_")
+    w.set_defaults(func=cmd_webhook_secret)
     return p
 
 
