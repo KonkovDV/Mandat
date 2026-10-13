@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "Если используете «Мандат», сошлитесь на него так."
 title: "Мандат: единое окно полномочий для бизнес-клиентов банка"
-version: 0.1.0
+version: 0.3.0
 date-released: 2026-10-12
 license: MIT
 authors:

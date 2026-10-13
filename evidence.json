@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-10-13T06:14:53+00:00",
-  "engine": "mandat/0.2.3",
+  "generated_at": "2026-10-13T07:09:48+00:00",
+  "engine": "mandat/0.3.0",
   "python": "3.12.10",
   "rule_pack": {
     "pack_id": "mandat-rules-ru",
     "version": "2026.10.2",
     "status": "draft",
-    "sha256": "8e1e07f854545f746d65fb90f0879310070c3e5f0d2f8ef1c37093bd74d6f30d",
-    "rules": 33
+    "sha256": "aa0b6d71998aad4055e1079006664173a619f8b5414fcdbdd9d393c7379d9675",
+    "rules": 36
   },
   "operations_catalog": {
     "version": "2026.10.2",
@@ -19,91 +19,91 @@
     "results": {
       "01_ok": {
         "verdict": "needs_review",
-        "reproducibility_hash": "9ed354ff6c7a27825dd1092fc967411c347fac6d8906cf3176a81ff419477a9d"
+        "reproducibility_hash": "0ecb17ba4f3ffc86404617d404b9a862fcdca252328911f8becc2b1cff519172"
       },
       "02_director_without_poa": {
         "verdict": "needs_review",
-        "reproducibility_hash": "95e6f38f42e15a0412f25111c73deaea054577f7736ac44994bbc21ee8888741"
+        "reproducibility_hash": "bb0c8abbd8136e362e443c178e24ca855c2006da1a5fd27b1ffaae838307c99b"
       },
       "03_subdelegation_ok": {
         "verdict": "needs_review",
-        "reproducibility_hash": "217d1067a5fde2fabff3bd9320f723be6ee3e431c279591003a6ec7f137d7118"
+        "reproducibility_hash": "516d150c77ba64965b6106176de7bd07fd0a0e089cedc55b0cfcb9376728ca19"
       },
       "04_subdelegation_forbidden": {
         "verdict": "refuted",
-        "reproducibility_hash": "7d39d61964566b7ff9dbd61e411dbb937deb46b92f83cf679fd59676b70fb52a"
+        "reproducibility_hash": "7b3edac8367dd3d72bd0bff2179cf4cc6aacb87a1405b46848b27e65912cce76"
       },
       "05_director_changed": {
         "verdict": "needs_review",
-        "reproducibility_hash": "1346e286fb7184f7cec2f2d20007d7000c4debd186fb3f854b4ab26b52502ae4"
+        "reproducibility_hash": "a50c4dfda746d26c33bc323a1c91c3ac028259ac57de50b03a9cb46dd4c7ce6b"
       },
       "06_text_authority": {
         "verdict": "needs_review",
-        "reproducibility_hash": "2d935679cb84ec212cf929a571ef67ab9a12b4e0f9c387e2c13856694907da6d"
+        "reproducibility_hash": "fb49f51c7a68a02188c72365a0dddf1681d72da0b212ab1cd29592778e3c8899"
       },
       "07_revoked": {
         "verdict": "refuted",
-        "reproducibility_hash": "be96361bb9e1cf5e3478a7ba7d02c52e02468b63c6c7882e530096c623d91331"
+        "reproducibility_hash": "f633a9267020cb16d5104db66dd0e9c9d3961ba5745f5c6d6da57ff369f31bf3"
       },
       "08_registry_unavailable": {
         "verdict": "insufficient_data",
-        "reproducibility_hash": "05e2328d2c225523e36080b8e0edb4ec2cee75c00743424df19fb921e14c98c3"
+        "reproducibility_hash": "33a6c46ed25d29e8283ca81638f65506b23999bdae45d34c8c99d06d6b570b06"
       },
       "09_charter_limit": {
         "verdict": "needs_review",
-        "reproducibility_hash": "49f3d0512dda7fda4b61db9d71fa8c98898192742dec4f19deb440e63c4246b7"
+        "reproducibility_hash": "213c8cee886f2f5290ecf9d5680641fdbcc222a99bb2e66aed3a1b018bb74909"
       },
       "10_old_director_poa": {
         "verdict": "needs_review",
-        "reproducibility_hash": "12f2e75e38207205f3a3fef1820c191baa47e8ddf18781036bea8f8e00585ec3"
+        "reproducibility_hash": "a571f222dec3063dfef5f9eecc4bae95808ae3a04e055269ed44f92dc69b841e"
       },
       "11_parent_revoked": {
         "verdict": "refuted",
-        "reproducibility_hash": "d7fac73c33b7449fed68d0deff391f26e2c50a7d827011d97180c0104dcf605a"
+        "reproducibility_hash": "c1385bbc68db24e7748e238ed3095308cd41510dfb7d73dc62d25e246b868af0"
       },
       "12_no_term": {
         "verdict": "needs_review",
-        "reproducibility_hash": "0ae95e9b01c8800d30642592f2263cbaa2c215e066a71d7d6d85c7842ac1ff85"
+        "reproducibility_hash": "a871937ba080fa8b9fd3a5172e2415b1474b71154858c4ec31eec739cf8aca62"
       },
       "13_bankruptcy": {
         "verdict": "refuted",
-        "reproducibility_hash": "f960494b1931c61518eee0f570305b9d45dd4f98b08b68b490d83eb7a4aab461"
+        "reproducibility_hash": "509fc87216ba117743f2a1854a35051439ef4f87aa57151a786ad9e1714dbb72"
       }
     }
   },
   "synthetic_corpus": {
     "command": "mandat eval --per-defect 6",
     "profile": "demo",
-    "cases": 210,
-    "defect_types": 35,
+    "cases": 294,
+    "defect_types": 49,
     "agreement": 1.0,
     "agreement_wilson95": [
-      0.9820359492407167,
+      0.987102336807292,
       1.0
     ],
     "false_confirmed": 0,
-    "false_confirmed_rate_upper95": 0.018482639808683074,
+    "false_confirmed_rate_upper95": 0.013162827640106806,
     "refute_recall": 1.0,
     "refute_recall_wilson95": [
-      0.95626827158534,
+      0.9656526402534428,
       1.0
     ],
-    "abstention_rate": 0.5714285714285714,
-    "coverage": 0.42857142857142855,
+    "abstention_rate": 0.6122448979591837,
+    "coverage": 0.3877551020408163,
     "auto_risk": 0.0,
-    "auto_risk_upper95": 0.04093562556432678,
+    "auto_risk_upper95": 0.03259853415884162,
     "n_for_recall_0_9_pm_0_05": 139,
     "confusion": {
       "confirmed->confirmed": 6,
-      "insufficient_data->insufficient_data": 24,
-      "needs_review->needs_review": 96,
-      "refuted->refuted": 84
+      "insufficient_data->insufficient_data": 54,
+      "needs_review->needs_review": 126,
+      "refuted->refuted": 108
     },
     "boundary": "синтетический корпус: проверка логики правил, не точность на документах банка"
   },
   "synthetic_corpus_strict": {
     "command": "mandat eval --per-defect 6 --profile strict",
-    "cases": 210,
+    "cases": 294,
     "false_confirmed": 0,
     "coverage": 0.0,
     "abstention_rate": 1.0,
@@ -124,15 +124,15 @@
   "latency": {
     "command": "python scripts/bench.py --rounds 20",
     "cases": 260,
-    "median_ms": 1.63,
-    "p95_ms": 2.27,
+    "median_ms": 1.71,
+    "p95_ms": 2.33,
     "machine": "AMD64, Python 3.12.10",
     "scope": "разбор XML и JSON, 33 правила, свёртка, отчёт; без сети и без модели"
   },
   "tests": {
     "command": "python -m pytest -q",
     "returncode": 0,
-    "summary": "199 passed in 4.77s",
-    "passed": 199
+    "summary": "312 passed in 7.47s",
+    "passed": 312
   }
 }
