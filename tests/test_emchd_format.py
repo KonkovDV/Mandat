@@ -34,10 +34,14 @@ def test_document_in_the_official_namespace_is_parsed():
     assert poa.format_gaps == () and poa.policy_gaps == ()
 
 
-def test_document_in_a_foreign_namespace_is_rejected():
+def _check_foreign_namespace_is_rejected(parse, error) -> None:
     text = _text("direct.xml").replace(NS, 'xmlns="urn://example/other"')
-    with pytest.raises(EmchdError, match="пространстве имён"):
-        parse_emchd(text, doc_id="x")
+    with pytest.raises(error, match="пространстве имён"):
+        parse(text, doc_id="x")
+
+
+def test_document_in_a_foreign_namespace_is_rejected():
+    _check_foreign_namespace_is_rejected(parse_emchd, EmchdError)
 
 
 def test_elements_of_a_foreign_namespace_are_not_read():
@@ -186,19 +190,18 @@ def _mutant(old: str, new: str):
     ("old", "new"),
     [
         ("    if root.tag != root_tag:\n", "    if False:\n"),
-        ('    if root.tag == "{" + spec["namespace"] + "}" + root_tag:\n', '    if root.tag.startswith("{"):\n'),
+        (
+            '    if root.tag == "{" + spec["namespace"] + "}" + root_tag:\n'
+            '        _strip_namespace(root, spec["namespace"])\n',
+            '    if root.tag.startswith("{"):\n        _strip_namespace(root, root.tag[1:].split("}", 1)[0])\n',
+        ),
     ],
     ids=["no-rejection", "any-namespace"],
 )
 def test_foreign_namespace_check_catches_its_own_removal(old, new):
-    """Контроль мутацией: без отказа по чужому пространству имён проверка отказа перестаёт проходить."""
+    """Контроль мутацией: на копии модуля без отказа по чужому пространству имён
+    тот же тест отказа, что и выше, должен упасть."""
     mutant = _mutant(old, new)
-    if new.startswith("    if root.tag.startswith"):
-        mutant._strip_namespace = lambda root, _ns: [
-            setattr(el, "tag", el.tag.split("}", 1)[-1]) for el in root.iter() if isinstance(el.tag, str)
-        ]
-    text = _text("direct.xml").replace(NS, 'xmlns="urn://example/other"')
-    try:
-        mutant.parse_emchd(text, doc_id="x")
-    except mutant.EmchdError as exc:
-        assert "пространстве имён" not in str(exc)
+    # Тест отказа падает: мутант либо принимает документ, либо отказывает по другой причине.
+    with pytest.raises((pytest.fail.Exception, AssertionError)):
+        _check_foreign_namespace_is_rejected(mutant.parse_emchd, mutant.EmchdError)

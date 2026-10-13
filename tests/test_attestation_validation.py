@@ -245,3 +245,43 @@ def test_key_file_is_written_verbatim_and_concurrent_creation_reuses_it(tmp_path
     first = attestation.load_or_create_pseudonym_key(tmp_path / "h.key")
     monkeypatch.setattr(Path, "exists", lambda self: False)
     assert attestation.load_or_create_pseudonym_key(tmp_path / "h.key") == first
+
+
+def test_key_is_published_only_when_complete(tmp_path, monkeypatch):
+    """Читатель не видит недописанный ключ: под именем ключа файл появляется уже полным,
+    а при сбое записи не остаётся ни ключа, ни временного файла."""
+    import os
+
+    from mandat.audit import attestation
+
+    data = bytes(range(256)) * 4
+    path = tmp_path / "k.key"
+    real_link = os.link
+    seen: list[tuple[bool, bytes]] = []
+
+    def spy_link(src, dst, *args, **kwargs):
+        seen.append((os.path.exists(dst), open(src, "rb").read()))
+        return real_link(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "link", spy_link)
+    assert attestation._write_private(path, data) is True
+    assert seen == [(False, data)]
+    assert path.read_bytes() == data
+    assert [p.name for p in tmp_path.iterdir()] == ["k.key"]
+    if os.name == "posix":
+        assert path.stat().st_mode & 0o777 == 0o600
+
+    assert attestation._write_private(path, b"other") is False
+    assert path.read_bytes() == data
+    assert [p.name for p in tmp_path.iterdir()] == ["k.key"]
+
+    broken = tmp_path / "broken.key"
+
+    def failing_fsync(_fd):
+        raise OSError("диск отказал")
+
+    monkeypatch.setattr(os, "fsync", failing_fsync)
+    with pytest.raises(OSError, match="диск отказал"):
+        attestation._write_private(broken, data)
+    assert not broken.exists()
+    assert [p.name for p in tmp_path.iterdir()] == ["k.key"]

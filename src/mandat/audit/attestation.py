@@ -29,6 +29,7 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -83,21 +84,30 @@ def load_or_create_key(path: Path) -> Ed25519PrivateKey:
 
 
 def _write_private(path: Path, data: bytes) -> bool:
-    """Новый файл ключа сразу с правами 0600 (в Windows права POSIX не действуют).
+    """Новый файл ключа с правами 0600 (в Windows права POSIX не действуют).
 
-    Файл открывается в двоичном режиме, байты пишутся без замены перевода строки.
-    Существующий файл не перезаписывается: если его успел создать другой процесс,
-    возвращается False, и вызывающий читает уже записанный ключ.
+    Байты пишутся во временный файл в том же каталоге (двоичный режим, без замены перевода
+    строки), сбрасываются на диск и только потом публикуются под именем ключа жёсткой ссылкой.
+    Поэтому читатель видит либо полный ключ, либо его отсутствие. Существующий файл не
+    перезаписывается: если его успел создать другой процесс, возвращается False, и вызывающий
+    читает уже записанный ключ.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    fd = os.open(tmp, flags, 0o600)
     try:
-        fd = os.open(path, flags, 0o600)
-    except FileExistsError:
-        return False
-    with os.fdopen(fd, "wb") as handle:
-        handle.write(data)
-    return True
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            return False
+        return True
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def public_key_multibase(key: Ed25519PrivateKey | Ed25519PublicKey) -> str:
@@ -185,8 +195,6 @@ def _read_pseudonym_key(path: Path) -> bytes:
 def load_or_create_pseudonym_key(path: Path) -> bytes:
     if path.exists():
         return _read_pseudonym_key(path)
-    import secrets
-
     key = secrets.token_bytes(PSEUDONYM_KEY_MIN_BYTES)
     return key if _write_private(path, key) else _read_pseudonym_key(path)
 
