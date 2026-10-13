@@ -8,11 +8,13 @@ XSD, правится только JSON. Писатель ``build_emchd_xml`` и
 from __future__ import annotations
 
 import hashlib
+import re
 from datetime import date
 from typing import Any, cast
 from xml.etree.ElementTree import Element, tostring
 
 from mandat.data import load_json
+from mandat.domain.identifiers import normalize_poa_number
 from mandat.domain.model import Authority, EvidenceRef, Organization, Person, PowerOfAttorney, Subdelegation
 from mandat.intake import xpath
 from mandat.intake.xml_safety import safe_fromstring
@@ -29,13 +31,13 @@ def mapping() -> dict[str, Any]:
 
 
 def _date(value: str | None) -> date | None:
+    """Только ``ГГГГ-ММ-ДД`` целиком (xs:date без зоны). ``2026-03-01garbage`` и ``1.3.2026`` — ошибка формата."""
     if not value:
         return None
+    if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None:
+        raise EmchdError(f"дата не распознана: {value!r}")
     try:
-        if "." in value:
-            dd, mm, yyyy = value.split(".")
-            return date(int(yyyy), int(mm), int(dd))
-        return date.fromisoformat(value[:10])
+        return date.fromisoformat(value)
     except ValueError as exc:
         raise EmchdError(f"дата не распознана: {value!r}") from exc
 
@@ -58,7 +60,10 @@ def parse_emchd(data: bytes | str, *, doc_id: str) -> PowerOfAttorney:
     values: dict[str, str | None] = {}
     refs: dict[str, EvidenceRef] = {}
     for key, field in spec["fields"].items():
-        value = xpath.read(root, field["path"])
+        try:
+            value = xpath.read(root, field["path"])
+        except xpath.AmbiguousField as exc:
+            raise EmchdError(f"поле {key}: {exc}") from exc
         values[key] = value
         if value is not None:
             refs[key] = EvidenceRef(doc_id, sha, xpath.locator(root_tag, field["path"]), quote=value)
@@ -118,7 +123,7 @@ def parse_emchd(data: bytes | str, *, doc_id: str) -> PowerOfAttorney:
         doc_id=doc_id,
         sha256=sha,
         format_version=values.get("format_version"),
-        number=values.get("number"),
+        number=normalize_poa_number(values.get("number")),
         internal_number=values.get("internal_number"),
         issue_date=_date(values.get("issue_date")),
         valid_until=_date(values.get("valid_until")),
@@ -132,11 +137,11 @@ def parse_emchd(data: bytes | str, *, doc_id: str) -> PowerOfAttorney:
         signer=signer,
         representatives=tuple(reps),
         authorities=tuple(authorities),
-        parent_number=values.get("parent_number"),
+        parent_number=normalize_poa_number(values.get("parent_number")),
         refs=refs,
         loses_authority=loses,
         joint=joint,
-        original_number=values.get("original_number"),
+        original_number=normalize_poa_number(values.get("original_number")),
         irrevocable_subdelegation=values.get("irrevocable_subdelegation"),
         kind_code=values.get("kind"),
     )

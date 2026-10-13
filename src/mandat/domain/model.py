@@ -71,15 +71,35 @@ class Person:
     snils: str | None = None
     position: str | None = None
 
-    def same_as(self, other: Person) -> bool | None:
-        """True/False по ИНН или СНИЛС; None, если сравнить нечем (ФИО не считаем доказательством)."""
+    def _pairs(self, other: Person) -> list[bool]:
         from mandat.domain.identifiers import normalize_snils
 
+        out = []
         if self.inn and other.inn:
-            return self.inn == other.inn
+            out.append(self.inn == other.inn)
         if self.snils and other.snils:
-            return normalize_snils(self.snils) == normalize_snils(other.snils)
+            out.append(normalize_snils(self.snils) == normalize_snils(other.snils))
+        return out
+
+    def same_as(self, other: Person) -> bool | None:
+        """Одно лицо, только если совпали все идентификаторы, указанные с обеих сторон.
+
+        True — все совпали; False — ни один не совпал; None — сравнить нечем (ФИО не доказательство)
+        или идентификаторы противоречат друг другу (ИНН одного человека, СНИЛС другого).
+        """
+        pairs = self._pairs(other)
+        if not pairs:
+            return None
+        if all(pairs):
+            return True
+        if not any(pairs):
+            return False
         return None
+
+    def conflicts_with(self, other: Person) -> bool:
+        """ИНН и СНИЛС указывают на разных людей: один идентификатор совпал, другой нет."""
+        pairs = self._pairs(other)
+        return any(pairs) and not all(pairs)
 
     def label(self) -> str:
         return self.full_name or self.inn or "лицо без ФИО"
@@ -134,6 +154,8 @@ class PowerOfAttorney:
             return self.valid_until
         if self.issue_date is None:
             return None
+        if self.issue_date.year >= 9999:
+            return None  # срок за пределами календаря: неизвестен, а не «бессрочно»
         try:
             return self.issue_date.replace(year=self.issue_date.year + 1)
         except ValueError:  # 29 февраля
@@ -215,6 +237,7 @@ class Case:
     intake_errors: tuple[IntakeError, ...] = ()
     inputs: tuple[dict[str, str], ...] = ()
     charter_disposition: str | None = None
+    duplicates: tuple[tuple[str, str], ...] = ()  # (doc_id, kind) второго документа вида, который должен быть один
 
 
 @dataclass(frozen=True)

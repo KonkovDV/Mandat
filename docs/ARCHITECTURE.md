@@ -11,7 +11,7 @@
 | Порты | `ports.py` | реестр МЧД, проверка подписи; в MVP заглушки |
 | Сервисы | `services/verify.py`, `next_steps.py`, `rights.py`, `monitoring.py` | оркестрация, без знания о форматах |
 | Аудит | `audit/journal.py`, `audit/merkle.py`, `audit/attestation.py`, `audit/status_list.py` | append-only, доказательство включения, удостоверения со статусом отзыва — всё проверяемо без базы (ADR-007) |
-| Советник | `advisory/gate.py`, `llm.py`, `copilot.py` | не влияет на вердикт |
+| Советник | `advisory/gate.py`, `llm.py`, `explainer.py` | не влияет на вердикт |
 | Интерфейсы | `cli.py`, `api/app.py`, `report/html.py` | тонкие обёртки над сервисами |
 
 ## Поток проверки

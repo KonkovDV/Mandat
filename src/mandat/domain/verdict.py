@@ -118,6 +118,19 @@ def effective_effect(finding: Finding, profile: Profile) -> LegalEffect:
     return finding.effect
 
 
+def profile_gap(finding: Finding, effective: LegalEffect) -> bool:
+    """«Не проверено», которое создал сам профиль: черновик не закрыл группу или источник не доверенный.
+
+    Это не пробел в документах кейса. Если рядом есть содержательный повод для разбора, кейс
+    уходит человеку на разбор, а не за документами.
+    """
+    if effective is not LegalEffect.NOT_VERIFIED:
+        return False
+    if finding.effect is LegalEffect.SUPPORTS:
+        return True
+    return any(ref.doc_id == "source-trust" for ref in finding.refs)
+
+
 def _group_status(effects: list[LegalEffect]) -> str:
     if not effects:
         return "missing"
@@ -135,12 +148,18 @@ def _group_status(effects: list[LegalEffect]) -> str:
 def fold(findings: Iterable[Finding], profile: Profile, applicable: Iterable[str]) -> FoldResult:
     applicable_set = set(applicable)
     by_check: dict[str, list[LegalEffect]] = {}
+    data_gap: set[str] = set()
+    reasons = 0  # содержательные поводы для разбора (не пониженные опровержения)
     effective: list[tuple[str, LegalEffect]] = []
     warnings: list[str] = []
     for finding in findings:
         eff = effective_effect(finding, profile)
         effective.append((finding.finding_id, eff))
         by_check.setdefault(finding.check, []).append(eff)
+        if eff is LegalEffect.NOT_VERIFIED and not profile_gap(finding, eff):
+            data_gap.add(finding.check)
+        if eff is LegalEffect.NEEDS_REVIEW and finding.effect is LegalEffect.NEEDS_REVIEW:
+            reasons += 1
         if eff is not finding.effect and finding.effect is LegalEffect.REFUTES:
             warnings.append(f"{finding.rule_id}: правило не утверждено юристом, опровержение понижено до разбора")
         if eff is not finding.effect and finding.effect is LegalEffect.SUPPORTS:
@@ -162,9 +181,18 @@ def fold(findings: Iterable[Finding], profile: Profile, applicable: Iterable[str
     all_effects = [eff for _, eff in effective]
     mandatory_live = [c for c in profile.mandatory if checks.get(c) not in {"not_applicable", "waived"}]
 
+    gaps = [c for c in mandatory_live if checks.get(c) in {"missing", "not_verified", "info_only"}]
+    only_profile = all(checks.get(c) == "not_verified" and c not in data_gap for c in gaps)
+
     if LegalEffect.REFUTES in all_effects:
         verdict = Verdict.REFUTED
-    elif any(checks.get(c) in {"missing", "not_verified", "info_only"} for c in mandatory_live):
+    elif gaps and only_profile and reasons:
+        verdict = Verdict.NEEDS_REVIEW
+        warnings.append(
+            f"Профиль {profile.name} не закрыл проверки ({', '.join(sorted(gaps))}), "
+            "но в кейсе есть содержательный повод для разбора: кейс передан человеку"
+        )
+    elif gaps:
         verdict = Verdict.INSUFFICIENT_DATA
     elif LegalEffect.NOT_VERIFIED in all_effects and any(
         checks.get(c) == "not_verified" for c in checks if c not in profile.waived

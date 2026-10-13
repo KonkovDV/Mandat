@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 
 from mandat.domain.model import Case, ExecutiveRecord, PowerOfAttorney
 
@@ -20,6 +21,8 @@ class AuthorityChain:
     missing_parents: tuple[str, ...] = ()
     number_conflicts: tuple[str, ...] = ()
     notes: tuple[str, ...] = field(default_factory=tuple)
+    too_long: int = 0  # цепочка длиннее порога: сколько звеньев успели пройти
+    undecided: str = ""  # почему лист не выбран: несколько равноправных МЧД или слишком длинная цепочка
 
     @property
     def leaf(self) -> PowerOfAttorney | None:
@@ -55,10 +58,14 @@ class AuthorityChain:
 
 
 def _represents(poa: PowerOfAttorney, case: Case) -> bool:
-    return any(rep.same_as(case.requester) for rep in poa.representatives)
+    """Заявитель указан в МЧД. Противоречивые идентификаторы тоже ведут к этой МЧД: разбираться будет R-ID-005."""
+    return any(rep.same_as(case.requester) or rep.conflicts_with(case.requester) for rep in poa.representatives)
 
 
-def build_chain(case: Case) -> AuthorityChain:
+MAX_CHAIN_LINKS = 10
+
+
+def build_chain(case: Case, *, max_links: int = MAX_CHAIN_LINKS) -> AuthorityChain:
     on = case.operation.on_date
     if case.egrul is not None:
         for record in case.egrul.executives_on(on):
@@ -72,7 +79,21 @@ def build_chain(case: Case) -> AuthorityChain:
         hint = ("Представитель не найден ни в одной МЧД пакета",) if case.poas else ()
         return AuthorityChain(kind="none", notes=hint)
 
-    leaves.sort(key=lambda p: (p.issue_date is not None, p.issue_date), reverse=True)
+    # Порядок документов в пакете не должен влиять на выбор: сортируем по дате, потом по номеру и хешу.
+    leaves.sort(
+        key=lambda p: (p.issue_date is not None, p.issue_date or date.min, p.number or "", p.sha256), reverse=True
+    )
+    top = leaves[0]
+    rivals = [p for p in leaves[1:] if p.issue_date == top.issue_date and p.sha256 != top.sha256]
+    if rivals:
+        numbers = ", ".join(str(p.number) for p in (top, *rivals))
+        return AuthorityChain(
+            kind="none",
+            undecided="tie",
+            notes=(
+                f"На представителя несколько МЧД с одной датой выдачи ({numbers}): какую применить, решает сотрудник",
+            ),
+        )
     by_number, conflicts = _index_by_number(case.poas)
     if leaves[0].number in conflicts:
         return AuthorityChain(
@@ -95,6 +116,16 @@ def build_chain(case: Case) -> AuthorityChain:
         seen.add(parent.number)
         chain.append(parent)
         current = parent
+        if len(chain) > max_links:
+            return AuthorityChain(
+                kind="none",
+                too_long=len(chain),
+                undecided="too_long",
+                notes=(
+                    f"Цепочка передоверия длиннее {max_links} звеньев: автоматически не разбирается, "
+                    "нужно подтверждение реестра МЧД по каждому звену",
+                ),
+            )
     chain.reverse()
     notes: tuple[str, ...] = tuple(f"Ещё МЧД на представителя: {p.number}" for p in leaves[1:])
     if conflicts:

@@ -80,9 +80,9 @@ jobs:
       - run: python -m build
       - name: CycloneDX SBOM of the runtime environment
         run: |
-          python -m venv /tmp/runtime
-          /tmp/runtime/bin/pip install "$(ls dist/*.whl)[api]"
-          cyclonedx-py environment /tmp/runtime/bin/python --pyproject pyproject.toml --mc-type application --of JSON -o dist/mandat.cdx.json
+          python -m venv "$RUNNER_TEMP/runtime"
+          "$RUNNER_TEMP"/runtime/bin/pip install "$(ls dist/*.whl)[api]"
+          cyclonedx-py environment "$RUNNER_TEMP"/runtime/bin/python --pyproject pyproject.toml --mc-type application --of JSON -o dist/mandat.cdx.json
       - name: build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:

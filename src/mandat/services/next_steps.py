@@ -14,6 +14,8 @@ from mandat.domain.verdict import LegalEffect, Verdict
 
 _ORDER = {LegalEffect.REFUTES: 0, LegalEffect.NOT_VERIFIED: 1, LegalEffect.NEEDS_REVIEW: 2}
 SLA_HOURS = {"P1": 4, "P2": 24, "P3": 72}
+# Справки, которые сотрудник должен увидеть сразу: они не меняют вердикт, но требуют внимания.
+SIGNAL_RULES = frozenset({"R-EIO-002", "R-SUB-008"})
 
 
 def build_next_steps(findings: list[Finding], verdict: Verdict) -> list[dict[str, Any]]:
@@ -43,8 +45,15 @@ def strongest_objection(verdict: Verdict, findings: list[Finding], warnings: lis
     """Сильнейшее возражение рецензента: почему вердикт ещё нельзя считать окончательным.
 
     Паттерн Reviewer из OMEGA: перед публикацией назвать самое сильное возражение,
-    а не только итог. На подтверждении это снятая проверка или граница профиля.
+    а не только итог. На подтверждении первым идёт сигнал (давняя смена руководителя,
+    длинная цепочка), потом снятая проверка или граница профиля.
     """
+    if verdict is Verdict.CONFIRMED:
+        signals = sorted(
+            (f for f in findings if f.effect is LegalEffect.INFO and f.rule_id in SIGNAL_RULES), key=lambda f: f.rule_id
+        )
+        if signals:
+            return f"{signals[0].rule_id}: {signals[0].message}"
     ranked = [f for f in findings if f.origin == "deterministic" and f.effect in _ORDER]
     if ranked:
         finding = min(ranked, key=lambda f: (_ORDER[f.effect], f.rule_id))

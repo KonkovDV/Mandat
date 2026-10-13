@@ -3,8 +3,13 @@
 Перенесено из SynAPS-ProgramPlan (``journal.py``). Каждая запись хранит хеш
 предыдущей, поэтому удалённая, переставленная или изменённая строка ломает
 цепочку, и ``verify_journal`` называет место. Файл ``<журнал>.head`` хранит число
-записей и последний хеш: обрезка хвоста тоже обнаруживается. Подмену обоих
-файлов ловит только внешний якорь — последний хеш, сохранённый вне журнала.
+записей и последний хеш: обрезка хвоста тоже обнаруживается. При заданном ключе
+свидетель подписан тем же HMAC, поэтому обрезку с переписанным свидетелем видно и без
+внешнего якоря. Без ключа подмену обоих файлов ловит только внешний якорь — последний
+хеш, сохранённый вне журнала.
+
+Строка журнала разбирается строго: повторяющийся ключ в JSON — подделка (хеш считался бы
+по одному значению, а читатель увидел бы другое), битая строка — отказ проверки, а не исключение.
 
 Ключ HMAC — переменная окружения ``MANDAT_JOURNAL_KEY``.
 """
@@ -72,16 +77,53 @@ def witness_path(path: Path) -> Path:
     return path.with_name(path.name + ".head")
 
 
+class JournalError(ValueError):
+    """Строка журнала не читается: битый JSON, повторяющийся ключ или не объект."""
+
+    def __init__(self, line: int, reason: str):
+        super().__init__(f"строка {line}: {reason}")
+        self.line, self.reason = line, reason
+
+
+def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    keys = [k for k, _ in pairs]
+    if len(keys) != len(set(keys)):
+        raise ValueError("повторяющийся ключ в записи")
+    return dict(pairs)
+
+
+def strict_loads(text: str) -> Any:
+    return json.loads(text, object_pairs_hook=_no_duplicates)
+
+
 def read_journal(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    out = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            record = strict_loads(line)
+        except ValueError as exc:
+            raise JournalError(number, str(exc) if "ключ" in str(exc) else "строка не разбирается как JSON") from exc
+        if not isinstance(record, dict):
+            raise JournalError(number, "запись не объект JSON")
+        out.append(record)
+    return out
 
 
-def _write_witness(path: Path, records: int, head: str) -> None:
+def _witness_mac(records: int, head: str, key: str) -> str:
+    return hmac.new(key.encode("utf-8"), f"head:{records}:{head}".encode("ascii"), hashlib.sha256).hexdigest()
+
+
+def _write_witness(path: Path, records: int, head: str, key: str | None = None) -> None:
     witness = witness_path(path)
     tmp = witness.with_name(witness.name + ".tmp")
-    tmp.write_text(json.dumps({"records": records, "hash": head}, sort_keys=True) + "\n", encoding="utf-8")
+    data: dict[str, Any] = {"records": records, "hash": head}
+    if key:
+        data["mac"] = _witness_mac(records, head, key)
+    tmp.write_text(json.dumps(data, sort_keys=True) + "\n", encoding="utf-8")
     tmp.replace(witness)
 
 
@@ -137,7 +179,7 @@ def append(
         tmp.write_bytes((existing or b"") + line.encode("utf-8"))
         os.replace(tmp, path)
         try:
-            _write_witness(path, record["seq"], record["hash"])
+            _write_witness(path, record["seq"], record["hash"], signing)
         except Exception:
             if existing is None:
                 path.unlink(missing_ok=True)
@@ -166,7 +208,10 @@ class JournalCheck:
 
 
 def verify_journal(path: Path, *, anchor: str | None = None, key: str | None = None) -> JournalCheck:
-    records = read_journal(path)
+    try:
+        records = read_journal(path)
+    except JournalError as exc:
+        return JournalCheck(False, 0, exc.line, exc.reason)
     previous = GENESIS
     signing = _key(key)
     for index, record in enumerate(records, start=1):
@@ -186,9 +231,16 @@ def verify_journal(path: Path, *, anchor: str | None = None, key: str | None = N
     if records and not witness.exists():
         return JournalCheck(False, len(records), None, "нет файла-свидетеля .head")
     if witness.exists():
-        data = json.loads(witness.read_text(encoding="utf-8"))
-        if data.get("records") != len(records) or data.get("hash") != head:
+        try:
+            data = strict_loads(witness.read_text(encoding="utf-8"))
+        except ValueError:
+            return JournalCheck(False, len(records), None, "файл-свидетель .head не разбирается")
+        if not isinstance(data, dict) or data.get("records") != len(records) or data.get("hash") != head:
             return JournalCheck(False, len(records), None, "свидетель не совпадает: хвост удалён или файл подменён")
+        if signing:
+            mac = data.get("mac")
+            if not isinstance(mac, str) or not hmac.compare_digest(mac, _witness_mac(len(records), head, signing)):
+                return JournalCheck(False, len(records), None, "подпись свидетеля .head не совпадает с ключом журнала")
     if anchor is not None and anchor != head:
         return JournalCheck(False, len(records), None, "внешний якорь не совпадает с последней записью")
     return JournalCheck(True, len(records))

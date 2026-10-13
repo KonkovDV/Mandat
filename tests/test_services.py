@@ -8,14 +8,14 @@ from pathlib import Path
 import pytest
 from conftest import run
 
-from mandat.advisory.copilot import Fact, explain, facts_of
+from mandat.advisory.explainer import Fact, explain, facts_of
 from mandat.advisory.gate import as_advisory_findings, ground_candidates
 from mandat.advisory.llm import OpenAICompatClient, charter_messages, parse_facts
 from mandat.audit import attestation, journal
 from mandat.domain.model import TextDocument
 from mandat.eval.metrics import cohen_kappa, required_n, wilson_interval
 from mandat.eval.run import run_corpus
-from mandat.intake.case_loader import load_case_inline
+from mandat.intake.case_loader import CaseError, load_case_inline
 from mandat.privacy.pii import find, pseudonymize
 from mandat.review.state_machine import ReviewCase, ReviewError, ReviewState
 from mandat.services.monitoring import evaluate, parse_events
@@ -152,7 +152,9 @@ def test_missing_amount_and_joint_flag_do_not_confirm():
     negative = deepcopy(limited)
     negative["operation"]["amount_rub"] = -1
     assert verify_case(load_case_inline(omitted)).verdict.value == "needs_review"
-    assert verify_case(load_case_inline(negative)).verdict.value == "needs_review"
+    # С 0.3.0 строже: неположительную сумму не принимает уже загрузчик.
+    with pytest.raises(CaseError):
+        load_case_inline(negative)
 
     joint = build("joint_powers", seed=1).inline_manifest()
     xml = joint["documents"][0]["content"]
@@ -206,7 +208,7 @@ def test_takeover_window_keeps_revocation():
     assert {"possible_takeover", "poa_invalidated"} <= kinds
 
 
-def test_copilot_drops_verdict_inversion():
+def test_explainer_drops_verdict_inversion():
     facts = [Fact("verdict", "Вердикт: ОПРОВЕРГНУТО")]
 
     def fake(_messages):
@@ -239,7 +241,7 @@ def test_webhook_signature_roundtrip():
     assert not signature_ok("other", packed["headers"], body, now)
 
 
-def test_copilot_keeps_only_grounded_statements():
+def test_explainer_keeps_only_grounded_statements():
     facts = [Fact("f1", "МЧД 7 отозвана 01.10.2026"), Fact("verdict", "Вердикт: ОПРОВЕРГНУТО")]
 
     def fake(_messages):
@@ -312,8 +314,11 @@ def test_fractional_amount_and_naive_event_time_are_rejected():
     manifest["operation"]["amount_rub"] = True
     with pytest.raises(CaseError):
         load_case_inline(manifest)
-    with pytest.raises(ValueError, match="часового пояса"):
-        parse_events({"events": [{"kind": "NEW_POA", "org_inn": "1", "at": "2026-10-01T12:00:00"}]})
+    # С 0.3.0 время без пояса принимается как московское с предупреждением: иначе падала вся пачка.
+    warnings: list[str] = []
+    _, events = parse_events({"events": [{"kind": "NEW_POA", "org_inn": "1", "at": "2026-10-01T12:00:00"}]}, warnings)
+    assert events[0].at.isoformat() == "2026-10-01T09:00:00+00:00"
+    assert warnings and "UTC+3" in warnings[0]
 
 
 def test_unknown_egrul_history_is_not_active():

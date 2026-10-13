@@ -57,6 +57,8 @@ def _rubles(value: Any) -> int | None:
         return None
     if isinstance(value, bool) or not isinstance(value, int):
         raise CaseError("amount_rub — целое число рублей; дробные значения и boolean не принимаются")
+    if value <= 0:
+        raise CaseError("amount_rub должен быть больше нуля")
     return value
 
 
@@ -90,6 +92,7 @@ def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, 
         raise CaseError(f"манифест кейса неполный: {exc}") from exc
 
     poas, papers, errors, inputs = [], [], [], []
+    duplicates: list[tuple[str, str]] = []
     egrul = charter = None
     documents = manifest.get("documents") or []
     if not isinstance(documents, list):
@@ -115,14 +118,25 @@ def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, 
             if kind == "emchd_xml":
                 poas.append(parse_poa(raw, doc_id=doc_id))
             elif kind == "egrul_json":
-                egrul = parse_egrul(raw, doc_id=doc_id)
+                parsed = parse_egrul(raw, doc_id=doc_id)
+                if egrul is not None and egrul.sha256 != parsed.sha256:
+                    duplicates.append((doc_id, kind))
+                egrul = egrul or parsed
             elif kind == "charter_text":
-                charter = TextDocument(doc_id, sha, kind, raw.decode("utf-8"))
+                text_doc = TextDocument(doc_id, sha, kind, raw.decode("utf-8"))
+                if charter is not None and charter.sha256 != sha:
+                    duplicates.append((doc_id, kind))
+                charter = charter or text_doc
             else:
                 papers.append(TextDocument(doc_id, sha, kind, raw.decode("utf-8")))
         except (EmchdError, EgrulError, XmlRejected, UnicodeDecodeError) as exc:
             errors.append(IntakeError(doc_id, kind, str(exc)))
 
+    # Два разных экземпляра одного документа: ни один не используется, R-FMT-005 называет причину.
+    if any(kind == "egrul_json" for _, kind in duplicates):
+        egrul = None
+    if any(kind == "charter_text" for _, kind in duplicates):
+        charter = None
     return Case(
         case_id=str(manifest.get("case_id") or "case"),
         organization=organization,
@@ -137,6 +151,7 @@ def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, 
         intake_errors=tuple(errors),
         inputs=tuple(inputs),
         charter_disposition=_disposition(manifest.get("charter_disposition")),
+        duplicates=tuple(duplicates),
     )
 
 

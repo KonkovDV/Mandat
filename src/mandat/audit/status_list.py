@@ -26,6 +26,7 @@ from typing import Any
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 from mandat.audit import attestation
+from mandat.domain.identifiers import normalize_poa_number
 
 MIN_BITS = 131_072
 PURPOSES = ("revocation", "suspension")
@@ -67,6 +68,7 @@ class StatusRegistry:
     directory: Path
     size: int = MIN_BITS
     epoch: str = ""
+    sequence: int = 0  # растёт при каждом save: старый подписанный список нельзя подложить вместо нового
     lists: dict[str, bytearray] = field(default_factory=dict)
     entries: dict[str, dict[str, Any]] = field(default_factory=dict)  # индекс → сведения об удостоверении
 
@@ -81,7 +83,12 @@ class StatusRegistry:
         size = int(payload["size"])
         if size < MIN_BITS or size % 8:
             raise ValueError(f"список статусов меньше {MIN_BITS} бит: групповая приватность не обеспечена")
-        reg = cls(directory, size=size, epoch=str(payload.get("epoch") or secrets.token_hex(8)))
+        reg = cls(
+            directory,
+            size=size,
+            epoch=str(payload.get("epoch") or secrets.token_hex(8)),
+            sequence=int(payload.get("sequence") or 0),
+        )
         reg.lists = {p: decode_bits(payload["lists"][p]) for p in PURPOSES}
         if any(len(bits) * 8 != size for bits in reg.lists.values()):
             raise ValueError("длина списка статусов не совпадает с размером в registry.json")
@@ -134,20 +141,27 @@ class StatusRegistry:
             for i, meta in self.entries.items()
             if meta.get("org_inn") == org_inn
             and meta.get("verdict") != "refuted"
-            and (poa_number is None or poa_number in meta.get("poa_numbers", []))
+            and (
+                poa_number is None
+                or normalize_poa_number(poa_number) in {normalize_poa_number(n) for n in meta.get("poa_numbers", [])}
+            )
         )
 
     def save(self, key: Ed25519PrivateKey, *, now: datetime | None = None) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
+        self.sequence += 1
         state = {
             "size": self.size,
             "epoch": self.epoch,
+            "sequence": self.sequence,
             "lists": {p: encode_bits(b) for p, b in self.lists.items()},
             "entries": self.entries,
         }
         (self.directory / "registry.json").write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         for purpose in PURPOSES:
-            cred = status_list_credential(purpose, self.lists[purpose], key, epoch=self.epoch, now=now)
+            cred = status_list_credential(
+                purpose, self.lists[purpose], key, epoch=self.epoch, now=now, sequence=self.sequence
+            )
             (self.directory / f"{purpose}.json").write_text(attestation.dump(cred), encoding="utf-8")
 
 
@@ -158,6 +172,7 @@ def status_list_credential(
     *,
     epoch: str = "",
     now: datetime | None = None,
+    sequence: int = 0,
 ) -> dict[str, Any]:
     created = (now or datetime.now(UTC)).isoformat(timespec="seconds")
     document = {
@@ -171,15 +186,35 @@ def status_list_credential(
             "type": "BitstringStatusList",
             "statusPurpose": purpose,
             "epoch": epoch,
+            "sequence": sequence,
             "encodedList": encode_bits(bits),
         },
     }
     return attestation.sign(document, key, now=now)
 
 
-def check_status(credential: dict[str, Any], status_dir: Path, public_key: Ed25519PublicKey) -> dict[str, bool | str]:
-    """Статус удостоверения по спискам из каталога. Подпись каждого списка проверяется."""
+def check_status(
+    credential: dict[str, Any],
+    status_dir: Path,
+    public_key: Ed25519PublicKey,
+    *,
+    seen: dict[str, int] | None = None,
+    now: datetime | None = None,
+) -> dict[str, bool | str]:
+    """Статус удостоверения по спискам из каталога. Подпись каждого списка проверяется.
+
+    ``seen`` — состояние проверяющего: «id списка → наибольший виденный ``sequence``». Список
+    старше уже виденного отвергается: так ловится подложенный после отзыва старый, но правильно
+    подписанный список. Словарь обновляется на месте; хранит его проверяющий, не издатель.
+
+    Свежесть по часам проверяется, только если передан ``now``: демо должно проверяться и через месяц.
+    """
     result: dict[str, bool | str] = {}
+    issuer_state = status_dir / "registry.json"
+    issuer_sequence = -1
+    if issuer_state.exists():
+        # Список старше состояния издателя в том же каталоге — подложен: подписан верно, но устарел.
+        issuer_sequence = int(json.loads(issuer_state.read_text(encoding="utf-8")).get("sequence") or -1)
     for entry in credential.get("credentialStatus") or []:
         purpose = entry["statusPurpose"]
         path = status_dir / f"{purpose}.json"
@@ -191,6 +226,17 @@ def check_status(credential: dict[str, Any], status_dir: Path, public_key: Ed255
         subject = status_cred.get("credentialSubject") or {}
         if entry.get("epoch") and subject.get("epoch") != entry.get("epoch"):
             raise ValueError(f"список {path} из другой эпохи, чем удостоверение")
+        listed = subject.get("sequence")
+        if issuer_sequence >= 0 and isinstance(listed, int) and listed < issuer_sequence:
+            raise ValueError("список статусов старше состояния издателя: подложен устаревший список")
+        if seen is not None:
+            sequence = subject.get("sequence")
+            if isinstance(sequence, bool) or not isinstance(sequence, int):
+                raise ValueError(f"у списка {path} нет номера sequence: свежесть не проверить")
+            list_id = f"{status_cred.get('id')}#{subject.get('epoch', '')}"
+            if sequence < seen.get(list_id, -1):
+                raise ValueError("список статусов старше уже проверенного")
+            seen[list_id] = max(sequence, seen.get(list_id, -1))
         issued = datetime.fromisoformat(str(status_cred.get("validFrom")))
         if issued.tzinfo is None:
             raise ValueError(f"у списка {path} нет часового пояса")
@@ -205,9 +251,8 @@ def check_status(credential: dict[str, Any], status_dir: Path, public_key: Ed255
     if not result:
         return {"state": "без статуса"}
     issued_values = [datetime.fromisoformat(str(result[key])) for key in result if str(key).endswith("_issued")]
-    now = datetime.now(UTC)
-    future = any(item > now + timedelta(minutes=5) for item in issued_values)
-    stale = any(now - item > timedelta(days=7) for item in issued_values)
+    future = now is not None and any(item > now + timedelta(minutes=5) for item in issued_values)
+    stale = now is not None and any(now - item > timedelta(days=7) for item in issued_values)
     revoked = bool(result.get("revocation"))
     suspended = bool(result.get("suspension"))
     if future:

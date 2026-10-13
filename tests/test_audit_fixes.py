@@ -89,9 +89,12 @@ def test_api_docs_are_off_unless_asked(api, monkeypatch):
     from fastapi.testclient import TestClient
 
     monkeypatch.delenv("MANDAT_API_DOCS", raising=False)
-    assert TestClient(api.create_app(token="secret")).get("/docs").status_code == 404
-    assert TestClient(api.create_app(token="secret")).get("/openapi.json").status_code == 404
-    assert TestClient(api.create_app(token="secret", docs=True)).get("/docs").status_code == 200
+    assert TestClient(api.create_app(token="secret")).get("/docs", headers=AUTH).status_code == 404
+    assert TestClient(api.create_app(token="secret")).get("/openapi.json", headers=AUTH).status_code == 404
+    # С 0.3.0 строже: описание API и при включённом флаге отдаётся только с токеном.
+    with_docs = TestClient(api.create_app(token="secret", docs=True))
+    assert with_docs.get("/docs").status_code == 401
+    assert with_docs.get("/docs", headers=AUTH).status_code == 200
 
 
 def test_api_rate_limit(api):

@@ -462,3 +462,71 @@ def test_once_subdelegation_cannot_be_used_twice():
     assert [p.number for p in report.chain.links] == ["p1", "p2", "p3"]
     assert any("Однократное" in f.message and f.effect.value == "refutes" for f in report.findings)
     assert report.verdict.value == "refuted"
+
+
+# --- 0.3.0: правила по аудиту 13.10.2026 -------------------------------------
+
+
+def test_r_fmt_005_duplicate_egrul_is_not_resolved():
+    report = run("duplicate_egrul")
+    assert rule_effects(report, "R-FMT-005") == {"not_verified"}
+    assert report.verdict.value == "insufficient_data"
+
+
+def test_r_id_005_inn_and_snils_of_different_people():
+    report = run("snils_of_other_person")
+    assert rule_effects(report, "R-ID-005") == {"needs_review"}
+    assert report.verdict.value == "needs_review"
+
+
+def test_r_eio_006_stale_egrul_is_not_confirmed():
+    report = run("egrul_stale")
+    assert rule_effects(report, "R-EIO-006") == {"not_verified"}
+    assert report.verdict.value == "insufficient_data"
+    assert "R-EIO-006" not in {f.rule_id for f in run("ok_charter_cleared").findings}
+
+
+def test_r_id_002_ogrn_of_another_company_refutes():
+    report = run("ogrn_of_other_company")
+    assert "refutes" in rule_effects(report, "R-ID-002")
+
+
+def test_r_eio_002_fresh_director_acting_alone_needs_review():
+    report = run("fresh_director_admin")
+    assert rule_effects(report, "R-EIO-002") == {"needs_review"}
+    assert report.routing["priority"] == "P1"
+
+
+def test_charter_thresholds_in_common_phrasings_are_parsed():
+    from mandat.intake.charter import parse_amount
+
+    assert parse_amount("свыше 300 тыс. руб.") == (300000, False)
+    assert parse_amount("свыше 0,3 млн рублей") == (300000, False)
+    assert parse_amount("на сумму 300 000,00 рублей и более") == (300000, True)
+    assert parse_amount("свыше 300.000 RUB") == (300000, False)
+    assert parse_amount("без суммы") is None
+
+
+def test_rule_crash_becomes_not_verified(monkeypatch):
+    from mandat.rules import checks
+
+    def boom(ctx):
+        raise RuntimeError("сбой")
+
+    monkeypatch.setitem(checks.RULES, "R-COV-001", boom)
+    report = run("ok_charter_cleared")
+    assert rule_effects(report, "R-COV-001") == {"not_verified"}
+    assert report.verdict.value == "insufficient_data"
+    assert any("Внутренняя ошибка правила" in w for w in report.warnings)
+
+
+def test_objection_on_confirmed_names_the_signal_first():
+    from mandat.domain.model import EvidenceRef, Finding
+    from mandat.domain.verdict import LegalEffect, Verdict
+    from mandat.services.next_steps import strongest_objection
+
+    ref = (EvidenceRef("d", "0" * 64, "x"),)
+    signal = Finding("R-EIO-002", "eio", LegalEffect.INFO, "руководитель сменился давно", "n", ref)
+    waived = Finding("R-SIG-001", "signature", LegalEffect.NOT_VERIFIED, "подпись не проверена", "n", ref)
+    text = strongest_objection(Verdict.CONFIRMED, [waived, signal], [])
+    assert text.startswith("R-EIO-002")

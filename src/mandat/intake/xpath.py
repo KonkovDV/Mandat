@@ -31,6 +31,10 @@ def _walk(node: Element, parts: list[str]) -> tuple[Element | None, list[int]]:
     return node, indexes
 
 
+class AmbiguousField(ValueError):
+    """Поле записано и атрибутом, и элементом: какое значение верное, решать не нам."""
+
+
 def read(node: Element, path: str) -> str | None:
     parts, attr = _split(path)
     target, _ = _walk(node, parts)
@@ -39,6 +43,8 @@ def read(node: Element, path: str) -> str | None:
     if attr is None or attr == ".":
         text = (target.text or "").strip()
         return text or None
+    if attr in target.attrib and target.find(attr) is not None:
+        raise AmbiguousField(f"{attr} указан и атрибутом, и вложенным элементом")
     if attr in target.attrib:
         value = target.attrib[attr].strip()
         return value or None

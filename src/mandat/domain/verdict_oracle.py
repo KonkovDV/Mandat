@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from mandat.domain.model import Finding
-from mandat.domain.verdict import LegalEffect, Profile, Verdict, effective_effect
+from mandat.domain.verdict import LegalEffect, Profile, Verdict, effective_effect, profile_gap
 
 _RANK = {
     LegalEffect.REFUTES: "refuted",
@@ -35,10 +35,16 @@ def oracle_verdict(findings: Iterable[Finding], profile: Profile, applicable: It
     applicable_set = set(applicable)
     by_check: dict[str, list[LegalEffect]] = {}
     effects: list[LegalEffect] = []
+    real_gaps: set[str] = set()
+    review_reasons: list[str] = []
     for finding in findings:
         effect = effective_effect(finding, profile)
         effects.append(effect)
         by_check.setdefault(finding.check, []).append(effect)
+        if effect is LegalEffect.NOT_VERIFIED and not profile_gap(finding, effect):
+            real_gaps.add(finding.check)
+        if effect is finding.effect is LegalEffect.NEEDS_REVIEW:
+            review_reasons.append(finding.rule_id)
 
     checks: dict[str, str] = {}
     for check in set(by_check) | applicable_set | set(profile.mandatory):
@@ -53,8 +59,15 @@ def oracle_verdict(findings: Iterable[Finding], profile: Profile, applicable: It
     live = [check for check in profile.mandatory if checks.get(check) not in {"not_applicable", "waived"}]
     if LegalEffect.REFUTES in effects:
         return Verdict.REFUTED
-    if any(checks.get(check) in {"missing", "not_verified", "info_only"} for check in live):
+    open_checks = {check: checks.get(check) for check in live if checks.get(check) != "ok"}
+    blocking = [
+        c for c, s in open_checks.items() if s in {"missing", "info_only"} or (s == "not_verified" and c in real_gaps)
+    ]
+    soft = [c for c, s in open_checks.items() if s == "not_verified" and c not in real_gaps]
+    if blocking:
         return Verdict.INSUFFICIENT_DATA
+    if soft:
+        return Verdict.NEEDS_REVIEW if review_reasons else Verdict.INSUFFICIENT_DATA
     if LegalEffect.NOT_VERIFIED in effects and any(
         status == "not_verified" for name, status in checks.items() if name not in profile.waived
     ):

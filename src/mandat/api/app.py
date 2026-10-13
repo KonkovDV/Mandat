@@ -21,7 +21,7 @@ import os
 import secrets
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from mandat import ENGINE, __version__
@@ -33,6 +33,80 @@ from mandat.services.monitoring import evaluate, parse_events
 from mandat.services.verify import verify_case
 
 MAX_BODY = 8 * 1024 * 1024
+OPEN_PATHS = {"/health"}
+SECURITY_HEADERS = [(b"cache-control", b"no-store"), (b"x-content-type-options", b"nosniff")]
+
+
+class Guard:
+    """Чистое ASGI-звено перед приложением: лимит частоты, токен, размер тела — именно в этом порядке.
+
+    Токен проверяется по заголовкам до чтения тела: без токена сервер не читает ни байта
+    запроса. Тело читается потоком со счётчиком и отвергается с 413, как только превысит
+    ``MAX_BODY``, даже без ``Content-Length`` (chunked). ``BaseHTTPMiddleware`` с
+    ``await request.body()`` здесь нельзя: он буферизует всё тело до проверок.
+    """
+
+    def __init__(self, app: Any, *, directory: Directory, limit: int, store: Store) -> None:
+        self.app, self.directory, self.limit, self.store = app, directory, limit, store
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        path = scope.get("path", "")
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
+
+        async def reply(status: int, detail: str, extra: dict[str, str] | None = None) -> None:
+            await JSONResponse({"detail": detail}, status_code=status, headers=extra)(scope, receive, send)
+
+        if path not in OPEN_PATHS:
+            if self.limit > 0:
+                client = (scope.get("client") or ("unknown",))[0]
+                if not self.store.allow(str(client), self.limit):
+                    await reply(429, "слишком много запросов", {"Retry-After": "60"})
+                    return
+            if not self.directory.configured:
+                await reply(503, "API закрыт: задайте MANDAT_API_TOKEN или MANDAT_API_USERS")
+                return
+            scheme, _, value = headers.get("authorization", "").partition(" ")
+            if scheme.lower() != "bearer" or not value.strip() or self.directory.find(value.strip()) is None:
+                await reply(401, "нужен токен доступа")
+                return
+        length = headers.get("content-length")
+        if length is not None:
+            if not length.isascii() or not length.isdigit():
+                await reply(400, "некорректный Content-Length")
+                return
+            if int(length) > MAX_BODY:
+                await reply(413, "запрос больше допустимого")
+                return
+        messages: list[dict[str, Any]] = []
+        total = 0
+        if scope.get("method") not in {"GET", "HEAD", "OPTIONS"}:
+            while True:
+                message = await receive()
+                if message["type"] != "http.request":
+                    messages.append(message)
+                    break
+                total += len(message.get("body", b""))
+                if total > MAX_BODY:
+                    await reply(413, "запрос больше допустимого")
+                    return
+                messages.append(message)
+                if not message.get("more_body", False):
+                    break
+
+        async def replay() -> dict[str, Any]:
+            return messages.pop(0) if messages else await receive()
+
+        async def secured(message: dict[str, Any]) -> None:
+            if message["type"] == "http.response.start":
+                message = {**message, "headers": [*message.get("headers", []), *SECURITY_HEADERS]}
+            await send(message)
+
+        await self.app(scope, replay, secured)
+
+
 # Отчёты живут в памяти процесса. Без потолка поток POST /v1/cases съедает память (OWASP API4:2023).
 MAX_REPORTS = 1000
 
@@ -62,33 +136,7 @@ def create_app(
     )
     shared = store if store is not None else open_store()
 
-    @app.middleware("http")
-    async def rate_limit(request: Request, call_next):  # type: ignore[no-untyped-def]
-        if limit > 0 and request.url.path != "/health":
-            client = request.client.host if request.client else "unknown"
-            if not shared.allow(client, limit):
-                return JSONResponse(
-                    {"detail": "слишком много запросов"}, status_code=429, headers={"Retry-After": "60"}
-                )
-        return await call_next(request)
-
-    @app.middleware("http")
-    async def limit_body(request: Request, call_next):  # type: ignore[no-untyped-def]
-        length = request.headers.get("content-length")
-        if length:
-            try:
-                declared = int(length)
-            except ValueError:
-                return JSONResponse({"detail": "некорректный Content-Length"}, status_code=400)
-            if declared > MAX_BODY:
-                return JSONResponse({"detail": "запрос больше допустимого"}, status_code=413)
-        body = await request.body()
-        if len(body) > MAX_BODY:
-            return JSONResponse({"detail": "запрос больше допустимого"}, status_code=413)
-        response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        return response
+    app.add_middleware(Guard, directory=directory, limit=limit, store=shared)
 
     def auth(authorization: str = Header(default="")) -> Principal:
         if not directory.configured:
@@ -168,9 +216,11 @@ def create_app(
         if window_hours < 1 or window_hours > 24 * 30:
             raise HTTPException(422, "window_hours от 1 до 720")
         try:
-            rights, events = parse_events(payload)
-        except (KeyError, ValueError) as exc:
+            warnings: list[str] = []
+            rights, events = parse_events(payload, warnings)
+        except (KeyError, ValueError, TypeError) as exc:
             raise HTTPException(422, f"события не разобраны: {exc}") from exc
-        return {"alerts": [a.as_dict() for a in evaluate(rights, events, window_hours=window_hours)]}
+        alerts = [a.as_dict() for a in evaluate(rights, events, window_hours=window_hours)]
+        return {"alerts": alerts, "warnings": warnings}
 
     return app

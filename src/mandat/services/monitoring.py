@@ -16,10 +16,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 from mandat.data import sha256_json
+from mandat.domain.identifiers import normalize_inn, normalize_poa_number
 
 EVENT_KINDS = {"EIO_CHANGED", "POA_REVOKED", "POA_EXPIRED", "NEW_POA", "REQUISITES_CHANGE_REQUEST"}
 HIJACK_PATTERN = {"EIO_CHANGED", "NEW_POA", "REQUISITES_CHANGE_REQUEST"}
@@ -73,13 +74,24 @@ class Alert:
         }
 
 
-def _event_time(value: str) -> datetime:
+MOSCOW = timezone(timedelta(hours=3), "MSK")
+
+
+def _event_time(value: Any, warnings: list[str] | None = None) -> datetime:
+    """Время ISO 8601 строкой. Без часового пояса — московское время (UTC+3) и предупреждение в ответе.
+
+    Раньше такое время роняло всю пачку, и отмена МЧД из той же пачки терялась.
+    """
+    if not isinstance(value, str):
+        raise ValueError(f"время события должно быть строкой ISO 8601, а не {type(value).__name__}")
     try:
-        parsed = datetime.fromisoformat(str(value))
+        parsed = datetime.fromisoformat(value)
     except ValueError as exc:
         raise ValueError(f"время события не разобрано: {value!r}") from exc
     if parsed.tzinfo is None:
-        raise ValueError("у события нет часового пояса; укажите смещение, например +03:00")
+        parsed = parsed.replace(tzinfo=MOSCOW)
+        if warnings is not None:
+            warnings.append(f"время {value} без часового пояса, принято как московское (UTC+3)")
     return parsed.astimezone(UTC)
 
 
@@ -92,19 +104,28 @@ def _rows(payload: dict[str, Any], key: str) -> list[Any]:
     return rows
 
 
-def parse_events(payload: dict[str, Any]) -> tuple[list[GrantedRight], list[Event]]:
+def _numbers(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError("poa_numbers должен быть списком")
+    return tuple(n for n in (normalize_poa_number(v) for v in value) if n)
+
+
+def parse_events(payload: dict[str, Any], warnings: list[str] | None = None) -> tuple[list[GrantedRight], list[Event]]:
+    """Права и события. Номера МЧД и ИНН приводятся к одному виду, отмена без номера МЧД — ошибка."""
     rights = []
     for row in _rows(payload, "rights"):
         if not isinstance(row, dict):
             raise ValueError("право должно быть объектом")
         rights.append(
             GrantedRight(
-                right_id=row["right_id"],
-                org_inn=row["org_inn"],
-                representative_inn=row["representative_inn"],
-                operation=row["operation"],
-                poa_numbers=tuple(row.get("poa_numbers") or ()),
-                eio_inn=row.get("eio_inn"),
+                right_id=str(row["right_id"]),
+                org_inn=normalize_inn(row["org_inn"]) or "",
+                representative_inn=normalize_inn(row["representative_inn"]) or "",
+                operation=str(row["operation"]),
+                poa_numbers=_numbers(row.get("poa_numbers")),
+                eio_inn=normalize_inn(row.get("eio_inn")),
             )
         )
     events = []
@@ -113,7 +134,18 @@ def parse_events(payload: dict[str, Any]) -> tuple[list[GrantedRight], list[Even
             raise ValueError("событие должно быть объектом")
         if row["kind"] not in EVENT_KINDS:
             raise ValueError(f"неизвестный тип события {row['kind']!r}")
-        events.append(Event(row["kind"], row["org_inn"], _event_time(row["at"]), row.get("payload") or {}))
+        body = row.get("payload") or {}
+        if not isinstance(body, dict):
+            raise ValueError("payload события должен быть объектом")
+        if row["kind"] in {"POA_REVOKED", "POA_EXPIRED"}:
+            number = normalize_poa_number(body.get("number"))
+            if not number:
+                raise ValueError(f"событие {row['kind']} без номера МЧД: неполное событие не пропускается молча")
+            body = {**body, "number": number}
+        org = normalize_inn(row["org_inn"])
+        if not org:
+            raise ValueError("у события нет ИНН организации")
+        events.append(Event(row["kind"], org, _event_time(row["at"], warnings), body))
     return rights, events
 
 
@@ -128,7 +160,7 @@ def evaluate(rights: list[GrantedRight], events: list[Event], *, window_hours: i
         window = timedelta(hours=window_hours)
         # Окно не привязано к смене руководителя: любой из трёх сигналов может быть первым.
         # Тревога захвата не отменяет остальные сигналы той же пачки: отмена МЧД
-        # остаётся отдельным вето (паттерн PALERMO в gptheist).
+        # остаётся отдельным вето.
         hijack = next(
             (
                 [e for e in evs if start.at <= e.at <= start.at + window]
@@ -178,7 +210,7 @@ def evaluate(rights: list[GrantedRight], events: list[Event], *, window_hours: i
                         )
                     )
             elif ev.kind == "EIO_CHANGED":
-                new_inn = ev.payload.get("new_eio_inn")
+                new_inn = normalize_inn(ev.payload.get("new_eio_inn"))
                 hit = tuple(r.right_id for r in org_rights if r.eio_inn and r.eio_inn != new_inn)
                 if hit:
                     alerts.append(

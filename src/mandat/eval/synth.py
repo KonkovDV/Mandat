@@ -80,6 +80,38 @@ DEFECTS: dict[str, str] = {
     "missing_parent": "insufficient_data",
     "malformed_xml": "insufficient_data",
     "xml_bomb": "insufficient_data",
+    # Виды 0.3.0: пути к ложному «подтверждено», найденные аудитом 13.10.2026 (tests/test_audit_regressions.py).
+    "sub_signer_stranger": "refuted",
+    "sub_child_before_parent": "refuted",
+    "snils_of_other_person": "needs_review",
+    "egrul_stale": "insufficient_data",
+    "egrul_no_status": "insufficient_data",
+    "fresh_director_admin": "needs_review",
+    "duplicate_egrul": "insufficient_data",
+    "same_number_twin": "insufficient_data",
+    "ogrn_of_other_company": "refuted",
+    "guid_case_transfer": "refuted",
+    "leaf_tie": "insufficient_data",
+    "charter_limit_tys": "needs_review",
+    "charter_limit_and_more": "needs_review",
+    "charter_second_signature": "needs_review",
+}
+# Новые виды строятся мутацией базового сценария: вид → базовый вид.
+DERIVED: dict[str, str] = {
+    "sub_signer_stranger": "ok_subdelegation",
+    "sub_child_before_parent": "ok_subdelegation",
+    "snils_of_other_person": "ok_charter_cleared",
+    "egrul_stale": "ok_charter_cleared",
+    "egrul_no_status": "ok_charter_cleared",
+    "fresh_director_admin": "ok_director",
+    "duplicate_egrul": "ok_charter_cleared",
+    "same_number_twin": "ok_charter_cleared",
+    "ogrn_of_other_company": "ok_charter_cleared",
+    "guid_case_transfer": "ok_charter_cleared",
+    "leaf_tie": "ok_charter_cleared",
+    "charter_limit_tys": "ok_charter_cleared",
+    "charter_limit_and_more": "ok_charter_cleared",
+    "charter_second_signature": "ok_charter_cleared",
 }
 CHAIN_DEFECTS = {
     "ok_subdelegation",
@@ -216,6 +248,8 @@ def _egrul(
 def build(defect: str, seed: int = 1) -> Scenario:
     if defect not in DEFECTS:
         raise ValueError(f"неизвестный дефект {defect!r}")
+    if defect in DERIVED:
+        return _derive(defect, build(DERIVED[defect], seed), World.make(seed))
     w = World.make(seed)
     # Номера МЧД зависят и от вида дефекта: у демо-кейсов одной организации разные доверенности.
     salt = int.from_bytes(hashlib.sha256(defect.encode()).digest()[:16], "big")
@@ -396,3 +430,96 @@ def build(defect: str, seed: int = 1) -> Scenario:
     if defect == "ok_charter_cleared":
         manifest["charter_disposition"] = "no_applicable_restriction"
     return Scenario(manifest["case_id"], defect, DEFECTS[defect], manifest, files)
+
+
+_SV = "Документ/Довер/СвДов"
+_SIGNER = "Документ/Довер/СвДоверит/Доверит/РосОргДовер/ЛицоБезДов/СвФЛ"
+
+
+def _xml_edit(raw: bytes, path: str, **attrs: str) -> bytes:
+    import xml.etree.ElementTree as ET  # синтетика пишет XML сама, внешних данных здесь нет
+
+    root = ET.fromstring(raw)  # noqa: S314
+    element = root.find(path)
+    assert element is not None, path
+    for name, value in attrs.items():
+        element.set(name, value)
+    return ET.tostring(root, encoding="unicode").encode("utf-8")
+
+
+def _derive(variant: str, base: Scenario, w: World) -> Scenario:
+    """Мутация базового сценария под вид дефекта 0.3.0. Ожидаемый вердикт — в ``DEFECTS``."""
+    manifest = json.loads(json.dumps(base.manifest))
+    files = dict(base.files)
+    egrul = json.loads(files["egrul.json"])
+    if variant == "sub_signer_stranger":
+        files["poa-child.xml"] = _xml_edit(
+            files["poa-child.xml"], _SIGNER, ИННФЛ=w.stranger.inn or "", СНИЛС=w.stranger.snils or ""
+        )
+    elif variant == "sub_child_before_parent":
+        files["poa-child.xml"] = _xml_edit(files["poa-child.xml"], _SV, ДатаВыдДовер="2026-02-01")
+    elif variant == "snils_of_other_person":
+        manifest["requester"]["snils"] = w.stranger.snils
+    elif variant == "egrul_stale":
+        egrul["extracted_at"] = "2024-06-01"
+    elif variant == "egrul_no_status":
+        egrul.pop("status")
+    elif variant == "fresh_director_admin":
+        egrul["executives"][0]["valid_to"] = (OP_DATE - timedelta(days=3)).isoformat()
+        start = (OP_DATE - timedelta(days=2)).isoformat()
+        egrul["executives"].append(
+            {
+                "full_name": w.stranger.full_name,
+                "inn": w.stranger.inn,
+                "grn": "2267700777777",
+                "record_date": start,
+                "valid_from": start,
+                "valid_to": None,
+            }
+        )
+        manifest["requester"] = {"full_name": w.stranger.full_name, "inn": w.stranger.inn, "snils": w.stranger.snils}
+        manifest["operation"]["code"] = "USER_ADMIN"
+    elif variant == "duplicate_egrul":
+        twin = {**egrul, "status": "liquidated"}
+        files["egrul-0.json"] = json.dumps(twin, ensure_ascii=False, indent=2).encode("utf-8")
+        manifest["documents"].insert(0, {"id": "egrul-0", "kind": "egrul_json", "path": "egrul-0.json"})
+    elif variant == "same_number_twin":
+        files["poa-twin.xml"] = _xml_edit(files["poa-root.xml"], _SV, ПрПередов="3")
+        manifest["documents"].insert(0, {"id": "poa-twin", "kind": "emchd_xml", "path": "poa-twin.xml"})
+    elif variant == "ogrn_of_other_company":
+        egrul["ogrn"] = make_ogrn("102770013219")
+    elif variant == "guid_case_transfer":
+        import xml.etree.ElementTree as ET
+
+        found = ET.fromstring(files["poa-root.xml"]).find(_SV)  # noqa: S314
+        root_number = found.get("НомДовер") if found is not None else None
+        principal = Organization(inn=w.org.inn, ogrn=w.org.ogrn, kpp=w.org.kpp, name=w.org_full_name)
+        files["poa-transfer.xml"] = build_emchd_xml(
+            number="bbbbbbbb-0000-0000-0000-000000000001",
+            issue_date=date(2026, 4, 1),
+            valid_until=date(2027, 1, 1),
+            principal=principal,
+            signer=w.accountant,
+            representatives=[w.clerk1],
+            machine_codes=[PAY],
+            parent_number=(root_number or "").upper(),
+            loses_authority_code="2",
+        ).encode("utf-8")
+        manifest["documents"].append({"id": "poa-transfer", "kind": "emchd_xml", "path": "poa-transfer.xml"})
+    elif variant == "leaf_tie":
+        twin_number = "cccccccc-0000-0000-0000-000000000001"
+        files["poa-twin.xml"] = _xml_edit(files["poa-root.xml"], _SV, НомДовер=twin_number)
+        manifest["documents"].append({"id": "poa-twin", "kind": "emchd_xml", "path": "poa-twin.xml"})
+        manifest["registry"][twin_number] = "revoked"
+    elif variant.startswith("charter_"):
+        extra = {
+            "charter_limit_tys": "Сделки на сумму свыше 300 тыс. руб. требуют одобрения общего собрания участников.",
+            "charter_limit_and_more": (
+                "Сделки на сумму 300 000 рублей и более совершаются только с согласия участников."
+            ),
+            "charter_second_signature": "Для платёжных документов обязательна вторая подпись главного бухгалтера.",
+        }[variant]
+        files["charter.txt"] = files["charter.txt"] + (" " + extra).encode("utf-8")
+    files["egrul.json"] = json.dumps(egrul, ensure_ascii=False, indent=2).encode("utf-8")
+    manifest["case_id"] = f"{variant}-{base.case_id.rsplit('-', 1)[-1]}"
+    return Scenario(manifest["case_id"], variant, DEFECTS[variant], manifest, files)

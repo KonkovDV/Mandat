@@ -90,6 +90,8 @@ def rule(rule_id: str) -> Callable[[Rule], Rule]:
 def _poas_in_scope(ctx: RuleContext) -> tuple[PowerOfAttorney, ...]:
     if ctx.chain.kind == "poa":
         return ctx.chain.links
+    if ctx.chain.undecided:
+        return ()  # лист не выбран: цепочку не разбираем и по каждой МЧД отчёт не строим
     if ctx.chain.kind == "none":
         return ctx.case.poas
     return ()
@@ -128,6 +130,8 @@ def fmt_parsed(ctx: RuleContext) -> list[Finding]:
         return [ctx.emit("R-FMT-001", E.SUPPORTS, "Сведения ЕГРЮЛ приняты", [EvidenceRef(eg.doc_id, eg.sha256, "$")])]
     if not ctx.case.poas and not ctx.case.paper_poas:
         return [ctx.emit("R-FMT-001", E.NOT_VERIFIED, "В пакете нет документа, подтверждающего полномочия", [])]
+    if ctx.chain.too_long:
+        return [ctx.emit("R-FMT-001", E.SUPPORTS, f"Пакет из {len(ctx.case.poas)} МЧД разобран", [])]
     return [
         ctx.emit(
             "R-FMT-001",
@@ -142,7 +146,7 @@ def fmt_parsed(ctx: RuleContext) -> list[Finding]:
 @rule("R-FMT-002")
 def fmt_version(ctx: RuleContext) -> list[Finding]:
     out = []
-    for poa in ctx.case.poas:
+    for poa in ctx.case.poas[:0] if ctx.chain.too_long else ctx.case.poas:
         ref = poa.ref("format_version")
         if poa.format_version == "EMCHD_1":
             out.append(ctx.emit("R-FMT-002", E.SUPPORTS, f"МЧД {poa.number}: единый формат 003", [ref]))
@@ -223,6 +227,22 @@ def fmt_irrevocable(ctx: RuleContext) -> list[Finding]:
 # --- реквизиты --------------------------------------------------------------
 
 
+@rule("R-FMT-005")
+def fmt_unique(ctx: RuleContext) -> list[Finding]:
+    """Документы, которые должны быть в одном экземпляре, не повторяются: молча выбрать один нельзя."""
+    names = {"egrul_json": "сведения ЕГРЮЛ", "charter_text": "устав"}
+    return [
+        ctx.emit(
+            "R-FMT-005",
+            E.NOT_VERIFIED,
+            f"В пакете второй документ вида «{names.get(kind, kind)}» ({doc_id}) с другим содержимым: "
+            "какой верный, решает сотрудник",
+            [EvidenceRef(doc_id, _input_sha(ctx, doc_id), "document")],
+        )
+        for doc_id, kind in ctx.case.duplicates
+    ]
+
+
 @rule("R-ID-001")
 def id_checksums(ctx: RuleContext) -> list[Finding]:
     bad: list[Finding] = []
@@ -269,6 +289,16 @@ def id_principal(ctx: RuleContext) -> list[Finding]:
         ref = EvidenceRef(eg.doc_id, eg.sha256, "$.inn", quote=eg.organization.inn)
         if eg.organization.inn != org.inn:
             out.append(ctx.emit("R-ID-002", E.REFUTES, "Сведения ЕГРЮЛ относятся к другой организации", [ref]))
+        elif eg.organization.ogrn and org.ogrn and eg.organization.ogrn != org.ogrn:
+            ogrn_ref = EvidenceRef(eg.doc_id, eg.sha256, "$.ogrn", quote=eg.organization.ogrn)
+            out.append(
+                ctx.emit(
+                    "R-ID-002",
+                    E.REFUTES,
+                    f"ОГРН в ЕГРЮЛ ({eg.organization.ogrn}) не совпадает с ОГРН клиента ({org.ogrn})",
+                    [ogrn_ref],
+                )
+            )
     for poa in _poas_in_scope(ctx):
         ref = poa.ref("principal.inn")
         same_inn = poa.principal.inn == org.inn
@@ -284,7 +314,8 @@ def id_principal(ctx: RuleContext) -> list[Finding]:
                     [ref],
                 )
             )
-    if ctx.chain.kind == "eio_direct" and eg is not None and eg.organization.inn == org.inn:
+    same_ogrn = eg is None or not (eg.organization.ogrn and org.ogrn) or eg.organization.ogrn == org.ogrn
+    if ctx.chain.kind == "eio_direct" and eg is not None and eg.organization.inn == org.inn and same_ogrn:
         out.append(
             ctx.emit(
                 "R-ID-002",
@@ -296,6 +327,32 @@ def id_principal(ctx: RuleContext) -> list[Finding]:
     return out
 
 
+@rule("R-ID-005")
+def id_conflict(ctx: RuleContext) -> list[Finding]:
+    """ИНН заявителя совпал с представителем, а СНИЛС чужой (или наоборот): это не одно лицо, решает человек."""
+    req = ctx.case.requester
+    people = []
+    if ctx.chain.leaf is not None:
+        people += [
+            (rep, ctx.chain.leaf.ref(f"representative.{i}")) for i, rep in enumerate(ctx.chain.leaf.representatives, 1)
+        ]
+    if ctx.case.egrul is not None:
+        people += [
+            (rec.person, rec.ref or _egrul_ref(ctx)) for rec in ctx.case.egrul.executives_on(ctx.case.operation.on_date)
+        ]
+    return [
+        ctx.emit(
+            "R-ID-005",
+            E.NEEDS_REVIEW,
+            "ИНН и СНИЛС заявителя указывают на разных людей: совпадает только часть идентификаторов "
+            f"с {person.label()}",
+            [ref, ctx.case_ref],
+        )
+        for person, ref in people
+        if person.conflicts_with(req)
+    ]
+
+
 @rule("R-ID-003")
 def id_representative(ctx: RuleContext) -> list[Finding]:
     req = ctx.case.requester
@@ -303,6 +360,10 @@ def id_representative(ctx: RuleContext) -> list[Finding]:
         return []
     if not (req.inn or req.snils):
         return [ctx.emit("R-ID-003", E.NOT_VERIFIED, "У заявителя нет ИНН или СНИЛС для сверки с МЧД", [])]
+    if ctx.chain.undecided == "tie":
+        return [ctx.emit("R-ID-003", E.NEEDS_REVIEW, ctx.chain.notes[0], [])]
+    if ctx.chain.undecided:
+        return []
     if ctx.chain.kind == "none":
         if not ctx.case.poas:
             return []
@@ -310,6 +371,10 @@ def id_representative(ctx: RuleContext) -> list[Finding]:
         return [ctx.emit("R-ID-003", E.REFUTES, f"{req.label()} не указан представителем ни в одной МЧД пакета", refs)]
     leaf = ctx.chain.leaf
     assert leaf is not None
+    if any(rep.conflicts_with(req) for rep in leaf.representatives) and not any(
+        rep.same_as(req) for rep in leaf.representatives
+    ):
+        return []  # противоречие идентификаторов разбирает R-ID-005
     for index, rep in enumerate(leaf.representatives, start=1):
         if rep.same_as(req):
             return [
@@ -523,6 +588,8 @@ def eio_changed(ctx: RuleContext) -> list[Finding]:
     Свежая смена (в пределах ``fresh_change_days``) или операция высокого риска — разбор:
     так начинается захват компании через подставного руководителя. Давняя смена — справка.
     """
+    if ctx.chain.kind == "eio_direct":
+        return _fresh_director(ctx)
     if ctx.chain.kind != "poa" or ctx.case.egrul is None or ctx.chain.root is None:
         return []
     root = ctx.chain.root
@@ -557,6 +624,36 @@ def eio_changed(ctx: RuleContext) -> list[Finding]:
         reason = f"смена свежая — не более {fresh_days} дн." if fresh else "операция высокого риска"
         return [ctx.emit("R-EIO-002", E.NEEDS_REVIEW, f"{base}; {reason}: нужен разбор", refs)]
     return [ctx.emit("R-EIO-002", E.INFO, f"{base}; МЧД не отменена — сигнал мониторинга", refs)]
+
+
+def _fresh_director(ctx: RuleContext) -> list[Finding]:
+    """Руководитель сам проводит операцию вскоре после смены: та же картина захвата, что и на пути через МЧД.
+
+    Смена определяется по началу новой записи, а не по закрытию старой. Первый руководитель
+    новой компании без предшественника — только справка.
+    """
+    rec, eg = ctx.chain.eio_record, ctx.case.egrul
+    if rec is None or eg is None:
+        return []
+    on = ctx.case.operation.on_date
+    since = rec.valid_from or rec.record_date
+    fresh_days = int(ctx.pack.get("R-EIO-002").param("fresh_change_days"))
+    if since is None or (on - since).days > fresh_days:
+        return []
+    others = [r for r in eg.executives if r is not rec and not r.person.same_as(rec.person)]
+    predecessor = [r for r in others if (r.valid_from or r.record_date or date.min) <= since]
+    refs = [rec.ref or _egrul_ref(ctx)]
+    days = (on - since).days
+    if not predecessor:
+        text = f"Руководитель {rec.person.label()} в должности {days} дн., предшественника в ЕГРЮЛ нет: справка"
+        return [ctx.emit("R-EIO-002", E.INFO, text, refs)]
+    op = ctx.catalog.get(ctx.case.operation.code)
+    tail = "; операция высокого риска — приоритет P1" if op and op.high_risk else ""
+    text = (
+        f"Руководитель {rec.person.label()} назначен {days} дн. назад (ГРН {rec.grn}) и сам проводит операцию: "
+        f"смена свежая — не более {fresh_days} дн., нужен разбор{tail}"
+    )
+    return [ctx.emit("R-EIO-002", E.NEEDS_REVIEW, text, [*refs, *(r.ref for r in predecessor if r.ref)])]
 
 
 @rule("R-EIO-003")
@@ -672,7 +769,7 @@ def _org_status_egrul(ctx: RuleContext) -> list[Finding]:
         return [
             ctx.emit(
                 "R-EIO-004",
-                E.NEEDS_REVIEW,
+                E.NOT_VERIFIED,
                 "В снимке ЕГРЮЛ не указан статус организации: это не сведения о действующем юридическом лице",
                 [ref],
             )
@@ -680,6 +777,30 @@ def _org_status_egrul(ctx: RuleContext) -> list[Finding]:
     if eg.status == "liquidated":
         return [ctx.emit("R-EIO-004", E.REFUTES, "Организация ликвидирована по данным ЕГРЮЛ", [ref])]
     return [ctx.emit("R-EIO-004", E.NEEDS_REVIEW, "Организация в процессе ликвидации", [ref])]
+
+
+@rule("R-EIO-006")
+def egrul_fresh(ctx: RuleContext) -> list[Finding]:
+    """Сведения ЕГРЮЛ на дату операции: выписка без даты или старше порога не подтверждает руководителя."""
+    eg = ctx.case.egrul
+    if eg is None:
+        return []
+    max_age = int(ctx.pack.get("R-EIO-006").param("egrul_max_age_days"))
+    on = ctx.case.operation.on_date
+    ref = _egrul_ref(ctx, "$.extracted_at")
+    if eg.extracted_at is None:
+        return [ctx.emit("R-EIO-006", E.NOT_VERIFIED, "У сведений ЕГРЮЛ нет даты выписки", [ref])]
+    age = (on - eg.extracted_at).days
+    if age > max_age:
+        return [
+            ctx.emit(
+                "R-EIO-006",
+                E.NOT_VERIFIED,
+                f"Выписка ЕГРЮЛ от {eg.extracted_at:%d.%m.%Y} старше {max_age} дн. на дату операции",
+                [ref],
+            )
+        ]
+    return []
 
 
 @rule("R-EIO-005")
@@ -951,13 +1072,14 @@ def sub_cascade(ctx: RuleContext) -> list[Finding]:
             why = f"истекла {until:%d.%m.%Y}"
         else:
             continue
-        derived = ", ".join(str(p.number) for p in links[i:])
+        # Одна находка на звено и две ссылки: размер отчёта линейный по длине цепочки.
         out.append(
             ctx.emit(
                 "R-SUB-006",
                 E.REFUTES,
-                f"Основная МЧД {parent.number} {why}: вместе с ней теряет силу передоверие ({derived})",
-                [parent.ref("number"), *(p.ref("parent_number") for p in links[i:])],
+                f"Звено {i} из {len(links) - 1}: МЧД {parent.number} {why}, "
+                f"вместе с ней теряет силу передоверие начиная с МЧД {links[i].number}",
+                [parent.ref("number"), links[i].ref("parent_number")],
             )
         )
     return out
@@ -991,6 +1113,17 @@ def sub_lost_authority(ctx: RuleContext) -> list[Finding]:
 @rule("R-SUB-008")
 def sub_long_chain(ctx: RuleContext) -> list[Finding]:
     max_links = int(ctx.pack.get("R-SUB-008").param("max_links"))
+    if ctx.chain.too_long:
+        limit = int(ctx.pack.get("R-SUB-008").param("max_chain_links"))
+        return [
+            ctx.emit(
+                "R-SUB-008",
+                E.NOT_VERIFIED,
+                f"Цепочка передоверия длиннее {limit} звеньев: автоматически не разбирается, "
+                "нужно подтверждение реестра МЧД",
+                [],
+            )
+        ]
     links = ctx.chain.links
     if len(links) <= max_links:
         return []
@@ -1055,7 +1188,11 @@ def sub_edge(ctx: RuleContext) -> list[Finding]:
                 )
             )
             continue
-        compared = [rep.same_as(child.signer) for rep in parent.representatives]
+        # Частичное совпадение (ИНН свой, СНИЛС чужой) на ребре — не тот подписант:
+        # передоверить мог только представитель.
+        compared = [
+            False if rep.conflicts_with(child.signer) else rep.same_as(child.signer) for rep in parent.representatives
+        ]
         if any(flag is True for flag in compared):
             index = next(i for i, flag in enumerate(compared, start=1) if flag is True)
             ref = parent.ref(f"representative.{index}")
@@ -1131,12 +1268,17 @@ def charter_limits(ctx: RuleContext) -> list[Finding]:
                     [fact.ref],
                 )
             )
-        elif fact.value is not None and amount is not None and amount > fact.value:
+        elif (
+            fact.value is not None
+            and amount is not None
+            and (amount > fact.value or (fact.inclusive and amount == fact.value))
+        ):
+            word = "не ниже" if amount == fact.value else "выше"
             out.append(
                 ctx.emit(
                     "R-CHR-001",
                     E.NEEDS_REVIEW,
-                    f"Сумма операции {amount:,} ₽ выше порога устава {fact.value:,} ₽".replace(",", " "),
+                    f"Сумма операции {amount:,} ₽ {word} порога устава {fact.value:,} ₽".replace(",", " "),
                     [fact.ref],
                 )
             )
@@ -1160,6 +1302,27 @@ def charter_info(ctx: RuleContext) -> list[Finding]:
             )
         ]
     ref = EvidenceRef(doc.doc_id, doc.sha256, "text")
+    max_chars = int(ctx.pack.get("R-CHR-002").param("charter_max_chars"))
+    if len(doc.text) > max_chars:
+        return [
+            ctx.emit(
+                "R-CHR-002",
+                E.NEEDS_REVIEW,
+                f"Устав слишком велик для автоматического разбора ({len(doc.text)} символов, порог {max_chars})",
+                [ref],
+            )
+        ]
+    unparsed = [f for f in ctx.charter_facts if f.kind == "unparsed_restriction"]
+    if unparsed:
+        return [
+            ctx.emit(
+                "R-CHR-002",
+                E.NEEDS_REVIEW,
+                f"Ограничение устава не разобрано: «{fact.quote[:200]}»",
+                [fact.ref],
+            )
+            for fact in unparsed
+        ]
     if not ctx.charter_facts:
         if ctx.case.charter_disposition == "no_applicable_restriction":
             return [
@@ -1244,10 +1407,23 @@ def signature(ctx: RuleContext) -> list[Finding]:
 
 
 def run_rules(ctx: RuleContext) -> list[Finding]:
-    ctx.charter_facts = extract_charter_facts(ctx.case.charter) if ctx.case.charter else []
+    """Все правила пакета. Исключение внутри правила — «не проверено», а не 500 и не «подтверждено»."""
+    charter = ctx.case.charter
+    max_chars = int(ctx.pack.get("R-CHR-002").param("charter_max_chars"))
+    ctx.charter_facts = extract_charter_facts(charter) if charter and len(charter.text) <= max_chars else []
     findings: list[Finding] = []
     for rule_id in ctx.pack.rules:
         if ctx.pack.rules[rule_id].status == "retired":
             continue
-        findings.extend(RULES[rule_id](ctx))
+        try:
+            findings.extend(RULES[rule_id](ctx))
+        except Exception as exc:  # noqa: BLE001 - страховка: любое падение правила закрывает проверку
+            findings.append(
+                ctx.emit(
+                    rule_id,
+                    E.NOT_VERIFIED,
+                    f"Внутренняя ошибка правила {rule_id} ({type(exc).__name__}): проверка не выполнена",
+                    [],
+                )
+            )
     return findings

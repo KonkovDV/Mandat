@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import date
 from typing import Any
 
@@ -22,12 +23,22 @@ class EgrulError(ValueError):
 
 
 def _d(value: Any) -> date | None:
+    """Дата ``ГГГГ-ММ-ДД`` целиком. Хвост после даты и другие записи — ошибка, а не догадка."""
     if value in (None, ""):
         return None
+    if not isinstance(value, str) or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None:
+        raise EgrulError(f"дата не распознана: {value!r}")
     try:
-        return date.fromisoformat(str(value)[:10])
+        return date.fromisoformat(value)
     except ValueError as exc:
         raise EgrulError(f"дата не распознана: {value!r}") from exc
+
+
+def _text(row: dict[str, Any], key: str, where: str) -> str | None:
+    value = row.get(key)
+    if value is None or isinstance(value, str):
+        return value
+    raise EgrulError(f"{where}.{key} должен быть строкой")
 
 
 def parse_egrul(data: bytes | str, *, doc_id: str) -> EgrulSnapshot:
@@ -43,13 +54,19 @@ def parse_egrul(data: bytes | str, *, doc_id: str) -> EgrulSnapshot:
     status = "unknown" if raw_status in (None, "") else str(raw_status)
     if status not in STATUSES:
         raise EgrulError(f"неизвестный статус {status!r}")
+    rows = payload.get("executives") or []
+    if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+        raise EgrulError("executives должен быть списком объектов")
+    for key in ("inn", "ogrn", "kpp", "name", "full_name"):
+        _text(payload, key, "$")
     executives = []
-    for index, row in enumerate(payload.get("executives") or []):
+    for index, row in enumerate(rows):
+        where = f"$.executives[{index}]"
         person = Person(
-            full_name=row.get("full_name"),
-            inn=row.get("inn"),
-            snils=row.get("snils"),
-            position=row.get("position"),
+            full_name=_text(row, "full_name", where),
+            inn=_text(row, "inn", where),
+            snils=_text(row, "snils", where),
+            position=_text(row, "position", where),
         )
         executives.append(
             ExecutiveRecord(

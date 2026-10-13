@@ -15,15 +15,13 @@ from mandat.data import sha256_json
 from mandat.domain.graph import AuthorityChain, build_chain
 from mandat.domain.model import Case, EvidenceRef, Finding
 from mandat.domain.verdict import CHECK_LABEL_RU, VERDICT_LABEL_RU, LegalEffect, Verdict, fold, get_profile
+from mandat.domain.verdict_oracle import oracle_verdict
 from mandat.ports import FixtureBankruptcy, FixtureRegistry, NotConnectedSignature, Ports
 from mandat.rules.checks import RuleContext, run_rules
 from mandat.rules.classifier import Classifier, default_classifier
 from mandat.rules.pack import OperationCatalog, RulePack, default_catalog, default_pack
-from mandat.services.next_steps import build_next_steps, route, strongest_objection
+from mandat.services.next_steps import SIGNAL_RULES, build_next_steps, route, strongest_objection
 from mandat.services.rights import propose_right
-
-# Справки, которые сотрудник должен увидеть сразу: они не меняют вердикт, но требуют внимания.
-SIGNAL_RULES = {"R-EIO-002", "R-SUB-008"}
 
 _SEVERITY = {
     LegalEffect.REFUTES: 0,
@@ -195,7 +193,7 @@ def verify_case(
     catalog = catalog or default_catalog()
     classifier = classifier or default_classifier()
     ports = ports or default_ports(case)
-    chain = build_chain(case)
+    chain = build_chain(case, max_links=int(pack.get("R-SUB-008").param("max_chain_links")))
     ctx = RuleContext(
         case=case,
         chain=chain,
@@ -216,21 +214,32 @@ def verify_case(
         applicable.add("charter")
     result = fold(findings, prof, applicable)
     warnings = list(result.warnings)
+    verdict = result.verdict
+    second = oracle_verdict(findings, prof, applicable)
+    if second is not verdict:
+        # Две независимые свёртки разошлись: это ошибка движка, решение за человеком.
+        warnings.insert(
+            0,
+            f"Две независимые свёртки разошлись ({verdict.value} и {second.value}), кейс передан человеку",
+        )
+        verdict = Verdict.INSUFFICIENT_DATA
+    if any(f.message.startswith("Внутренняя ошибка правила") for f in findings):
+        warnings.insert(0, "Внутренняя ошибка правила: проверка не завершена, нужен разбор")
     warnings.extend(chain.notes)
-    objection = strongest_objection(result.verdict, findings, warnings)
+    objection = strongest_objection(verdict, findings, warnings)
     # Проверки, которые профиль не выполняет, не попадают в список действий: они уже названы в предупреждениях.
-    next_steps = build_next_steps([f for f in findings if f.check not in prof.waived], result.verdict)
+    next_steps = build_next_steps([f for f in findings if f.check not in prof.waived], verdict)
     return CaseReport(
         case_id=case.case_id,
-        verdict=result.verdict,
+        verdict=verdict,
         profile=prof.name,
         findings=tuple(findings),
         checks=result.checks,
         chain=chain,
         warnings=tuple(dict.fromkeys(warnings)),
         next_steps=tuple(next_steps),
-        routing=route(result.verdict, findings, high_risk=bool(op_spec and op_spec.high_risk)),
-        proposed_right=propose_right(result.verdict, case, chain, op_spec),
+        routing=route(verdict, findings, high_risk=bool(op_spec and op_spec.high_risk)),
+        proposed_right=propose_right(verdict, case, chain, op_spec),
         operation={
             "code": case.operation.code,
             "name": op_spec.name if op_spec else None,

@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 
+from mandat.domain.identifiers import normalize_poa_number
 from mandat.domain.model import PowerOfAttorney
 
 
@@ -53,10 +54,10 @@ class FixtureRegistry:
     is_stub = True
 
     def __init__(self, statuses: dict[str, str]):
-        self._statuses = dict(statuses)
+        self._statuses = {normalize_poa_number(k) or "": v for k, v in statuses.items()}
 
     def status(self, number: str) -> RegistryStatus:
-        raw = self._statuses.get(number)
+        raw = self._statuses.get(normalize_poa_number(number) or "")
         if raw is None:
             return RegistryStatus.UNAVAILABLE
         try:

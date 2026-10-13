@@ -85,6 +85,26 @@ def normalize_snils(value: str | None) -> str:
     return _digits(value)
 
 
+def normalize_poa_number(value: object) -> str | None:
+    """Номер МЧД для сравнения: без пробелов и фигурных скобок, в нижнем регистре.
+
+    GUID пишут и заглавными буквами, и в скобках. Сравнение строк «как есть» прятало
+    передоверие с утратой полномочий и отмену МЧД в мониторинге.
+    """
+    if value is None:
+        return None
+    text = re.sub(r"\s+", "", str(value)).strip("{}").casefold()
+    return text or None
+
+
+def normalize_inn(value: object) -> str | None:
+    """ИНН из события: число превращается в строку, пробелы по краям убираются. Контрольное число не проверяется."""
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def make_inn10(prefix9: str) -> str:
     return prefix9 + str(_weighted(prefix9, _INN10))
 

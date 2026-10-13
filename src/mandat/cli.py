@@ -3,7 +3,8 @@
 mandat verify examples/cases/01_ok --html var/01.html
 mandat demo                      # все демо-кейсы: отчёты, журнал, удостоверения, списки статусов в var/demo
 mandat monitor examples/events/takeover.json --status-dir var/demo/status
-mandat attest-verify var/demo/attestations/01_ok.json --status-dir var/demo/status
+mandat attest-verify var/demo/attestations/01_ok.json --public-key-file var/demo/public_key.txt \
+    --status-dir var/demo/status
 mandat eval --per-defect 6
 mandat journal-verify var/demo/journal.jsonl
 mandat journal-proof var/demo/journal.jsonl --seq 3
@@ -192,6 +193,9 @@ def cmd_eval(args: argparse.Namespace) -> int:
 
 def cmd_journal_verify(args: argparse.Namespace) -> int:
     check = journal.verify_journal(Path(args.path), anchor=args.anchor)
+    if not check.ok and check.records == 0 and check.broken_at:
+        print(json.dumps(check.as_dict(), ensure_ascii=False))
+        return 1
     tree = merkle.root(merkle.journal_leaves(journal.read_journal(Path(args.path)))).hex()
     result = {**check.as_dict(), "merkle_root": tree}
     ok = check.ok
@@ -240,17 +244,28 @@ def cmd_formats(args: argparse.Namespace) -> int:
 def cmd_attest_verify(args: argparse.Namespace) -> int:
     cred = json.loads(Path(args.path).read_text(encoding="utf-8"))
     method = cred.get("proof", {}).get("verificationMethod", "")
-    key = attestation.public_key_from_multibase(args.public_key or method.split("#", 1)[-1])
+    trusted = args.public_key
+    if trusted is None and args.public_key_file:
+        trusted = Path(args.public_key_file).read_text(encoding="utf-8").strip()
+    if trusted is None and not args.trust_embedded_key:
+        # Ключ из самого удостоверения доказывает только, что его подписал тот, кто его же и вписал.
+        print("ошибка: ключ издателя не задан: передайте --public-key или --public-key-file", file=sys.stderr)
+        return 2
+    if trusted is None:
+        print("предупреждение: ключ взят из самого удостоверения, издатель не проверен", file=sys.stderr)
+    key = attestation.public_key_from_multibase(trusted or method.split("#", 1)[-1])
     ok = attestation.verify(cred, key)
     print("подпись верна" if ok else "подпись НЕ верна")
-    if ok and not args.public_key:
-        print("ключ взят из самого удостоверения: чтобы проверить издателя, передайте --public-key из public_key.txt")
     if ok and args.status_dir:
+        seen_path = Path(args.seen_file) if args.seen_file else None
+        seen = json.loads(seen_path.read_text(encoding="utf-8")) if seen_path and seen_path.exists() else {}
         try:
-            status = check_status(cred, Path(args.status_dir), key)
+            status = check_status(cred, Path(args.status_dir), key, seen=seen if seen_path else None)
         except (OSError, ValueError, KeyError) as exc:
             print(f"статус не проверен: {exc}", file=sys.stderr)
             return 1
+        if seen_path:
+            seen_path.write_text(json.dumps(seen, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"статус удостоверения: {status['state']}")
         return 0 if status["state"] == "действует" else 3
     return 0 if ok else 1
@@ -368,7 +383,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     a = sub.add_parser("attest-verify", help="проверить подпись удостоверения")
     a.add_argument("path")
-    a.add_argument("--public-key")
+    a.add_argument("--public-key", help="ключ издателя в multibase (public_key.txt рядом с удостоверениями)")
+    a.add_argument("--public-key-file", help="файл с ключом издателя, например var/demo/public_key.txt")
+    a.add_argument("--trust-embedded-key", action="store_true", help="взять ключ из удостоверения (только для отладки)")
+    a.add_argument("--seen-file", help="состояние проверяющего: наибольший виденный sequence каждого списка")
     a.add_argument("--status-dir", help="каталог списков статусов W3C Bitstring Status List")
     a.set_defaults(func=cmd_attest_verify)
 
@@ -397,6 +415,11 @@ def main(argv: list[str] | None = None) -> int:
         return int(args.func(args))
     except journal.JournalKeyMissing as exc:
         print(f"ошибка: {exc}", file=sys.stderr)
+        return 2
+    except (OSError, ValueError, KeyError) as exc:
+        # Ожидаемые ошибки входа — одна строка по-русски и код 2, без трассировки.
+        detail = exc.args[0] if isinstance(exc, KeyError) and exc.args else exc
+        print(f"ошибка: {detail}", file=sys.stderr)
         return 2
 
 

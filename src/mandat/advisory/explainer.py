@@ -1,8 +1,9 @@
 """Пояснение для клиента или сотрудника только по фактам отчёта.
 
-Перенесено из SynAPS-ProgramPlan (``copilot.py``): фраза без ссылки на известный
-факт отбрасывается, фраза с числом или датой, которых нет в процитированных
-фактах, — тоже. Без фактов запрос к модели не отправляется.
+Фраза без ссылки на известный факт отбрасывается, фраза с числом или датой, которых
+нет в процитированных фактах, — тоже. Если вердикт не «подтверждено», отбрасывается
+любая фраза с языком разрешения («вправе», «может подписать», «можно провести»),
+на какой бы факт она ни ссылалась. Без фактов запрос к модели не отправляется.
 """
 
 from __future__ import annotations
@@ -15,6 +16,11 @@ from typing import Any
 
 _DATE = re.compile(r"\b(\d{2})\.(\d{2})\.(\d{4})\b|\b(\d{4})-(\d{2})-(\d{2})\b")
 _NUMBER = re.compile(r"\d+")
+# Язык разрешения. Отрицания вырезаются до поиска: «не вправе» — отказ, а не разрешение.
+_NEGATED = re.compile(r"\b(?:не|нельзя)\s+(?:вправе|может|могут|можно|имеет|имеют|разрешен\w*)(?:\s+прав\w*)?")
+_PERMISSION = re.compile(
+    r"\bвправе\b|\bмо(?:жет|гут)\s+\w+|\bимеет\s+право\b|\bимеют\s+право\b|\bразрешен\w*|\bможно\s+\w+|\bдопуст\w*"
+)
 
 SYSTEM = (
     "Ты объясняешь сотруднику банка результат проверки полномочий только по переданным фактам. "
@@ -60,10 +66,10 @@ def _polarity(text: str) -> set[str]:
         tags.add("refute")
     elif "подтвержд" in low:
         tags.add("confirm")
-    refute_stems = ("опроверг", "отозван", "отменен", "не вправе", "нельзя проводить", "нельзя подписывать")
+    refute_stems = ("опроверг", "отозван", "отменен", "не вправе", "нельзя", "не может", "не имеет прав", "запрещ")
     if any(stem in low for stem in refute_stems):
         tags.add("refute")
-    if "можно проводить" in low or "можно подписывать" in low:
+    if _PERMISSION.search(_NEGATED.sub(" ", low)):
         tags.add("confirm")
     if "недостаточно данных" in low:
         tags.add("insufficient")
@@ -108,6 +114,8 @@ def explain(
             {"role": "user", "content": f"Факты:\n{listing}\n\nВопрос: {question}"},
         ]
     )
+    verdict_text = known.get("verdict", "")
+    confirmed = "confirm" in _polarity(verdict_text) and "refute" not in _polarity(verdict_text)
     kept: list[Statement] = []
     dropped = 0
     for text, cited in _statements(raw):
@@ -120,7 +128,11 @@ def explain(
             continue
         # Язык утверждения не шире языка процитированных фактов (OMEGA: publication gate).
         cited_text = "\n".join(known[c] for c in cited)
-        if not _polarity(text) <= _polarity(cited_text):
+        tags = _polarity(text)
+        if "confirm" in tags and not confirmed:
+            dropped += 1  # вердикт не «подтверждено»: разрешение не высказывается ни по какому факту
+            continue
+        if not tags <= _polarity(cited_text):
             dropped += 1
             continue
         kept.append(Statement(text.strip(), tuple(cited)))

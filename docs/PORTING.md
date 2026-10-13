@@ -14,7 +14,7 @@
 | OpenAI-совместимый клиент с белым списком хостов и маркерами данных | AeroBIM: `infrastructure/adapters/openai_compat_llm_provider.py` | `advisory/llm.py` | без облачного хоста по умолчанию, псевдонимизация перед отправкой |
 | Интервал Вилсона, объём выборки, κ Коэна | AeroBIM: `domain/study_design.py`, `eval_statistics.py` | `eval/metrics.py` | только нужные функции |
 | Журнал решений: хеш-цепочка, HMAC, свидетель `.head`, внешний якорь | SynAPS-ProgramPlan: `src/synaps_programplan/journal.py` | `audit/journal.py` | банковские действия |
-| Пояснение моделью только по фактам, фильтр чисел и дат | SynAPS-ProgramPlan: `src/synaps_programplan/copilot.py` | `advisory/copilot.py` | факты — находки отчёта |
+| Пояснение моделью только по фактам, фильтр чисел и дат | SynAPS-ProgramPlan: `src/synaps_programplan/copilot.py` | `advisory/explainer.py` | факты — находки отчёта |
 | Реестр утверждений и запрещённые формулировки | SynAPS-ProgramPlan: `CLAIMS_REGISTRY.md`, `BANNED_CLAIMS.txt`, `scripts/lint_claims.py` | те же файлы | проверка без учёта регистра |
 | `evidence.json`: каждое число со слайда — с командой воспроизведения | SynAPS-ProgramPlan: `evidence.json`, `scripts/build_evidence.py` | `scripts/build_evidence.py` | — |
 | Удостоверение W3C VC с подписью Ed25519 | fsp-talent: `docs/adr/0007-w3c-verifiable-credentials.md`, `backend/app/services/vc/issuer.py` | `audit/attestation.py` | удостоверение о результате проверки полномочия, без ФИО |
@@ -30,10 +30,10 @@
 | Идея | Откуда | Где в «Мандате» | Зачем банку |
 |---|---|---|---|
 | Вторая свёртка вердикта, расхождение ловит тест, а не молчаливый выбор | SynAPS-ProgramPlan: вторая проверка плана отдельно от решателя | `domain/verdict_oracle.py`, `test_verdict_oracle_agrees_with_fold` | вердикт, который увидит операционист, перепроверен другим кодом |
-| Любой сигнал может остановить решение; один сигнал не прячет другой | gptheist: `src/simulation.ts`, агент PALERMO, исход `VETO` | `services/monitoring.py` | отмена МЧД в той же пачке, что и захват, по-прежнему отзывает удостоверение; окно захвата не требует, чтобы смена руководителя была первой |
+| Любой сигнал может остановить решение; один сигнал не прячет другой | другой репозиторий автора: модуль симуляции, исход «вето» | `services/monitoring.py` | отмена МЧД в той же пачке, что и захват, по-прежнему отзывает удостоверение; окно захвата не требует, чтобы смена руководителя была первой |
 | Ненайденное значение не считается соответствием | Kontur: README, «не найдено значение — это отказ, а не соответствует» | `R-JNT-001`, `R-CHR-001` | пустой признак совместных полномочий и пустая или неположительная сумма не дают «подтверждено» |
-| Язык публикации не шире доказательств | OMEGA-MATH: `protocol/verification-pipeline.md`, publication gate | `advisory/copilot.py` (`_polarity`) | пояснение не может сказать «подтверждено», цитируя опровержение |
-| Рецензент называет сильнейшее возражение до показа итога | OMEGA-MATH: `protocol/agent-teams.md`, роль Reviewer | `services/next_steps.py`, поле `objection` в отчёте | на «подтверждено» сотрудник сразу видит снятую проверку профиля `demo` |
+| Язык публикации не шире доказательств | OMEGA-MATH: `protocol/verification-pipeline.md`, publication gate | `advisory/explainer.py` (`_polarity`) | пояснение не может сказать «подтверждено», цитируя опровержение |
+| Рецензент называет сильнейшее возражение до показа итога | другой репозиторий автора: протокол рецензирования, роль рецензента | `services/next_steps.py`, поле `objection` в отчёте | на «подтверждено» сотрудник сразу видит снятую проверку профиля `demo` |
 | Подпись исходящего события по Standard Webhooks, без следования редиректам | fsp-talent: `backend/app/services/webhooks.py` | `services/webhooks.py`, `MANDAT_WEBHOOK_SECRET` | событие в антифрод можно проверить по подписи; ядро само никуда не ходит |
 
 ## Что добавлено в 0.2.0 по ревизии мирового уровня (не из репозиториев автора)
