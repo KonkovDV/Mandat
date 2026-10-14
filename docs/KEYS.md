@@ -120,13 +120,19 @@ Ed25519 в Мандате подписывает внутренние удост
 
 | Переменная | Значение |
 |---|---|
-| `MANDAT_JOURNAL_ANCHOR` | приёмники через запятую: `file:/путь/на/другом/томе`, `webhook:https://…`, `tsa:https://…` (RFC 3161, `pip install 'mandat[tsa]'`), `rekor:https://rekor.sigstore.dev` (Rekor v1), `rekor2:https://log2025-1.rekor.sigstore.dev` (Rekor v2, rekor-tiles) |
+| `MANDAT_JOURNAL_ANCHOR` | приёмники через запятую: `file:/путь/на/другом/томе`, `webhook:https://…`, `tsa:https://…` (RFC 3161, `pip install 'mandat[tsa]'`), `rekor:https://rekor.sigstore.dev` (Rekor v1), `rekor2:https://log2025-1.rekor.sigstore.dev` (Rekor v2, rekor-tiles), `sigstore` или `sigstore:https://…` — журнал и его ключ из TrustedRoot/SigningConfig Sigstore через TUF |
 | `MANDAT_JOURNAL_ANCHOR_SECRET` | секрет Standard Webhooks для `webhook:` (`mandat webhook-secret`) |
 | `MANDAT_JOURNAL_ANCHOR_TSA_ROOTS` | PEM-файл доверенных корней TSA: цепочка сертификата TSA проверяется на момент метки, EKU — только timeStamping (critical) |
 | `MANDAT_JOURNAL_ANCHOR_TSA_CERT` | SHA-256 DER-сертификата TSA: метка с другим сертификатом не принимается. Нужен хотя бы один из двух параметров TSA |
 | `MANDAT_JOURNAL_ANCHOR_REKOR_KEY` | путь к ключу ECDSA P-256 (PEM) для записей hashedrekord |
 | `MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY` | открытый ключ журнала Rekor (PEM): им проверяется подпись checkpoint, к корню которого сходится доказательство включения |
 | `MANDAT_JOURNAL_ANCHOR_REKOR_STATE` | файл последнего проверенного checkpoint каждого журнала. Задан — каждый новый checkpoint (из записи и текущий) принимается только с доказательством согласованности (RFC 9162): v1 — `/api/v1/log/proof`, v2 — по тайлам. Без него проверка записи офлайн, раздвоение журнала не ловится. Ключ журнала v2 — Ed25519 из TrustedRoot Sigstore |
+| `MANDAT_JOURNAL_ANCHOR_WITNESSES` | ключи свидетелей в формате note (`имя+id+base64(0x04‖ключ Ed25519)`, через запятую или перевод строки), например `witness.navigli.sunlight.geomys.org+a3e00fe2+BNy/co4C1Hn1p+INwJrfUlgz7W55dSZReusH/GhUhJ/G`. Задан — checkpoint Rekor принимается только с косигнатурами (C2SP tlog-cosignature) |
+| `MANDAT_JOURNAL_ANCHOR_WITNESS_QUORUM` | сколько разных свидетелей должно заверить checkpoint (1 по умолчанию, не больше числа ключей) |
+| `MANDAT_SIGSTORE_TUF_CACHE` | каталог кеша TUF (`var/sigstore-tuf`): метаданные и последние проверенные `trusted_root.json`, `signing_config.v0.2.json`. Нужен extra `pip install 'mandat[tuf]'` |
+| `MANDAT_SIGSTORE_OFFLINE` | `1` — не ходить в TUF, брать кеш; без кеша — `MANDAT_SIGSTORE_TRUSTED_ROOT` и `MANDAT_SIGSTORE_SIGNING_CONFIG` (файлы администратора) |
+| `MANDAT_SIGSTORE_REKOR_URL` | журнал вручную при `sigstore` (например, Rekor v2 до его раздачи в SigningConfig); ключ всё равно из TrustedRoot |
+| `MANDAT_SIGSTORE_TUF_URL` / `MANDAT_SIGSTORE_TUF_ROOT` | другой репозиторий TUF и его корень (по умолчанию `https://tuf-repo-cdn.sigstore.dev` и вшитый `data/sigstore_tuf_root.json`) |
 | `MANDAT_JOURNAL_ANCHOR_TSA_REVOCATION` | `off`, `soft` (по умолчанию) или `hard`: отзыв сертификатов цепочки TSA по OCSP, при неудаче по CRL. `soft` — недоступный статус в лог, `hard` — отказ; отозванный отвергается всегда (по RFC 3161, разд. 4). Работает при заданных `..._TSA_ROOTS` |
 | `MANDAT_JOURNAL_ANCHOR_TSA_REVOCATION_TIMEOUT` / `..._CACHE` | таймаут запроса OCSP/CRL, с (5, не больше 60); срок кеша ответа, с (3600, но не дольше nextUpdate) |
 | `MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK` | адрес read-back получателя с `{sha256}`, например `https://anchor.example/anchors/{sha256}`. Контракт ниже |

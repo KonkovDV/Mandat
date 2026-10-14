@@ -17,8 +17,10 @@ import base64
 import hashlib
 import json
 import os
+import time
 import urllib.request
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -55,7 +57,101 @@ def _key_id_and_verify(key_pem: bytes, name: str) -> tuple[bytes, Callable[[byte
     raise ValueError("ключ журнала — ECDSA или Ed25519")
 
 
-def verify_checkpoint(text: str, log_key_pem: bytes, origin: str | None = None) -> tuple[str, int, bytes]:
+# --- свидетели (C2SP tlog-cosignature, Ed25519, тип подписи 0x04) -------------------------------------
+
+COSIGNATURE_TYPE = 0x04
+MAX_FUTURE_SECONDS = 600
+
+
+@dataclass(frozen=True)
+class Witness:
+    name: str
+    key: bytes  # 32 байта Ed25519
+    key_id: bytes
+
+
+def witness_key_id(name: str, key: bytes) -> bytes:
+    return hashlib.sha256(name.encode() + b"\n" + bytes([COSIGNATURE_TYPE]) + key).digest()[:4]
+
+
+def parse_vkey(vkey: str) -> Witness:
+    """Ключ проверки в формате note: ``<имя>+<id hex>+<base64(0x04 || ключ Ed25519)>``."""
+    name, sep, rest = vkey.strip().partition("+")
+    hex_id, sep2, encoded = rest.partition("+")
+    if not name or not sep or not sep2:
+        raise ValueError(f"ключ свидетеля не в формате имя+id+ключ: {vkey!r}")
+    raw = base64.b64decode(encoded, validate=True)
+    if len(raw) != 33 or raw[0] != COSIGNATURE_TYPE:
+        raise ValueError(f"свидетель {name}: поддержаны только косигнатуры Ed25519 (тип 0x04)")
+    key = raw[1:]
+    if witness_key_id(name, key).hex() != hex_id.lower():
+        raise ValueError(f"свидетель {name}: id ключа не совпадает с ключом")
+    return Witness(name, key, bytes.fromhex(hex_id))
+
+
+@dataclass(frozen=True)
+class WitnessPolicy:
+    """Checkpoint принимается, если его косигнатуры поставили не меньше ``quorum`` разных свидетелей."""
+
+    witnesses: tuple[Witness, ...]
+    quorum: int
+
+    def __post_init__(self) -> None:
+        if not 0 < self.quorum <= len(self.witnesses):
+            raise ValueError("кворум свидетелей — от 1 до числа заданных свидетелей")
+
+    def cosigned_by(self, body: str, signatures: str, now: float | None = None) -> set[str]:
+        from cryptography.hazmat.primitives.asymmetric import ed25519
+
+        current = time.time() if now is None else now
+        by_name = {w.name: w for w in self.witnesses}
+        ok: set[str] = set()
+        for line in signatures.splitlines():
+            if not line.startswith("\u2014 "):
+                continue
+            signer, _, encoded = line[2:].rpartition(" ")
+            witness = by_name.get(signer)
+            if witness is None:
+                continue
+            try:
+                raw = base64.b64decode(encoded, validate=True)
+            except ValueError:
+                continue
+            if len(raw) != 4 + 8 + 64 or raw[:4] != witness.key_id:
+                continue
+            stamp = int.from_bytes(raw[4:12], "big")
+            if stamp > current + MAX_FUTURE_SECONDS:
+                continue  # косигнатура из будущего (C2SP: verifiers MAY reject)
+            message = f"cosignature/v1\ntime {stamp}\n{body}\n".encode()
+            try:
+                ed25519.Ed25519PublicKey.from_public_bytes(witness.key).verify(raw[12:], message)
+            except Exception:  # noqa: BLE001, S112 - чужая или испорченная подпись не засчитывается
+                continue
+            ok.add(witness.name)
+        return ok
+
+    def problem(self, text: str, now: float | None = None) -> str | None:
+        body, _, signatures = text.partition("\n\n")
+        got = self.cosigned_by(body, signatures, now)
+        if len(got) < self.quorum:
+            return f"checkpoint заверен {len(got)} из {self.quorum} нужных свидетелей"
+        return None
+
+
+def witness_policy_from_env(environ: dict[str, str] | None = None) -> WitnessPolicy | None:
+    env = os.environ if environ is None else environ
+    raw = env.get("MANDAT_JOURNAL_ANCHOR_WITNESSES", "")
+    vkeys = [v for v in raw.replace("\n", ",").split(",") if v.strip()]
+    if not vkeys:
+        return None
+    witnesses = tuple(parse_vkey(v) for v in vkeys)
+    quorum = int(env.get("MANDAT_JOURNAL_ANCHOR_WITNESS_QUORUM", "1"))
+    return WitnessPolicy(witnesses, quorum)
+
+
+def verify_checkpoint(
+    text: str, log_key_pem: bytes, origin: str | None = None, witnesses: WitnessPolicy | None = None
+) -> tuple[str, int, bytes]:
     """Проверить checkpoint ключом журнала. Возвращает (origin, размер, корень).
 
     Имя ключа в строке подписи — origin целиком (C2SP, Rekor v2) или его первое слово (Rekor v1:
@@ -86,6 +182,10 @@ def verify_checkpoint(text: str, log_key_pem: bytes, origin: str | None = None) 
         if raw[:4] != key_id:
             continue
         verify(raw[4:], (body + "\n").encode("utf-8"))
+        if witnesses is not None:
+            problem = witnesses.problem(text)
+            if problem:
+                raise ValueError(problem)
         return first, int(size_text), root
     raise ValueError("в checkpoint нет подписи заданного ключа журнала")
 

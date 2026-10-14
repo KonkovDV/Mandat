@@ -2,6 +2,9 @@
 
 ## Готовится (после 0.3.0, в main)
 
+- Свидетели: checkpoint Rekor принимается только с кворумом косигнатур (C2SP tlog-cosignature, Ed25519), `MANDAT_JOURNAL_ANCHOR_WITNESSES`/`_QUORUM`.
+- `MANDAT_JOURNAL_ANCHOR=sigstore`: журнал Rekor и его ключ из TrustedRoot/SigningConfig Sigstore через TUF (extra `[tuf]`), офлайн — кеш или файлы администратора.
+
 - Python 3.14: образ `python:3.14-slim` (по дайджесту), 3.14 добавлен в матрицу CI; зависимости из lock-файлов ставятся, все тесты проходят.
 
 Аудит R5 14.10.2026:

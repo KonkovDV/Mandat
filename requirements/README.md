@@ -3,7 +3,7 @@
 Файлы с хешами (`--require-hashes`), общие для Python 3.11–3.13 (`--universal`).
 
 - `runtime.lock` — ядро и extra `[api]`, ставится в Docker-образ.
-- `dev.lock` — всё для CI: `[dev,api,cedar,redis]`.
+- `dev.lock` — всё для CI: `[dev,api,cedar,redis]` (в `dev` входит `tuf` для тестов `audit/trust.py`).
 - `pip.lock` — сам pip для CI, Docker и run-demo.
 - `tools.lock` — build, cyclonedx-bom, pip-audit для CI; ставится в отдельное окружение.
 - `build.lock` — сборочный бэкенд `setuptools` из `build.in`; пакет ставится с `--no-build-isolation`, иначе pip скачал бы бэкенд без хешей.

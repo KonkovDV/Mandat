@@ -465,7 +465,9 @@ def verify_rekor_entry(uuid: str, entry: dict[str, Any], log_key_pem: bytes) -> 
     return _verify_rekor_entry(uuid, entry, log_key_pem)[0]
 
 
-def _verify_rekor_entry(uuid: str, entry: dict[str, Any], log_key_pem: bytes) -> tuple[bytes, tuple[str, int, bytes]]:
+def _verify_rekor_entry(
+    uuid: str, entry: dict[str, Any], log_key_pem: bytes, witnesses: tlog.WitnessPolicy | None = None
+) -> tuple[bytes, tuple[str, int, bytes]]:
     body = base64.b64decode(entry["body"], validate=True)
     leaf = merkle.leaf_hash(body)
     if uuid[-64:].lower() != leaf.hex():
@@ -476,7 +478,7 @@ def _verify_rekor_entry(uuid: str, entry: dict[str, Any], log_key_pem: bytes) ->
     hashes_ = [bytes.fromhex(h) for h in proof["hashes"]]
     if not merkle.verify_inclusion(leaf, int(proof["logIndex"]), int(proof["treeSize"]), hashes_, root):
         raise ValueError("доказательство включения не сходится с корнем")
-    checkpoint = verify_checkpoint(proof["checkpoint"], log_key_pem)
+    checkpoint = verify_checkpoint(proof["checkpoint"], log_key_pem, witnesses=witnesses)
     if checkpoint[1] != int(proof["treeSize"]) or checkpoint[2] != root:
         raise ValueError("checkpoint подписан для другого дерева")
     return body, checkpoint
@@ -510,8 +512,10 @@ class RekorSink:
         opener: Opener | None = None,
         log_key_pem: bytes | None = None,
         state: tlog.CheckpointState | None = None,
+        witnesses: tlog.WitnessPolicy | None = None,
     ) -> None:
         self.url, self._key_pem, self.log_key, self.state = _https(url), key_pem, log_key_pem, state
+        self.witnesses = witnesses
         self.name = f"rekor:{self.url}"
         self._open = opener or _urlopen
 
@@ -573,7 +577,7 @@ class RekorSink:
         if problem:
             return problem
         try:
-            live = verify_checkpoint(self._get("/api/v1/log")["signedTreeHead"], self.log_key)
+            live = verify_checkpoint(self._get("/api/v1/log")["signedTreeHead"], self.log_key, witnesses=self.witnesses)
         except Exception as exc:  # noqa: BLE001 - недоступный журнал при включённом мониторинге — отказ
             return f"текущий checkpoint Rekor не получен: {type(exc).__name__}"
         return self.state.observe(live[0], live[1], live[2], self._prover(live[0]))
@@ -588,7 +592,9 @@ class RekorSink:
         )
         try:
             answer = self._json(request)
-            raw, checkpoint = _verify_rekor_entry(receipt["uuid"], answer[receipt["uuid"]], self.log_key)
+            raw, checkpoint = _verify_rekor_entry(
+                receipt["uuid"], answer[receipt["uuid"]], self.log_key, self.witnesses
+            )
             body = json.loads(raw)
             if body["spec"]["data"]["hash"]["value"] != digest(stmt):
                 return False
@@ -604,7 +610,7 @@ V2_KIND = ("hashedrekord", "0.0.2")
 
 
 def verify_rekor_v2_entry(
-    tle: dict[str, Any], log_key_pem: bytes, origin: str | None
+    tle: dict[str, Any], log_key_pem: bytes, origin: str | None, witnesses: tlog.WitnessPolicy | None = None
 ) -> tuple[bytes, tuple[str, int, bytes]]:
     """TransparencyLogEntry Rekor v2: тело известного вида, включение в дерево подписанного checkpoint.
 
@@ -619,7 +625,7 @@ def verify_rekor_v2_entry(
     if (parsed.get("kind"), parsed.get("apiVersion")) != V2_KIND:
         raise ValueError("тело записи Rekor v2 другого вида")
     proof = tle["inclusionProof"]
-    checkpoint = verify_checkpoint(proof["checkpoint"]["envelope"], log_key_pem, origin=origin)
+    checkpoint = verify_checkpoint(proof["checkpoint"]["envelope"], log_key_pem, origin=origin, witnesses=witnesses)
     hashes_ = [base64.b64decode(h, validate=True) for h in proof.get("hashes") or []]
     index = int(tle["logIndex"])
     if not merkle.verify_inclusion(merkle.leaf_hash(body), index, checkpoint[1], hashes_, checkpoint[2]):
@@ -644,8 +650,10 @@ class RekorV2Sink:
         opener: Opener | None = None,
         log_key_pem: bytes | None = None,
         state: tlog.CheckpointState | None = None,
+        witnesses: tlog.WitnessPolicy | None = None,
     ) -> None:
         self.url, self._key_pem, self.log_key, self.state = _https(url), key_pem, log_key_pem, state
+        self.witnesses = witnesses
         self.origin = self.url.split("://", 1)[1]
         self.name = f"rekor2:{self.url}"
         self._open = opener or _slow_urlopen
@@ -688,7 +696,7 @@ class RekorV2Sink:
         if receipt.get("sha256") != digest(stmt) or not self.log_key:
             return None
         try:
-            raw, checkpoint = verify_rekor_v2_entry(receipt["tle"], self.log_key, self.origin)
+            raw, checkpoint = verify_rekor_v2_entry(receipt["tle"], self.log_key, self.origin, self.witnesses)
             data = json.loads(raw)["spec"]["hashedRekordV002"]["data"]
             want = base64.b64encode(bytes.fromhex(digest(stmt))).decode()
             if data.get("algorithm") != "SHA2_256" or data.get("digest") != want:
@@ -708,7 +716,9 @@ class RekorV2Sink:
         if problem:
             return problem
         try:
-            live = verify_checkpoint(self._fetch("checkpoint").decode("utf-8"), self.log_key, origin=self.origin)
+            live = verify_checkpoint(
+                self._fetch("checkpoint").decode("utf-8"), self.log_key, origin=self.origin, witnesses=self.witnesses
+            )
         except Exception as exc:  # noqa: BLE001 - недоступный журнал при включённом мониторинге — отказ
             return f"текущий checkpoint Rekor v2 не получен: {type(exc).__name__}"
         return self.state.observe(*live, prove)
@@ -748,20 +758,39 @@ def configured_sinks(value: str | None = None) -> list[Sink]:
             if not pinned and not roots:
                 raise ValueError("tsa-якорь требует MANDAT_JOURNAL_ANCHOR_TSA_ROOTS или MANDAT_JOURNAL_ANCHOR_TSA_CERT")
             sinks.append(TsaSink(target, pinned, roots=roots, revocation=revocation_from_env() if roots else None))
-        elif kind in {"rekor", "rekor2"}:
-            key_path = os.environ.get("MANDAT_JOURNAL_ANCHOR_REKOR_KEY", "")
-            if not key_path:
-                raise ValueError("rekor-якорь требует MANDAT_JOURNAL_ANCHOR_REKOR_KEY (ECDSA P-256, PEM)")
-            log_key = os.environ.get("MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY", "")
-            if not log_key:
-                raise ValueError("rekor-якорь требует MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY (ключ журнала Rekor, PEM)")
-            state_path = os.environ.get("MANDAT_JOURNAL_ANCHOR_REKOR_STATE", "")
-            state = tlog.CheckpointState(Path(state_path)) if state_path else None
-            cls = RekorSink if kind == "rekor" else RekorV2Sink
-            sinks.append(cls(target, Path(key_path).read_bytes(), log_key_pem=Path(log_key).read_bytes(), state=state))
+        elif kind in {"rekor", "rekor2", "sigstore"}:
+            sinks.append(_rekor_sink(kind, target))
         else:
             raise ValueError(f"неизвестный якорь журнала: {spec}")
     return sinks
+
+
+def _rekor_sink(kind: str, target: str) -> Sink:
+    """Rekor v1/v2 по адресу и ключу из настроек или (``sigstore``) по TrustedRoot/SigningConfig через TUF."""
+    key_path = os.environ.get("MANDAT_JOURNAL_ANCHOR_REKOR_KEY", "")
+    if not key_path:
+        raise ValueError("rekor-якорь требует MANDAT_JOURNAL_ANCHOR_REKOR_KEY (ECDSA P-256, PEM)")
+    if kind == "sigstore":
+        from mandat.audit import trust
+
+        override = target or os.environ.get("MANDAT_SIGSTORE_REKOR_URL") or None
+        target, major, log_key = trust.rekor_target(trust.load(), override)
+        kind = "rekor" if major == 1 else "rekor2"
+    else:
+        log_key_path = os.environ.get("MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY", "")
+        if not log_key_path:
+            raise ValueError("rekor-якорь требует MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY (ключ журнала Rekor, PEM)")
+        log_key = Path(log_key_path).read_bytes()
+    state_path = os.environ.get("MANDAT_JOURNAL_ANCHOR_REKOR_STATE", "")
+    state = tlog.CheckpointState(Path(state_path)) if state_path else None
+    cls = RekorSink if kind == "rekor" else RekorV2Sink
+    return cls(
+        target,
+        Path(key_path).read_bytes(),
+        log_key_pem=log_key,
+        state=state,
+        witnesses=tlog.witness_policy_from_env(),
+    )
 
 
 def policy() -> str:
