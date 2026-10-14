@@ -2,6 +2,8 @@
 
 ## Готовится (после 0.3.0, в main)
 
+- Python 3.14: образ `python:3.14-slim` (по дайджесту), 3.14 добавлен в матрицу CI; зависимости из lock-файлов ставятся, все тесты проходят.
+
 Аудит R5 14.10.2026:
 
 - Rekor v2 (`rekor2:https://…`, rekor-tiles): hashedrekord v0.0.2, квитанция — TransparencyLogEntry, проверка офлайн; checkpoint Ed25519 по C2SP signed-note.
