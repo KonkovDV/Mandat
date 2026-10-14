@@ -12,7 +12,7 @@
 | Токены пользователей | `MANDAT_API_USERS` | хеши SHA-256 токенов с ролями | токены выдаёт `mandat api-user` |
 | Подпись удостоверений | `MANDAT_SIGNER`: `file` (PEM), `pkcs11`, `vault`, `aws-kms` | подпись удостоверений и списка статусов | открытый PEM запрещён: PEM, зашифрованный фразой `MANDAT_SIGNING_KEY_PASSPHRASE` (от 16 байт), или HSM/KMS |
 | HMAC представителя | `keys/representative_hmac.key` | токен представителя в удостоверении | не короче 32 байт |
-| Секрет вебхуков | `MANDAT_WEBHOOK_SECRET` | Standard Webhooks, `whsec_` 24–64 байт | обязателен формат `whsec_` |
+| Секрет вебхуков | `MANDAT_WEBHOOK_SECRET` | Standard Webhooks: `whsec_` 24–64 байт (HMAC, `v1`) или ключ подписи `whsk_` (Ed25519, `v1a`; получателю — только `whpk_`) | обязателен формат `whsec_` |
 
 С 14.10.2026 `mandat serve` проверяет ключ журнала, ключ ПДн и длину токена стенда при старте и в защищённом режиме не запускается без них (код выхода 2). Раньше нехватка ключа обнаруживалась только на первой записи.
 
@@ -20,7 +20,8 @@
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(48))"   # MANDAT_JOURNAL_KEY, MANDAT_PII_KEY, MANDAT_API_TOKEN
-mandat webhook-secret                                          # MANDAT_WEBHOOK_SECRET
+mandat webhook-secret                                          # MANDAT_WEBHOOK_SECRET (HMAC)
+mandat webhook-secret --asymmetric                             # пара whsk_ (себе) и whpk_ (получателю)
 mandat api-user <имя> <роль>                                   # строка для MANDAT_API_USERS
 ```
 
@@ -136,8 +137,9 @@ Ed25519 в Мандате подписывает внутренние удост
 | `MANDAT_JOURNAL_ANCHOR_TSA_REVOCATION` | `off`, `soft` (по умолчанию) или `hard`: отзыв сертификатов цепочки TSA по OCSP, при неудаче по CRL. `soft` — недоступный статус в лог, `hard` — отказ; отозванный отвергается всегда (по RFC 3161, разд. 4). Работает при заданных `..._TSA_ROOTS` |
 | `MANDAT_JOURNAL_ANCHOR_TSA_REVOCATION_TIMEOUT` / `..._CACHE` | таймаут запроса OCSP/CRL, с (5, не больше 60); срок кеша ответа, с (3600, но не дольше nextUpdate) |
 | `MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK` | адрес read-back получателя с `{sha256}`, например `https://anchor.example/anchors/{sha256}`. Контракт ниже |
+| `MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK_KEY` | открытый ключ получателя `whpk_`: ответ read-back принимается только с его подписью `v1a`, общим секретом подделать нельзя |
 | `MANDAT_JOURNAL_ANCHOR_POLICY` | `warn` (по умолчанию) или `fail`: в pilot/prod без якоря `mandat serve` не стартует |
 
 Закрытые сегменты перечислены в манифесте `<журнал>.segments` (SHA-256 и диапазон записей каждого). Квитанции лежат рядом с журналом в `<журнал>.anchors`; `mandat journal-verify` с заданным `MANDAT_JOURNAL_ANCHOR` требует квитанцию на каждый закрытый сегмент и перепроверяет её у приёмника. Публичный Rekor раскрывает хеши и время записи, но не содержимое журнала.
 
-Контракт read-back вебхук-якоря. Запрос: `GET <адрес с подставленным sha256>` с заголовками Standard Webhooks (`webhook-id: readback-<16 hex>`, `webhook-timestamp`, `webhook-signature` — HMAC над пустым телом тем же секретом). Ответ получателя: `200`, `application/json`, тело `{"sha256": "<hex>", "statement": {…как получено…}, "delivery_id": "<webhook-id доставки>"}` и заголовки Standard Webhooks над телом ответа с тем же секретом и **тем же** `webhook-id`, что в запросе. Неизвестный хеш — `404`. «Мандат» пересчитывает хеш утверждения и сверяет `delivery_id` с квитанцией; любое расхождение, неверная подпись или старая метка времени (больше 5 минут) — сегмент не подтверждён.
+Контракт read-back вебхук-якоря. Запрос: `GET <адрес с подставленным sha256>` с заголовками Standard Webhooks (`webhook-id: readback-<16 hex>`, `webhook-timestamp`, `webhook-signature` — HMAC над пустым телом тем же секретом). Ответ получателя: `200`, `application/json`, тело `{"sha256": "<hex>", "statement": {…как получено…}, "delivery_id": "<webhook-id доставки>"}` и заголовки Standard Webhooks над телом ответа с **тем же** `webhook-id`, что в запросе: подпись `v1` тем же секретом или, если задан `MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK_KEY`, только `v1a` ключом получателя `whsk_`. Неизвестный хеш — `404`. «Мандат» пересчитывает хеш утверждения и сверяет `delivery_id` с квитанцией; любое расхождение, неверная подпись или старая метка времени (больше 5 минут) — сегмент не подтверждён.

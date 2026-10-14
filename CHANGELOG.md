@@ -2,6 +2,8 @@
 
 ## Готовится (после 0.3.0, в main)
 
+- Вебхуки: асимметричная подпись Standard Webhooks `v1a` (Ed25519, `whsk_`/`whpk_`, `mandat webhook-secret --asymmetric`); read-back якоря с ключом получателя `MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK_KEY`.
+
 - Свидетели: checkpoint Rekor принимается только с кворумом косигнатур (C2SP tlog-cosignature, Ed25519), `MANDAT_JOURNAL_ANCHOR_WITNESSES`/`_QUORUM`.
 - `MANDAT_JOURNAL_ANCHOR=sigstore`: журнал Rekor и его ключ из TrustedRoot/SigningConfig Sigstore через TUF (extra `[tuf]`), офлайн — кеш или файлы администратора.
 
