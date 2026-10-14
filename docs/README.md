@@ -23,6 +23,7 @@
 | Почему модель не выносит вердикт | [ADR-001](adr/ADR-001-verdict-ownership.md) |
 | Почему Cedar, а не OpenFGA | [мировой уровень](SOTA.md) |
 | Насколько проект готов | [ступени готовности](audit/READINESS_GATES.md) |
+| Что говорят открытые источники и чего не хватает | [OSINT](research/OSINT-2026-10-14.md), [SOTA](research/SOTA-2026-10-14.md), [матрица требований](research/REQUIREMENTS_MATRIX.md), [Murder Board](audit/MURDER_BOARD-2026-10-14.md) |
 | Что нашёл аудит | [аудит октября 2026](audit/AUDIT.md); история: [первый аудит](AUDIT_2026-10.md), [закрытие аудита 12.10](AUDIT_CLOSURE.md), [расхождения презентации и кода](SUBMISSION_DRIFT.md) |
 | Что и когда сдаём | [сдача](../submission/README.md) |
 | Откуда источники | [источники](SOURCES.md), [реестр источников](audit/SOURCE_LEDGER.md), [литература](LITERATURE.md) |

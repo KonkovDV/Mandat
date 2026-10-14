@@ -17,7 +17,7 @@ defusedxml 0.7.1, redis 8.1.0, fakeredis 2.39.0.
 | `ruff check src tests scripts` | 0 | замечаний нет |
 | `ruff format --check src tests scripts` | 0 | 78 файлов без изменений |
 | `mypy` | 0 | 53 файла без ошибок |
-| `pytest -rs` | 0 | на момент аудита 313 passed, 0 skipped; на 14.10.2026 865 passed, 0 skipped, покрытие 95 % (см. `evidence.json`) |
+| `pytest -rs` | 0 | на момент аудита 313 passed, 0 skipped; на 14.10.2026 869 passed, 0 skipped, покрытие 95 % (см. `evidence.json`) |
 | `python scripts/lint_claims.py` | 0 | 25 шаблонов, совпадений нет |
 | `mandat demo` | 0 | демо-кейсы собраны |
 | `mandat eval --per-defect 6` | 0 | `mismatches: []` на синтетическом корпусе. Это проверка логики правил, а не точности на документах банка |

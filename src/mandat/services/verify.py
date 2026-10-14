@@ -7,13 +7,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from mandat import ENGINE
 from mandat.data import sha256_json
 from mandat.domain.graph import AuthorityChain, build_chain
-from mandat.domain.model import Case, EvidenceRef, Finding
+from mandat.domain.model import Case, EvidenceRef, Finding, PowerOfAttorney
 from mandat.domain.verdict import CHECK_LABEL_RU, VERDICT_LABEL_RU, LegalEffect, Verdict, fold, get_profile
 from mandat.domain.verdict_oracle import oracle_verdict
 from mandat.ports import FixtureBankruptcy, FixtureRegistry, NotConnectedSignature, Ports
@@ -75,6 +75,7 @@ class CaseReport:
                 "links": self.chain.describe(),
                 "poa_numbers": [p.number for p in self.chain.links if p.number],
                 "notes": list(self.chain.notes),
+                "documents": [_document(p) for p in self.chain.links],
             },
             "checks": {
                 k: {"status": self.checks[k], "label": CHECK_LABEL_RU.get(k, k)}
@@ -104,6 +105,26 @@ class CaseReport:
             "generated_at": self.generated_at,
             "reproducibility_hash": self.reproducibility_hash,
         }
+
+
+def _iso(value: date | None) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
+def _document(poa: PowerOfAttorney) -> dict[str, Any]:
+    """Сведения о документе, на котором основаны полномочия представителя (115-ФЗ, ст. 7, п. 1, пп. 1):
+    номер, дата выдачи, срок действия, кто выдал и кому. Срок «по закону» — год со дня выдачи (ст. 186 ГК РФ)."""
+    return {
+        "number": poa.number,
+        "issue_date": _iso(poa.issue_date),
+        "valid_until": _iso(poa.valid_until),
+        "effective_until": _iso(poa.effective_until()),
+        "term_by_law": poa.valid_until is None and poa.effective_until() is not None,
+        "principal_inn": poa.principal.inn,
+        "signer": poa.signer.full_name,
+        "representatives": [r.full_name for r in poa.representatives],
+        "parent_number": poa.parent_number,
+    }
 
 
 def _stand(profile: str, notes: list[str]) -> list[str]:
