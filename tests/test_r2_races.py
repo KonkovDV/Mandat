@@ -206,20 +206,122 @@ def _append(path, n):
         journal.append(path, action="verify", actor="a", role="operator", case_id=f"c{i}")
 
 
-def test_journal_append_cost_does_not_grow_with_length(tmp_path):
+class _IOCounter:
+    """Байты, прочитанные и записанные журналом в каталоге ``root``: детерминированная мера стоимости записи.
+
+    Считаем ``Path.open``/``read_bytes``/``read_text`` и ``os.write``. ``read_bytes``/``read_text`` читают
+    через ``io.open`` напрямую, чтобы не учитывать байты дважды при любой версии ``pathlib``.
+    """
+
+    def __init__(self, monkeypatch, root):
+        import io
+        import os
+        import pathlib
+
+        self.read = 0
+        self.written = 0
+        self.full_scans = 0
+        root = str(root)
+        counter = self
+        mine = lambda target: str(target).startswith(root)  # noqa: E731
+
+        class Handle:
+            def __init__(self, raw):
+                self._raw = raw
+
+            def read(self, *args):
+                data = self._raw.read(*args)
+                counter.read += len(data)
+                return data
+
+            def __getattr__(self, name):
+                return getattr(self._raw, name)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                self._raw.close()
+
+            def __iter__(self):
+                for line in self._raw:
+                    counter.read += len(line)
+                    yield line
+
+        def opener(self, mode="r", buffering=-1, encoding=None, errors=None, newline=None):
+            raw = io.open(self, mode, buffering, encoding, errors, newline)  # noqa: UP020
+            return Handle(raw) if mine(self) and "r" in mode else raw
+
+        def read_bytes(self):
+            with io.open(self, "rb") as handle:  # noqa: UP020
+                data = handle.read()
+            if mine(self):
+                counter.read += len(data)
+            return data
+
+        def read_text(self, encoding=None, errors=None, newline=None):
+            with io.open(self, "rb") as handle:  # noqa: UP020
+                data = handle.read()
+            if mine(self):
+                counter.read += len(data)
+            return data.decode(encoding or "utf-8", errors or "strict")
+
+        real_write = os.write
+
+        def write(fd, data):
+            counter.written += len(data)
+            return real_write(fd, data)
+
+        from mandat.audit import journal
+
+        real_read, real_verify = journal.read_journal, journal.verify_journal
+
+        def read_journal(*args, **kwargs):
+            counter.full_scans += 1
+            return real_read(*args, **kwargs)
+
+        def verify_journal(*args, **kwargs):
+            counter.full_scans += 1
+            return real_verify(*args, **kwargs)
+
+        monkeypatch.setattr(pathlib.Path, "open", opener)
+        monkeypatch.setattr(pathlib.Path, "read_bytes", read_bytes)
+        monkeypatch.setattr(pathlib.Path, "read_text", read_text)
+        monkeypatch.setattr(os, "write", write)
+        monkeypatch.setattr(journal, "read_journal", read_journal)
+        monkeypatch.setattr(journal, "verify_journal", verify_journal)
+
+    def snapshot(self):
+        return self.read + self.written, self.full_scans
+
+
+def test_journal_append_cost_does_not_grow_with_length(tmp_path, monkeypatch):
+    """Стоимость записи не зависит от длины журнала (R2-PERF-1), без часов.
+
+    Раньше каждая запись перечитывала и переписывала весь файл. Меряем байты ввода-вывода по файлам
+    журнала на одинаковой позиции внутри сегмента — в начале журнала и после 15 закрытых сегментов —
+    и число полных разборов истории. При старом поведении поздняя запись дороже ранней в десятки раз.
+    """
     from mandat.audit import journal
 
+    monkeypatch.setenv("MANDAT_JOURNAL_SEGMENT_RECORDS", "100")
     path = tmp_path / "j.jsonl"
     _append(path, 50)
-    t0 = time.perf_counter()
-    _append(path, 50)
-    early = time.perf_counter() - t0
+    io_counter = _IOCounter(monkeypatch, tmp_path)
+
+    def cost(n):
+        bytes0, scans0 = io_counter.snapshot()
+        _append(path, n)
+        bytes1, scans1 = io_counter.snapshot()
+        return bytes1 - bytes0, scans1 - scans0
+
+    early, early_scans = cost(50)  # записи 51–100, включая закрытие первого сегмента
     _append(path, 1500)
-    t0 = time.perf_counter()
-    _append(path, 50)
-    late = time.perf_counter() - t0
+    late, late_scans = cost(50)  # записи 1551–1600: та же позиция в сегменте
+    assert early_scans == 0 and late_scans == 0  # свой проверенный хвост: без полного разбора истории
+    assert late <= early * 1.5 + 8192, (early, late)
+    monkeypatch.undo()
     assert journal.verify_journal(path).ok
-    assert late < early * 5 + 0.05  # раньше каждая запись перечитывала и переписывала весь файл
 
 
 def test_journal_tampering_between_appends_is_still_caught(tmp_path):
