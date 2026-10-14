@@ -14,7 +14,11 @@ RUN pip install --require-hashes -r requirements/pip.lock \
 COPY pyproject.toml README.md LICENSE NOTICE.md ./
 COPY src ./src
 COPY examples ./examples
-RUN pip install --no-deps --no-build-isolation . && useradd --create-home --uid 10001 mandat && mkdir -p /app/var && chown mandat /app/var
+# pip и setuptools в образе после установки не нужны, а pip несёт вендоренные копии библиотек
+# (urllib3, msgpack, pkg_resources из setuptools 70.3), которые Trivy справедливо считает уязвимыми.
+RUN pip install --no-deps --no-build-isolation . \
+    && python -m pip uninstall -y setuptools pip \
+    && useradd --create-home --uid 10001 mandat && mkdir -p /app/var && chown mandat /app/var
 
 USER mandat
 EXPOSE 8000

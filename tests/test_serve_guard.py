@@ -138,3 +138,9 @@ def test_every_pip_install_is_hash_pinned():
             assert "pip.lock" in text or name == "Dockerfile" and "pip.lock" in text, name
     for lock in ("pip.lock", "tools.lock", "build.lock"):
         assert "--hash=sha256:" in (root / "requirements" / lock).read_text(encoding="utf-8")
+
+
+def test_runtime_image_drops_pip():
+    """CI docker/Trivy: вендоренные в pip urllib3/msgpack/pkg_resources не попадают в образ."""
+    docker = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text(encoding="utf-8")
+    assert "pip uninstall -y setuptools pip" in docker
