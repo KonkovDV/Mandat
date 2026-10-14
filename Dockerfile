@@ -6,10 +6,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
-COPY requirements/runtime.lock requirements/build.lock ./requirements/
+COPY requirements/pip.lock requirements/runtime.lock requirements/build.lock ./requirements/
 # Зависимости и сборочный бэкенд (setuptools) только из lock-файлов с хешами (SLSA Build, R2-SC-1);
 # сам пакет собирается без изоляции, поэтому pip не скачивает незакреплённый setuptools.
-RUN pip install --require-hashes -r requirements/runtime.lock -r requirements/build.lock
+RUN pip install --require-hashes -r requirements/pip.lock \
+    && pip install --require-hashes -r requirements/runtime.lock -r requirements/build.lock
 COPY pyproject.toml README.md LICENSE NOTICE.md ./
 COPY src ./src
 COPY examples ./examples

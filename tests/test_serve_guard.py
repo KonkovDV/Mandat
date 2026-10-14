@@ -121,3 +121,20 @@ def test_build_backend_is_hash_pinned():
     assert "-r requirements/build.lock" in docker and "--no-build-isolation ." in docker
     assert "-r requirements/build.lock" in ci and "--no-build-isolation -e ." in ci
     assert "setuptools==" in lock and "--hash=sha256:" in lock
+
+
+def test_every_pip_install_is_hash_pinned():
+    """R3: pip и инструменты CI — тоже из lock-файлов с хешами; незакреплённых установок нет."""
+    import re
+
+    root = Path(__file__).resolve().parents[1]
+    files = [".github/workflows/ci.yml", "Dockerfile", "run-demo.sh", "run-demo.ps1", "Makefile"]
+    for name in files:
+        text = (root / name).read_text(encoding="utf-8")
+        for line in text.splitlines():
+            if re.search(r"pip(\.exe)?\s+install|-m pip install", line) and not line.lstrip().startswith("#"):
+                assert "--require-hashes" in line or "--no-deps" in line, f"{name}: {line.strip()}"
+        if name != "Makefile":
+            assert "pip.lock" in text or name == "Dockerfile" and "pip.lock" in text, name
+    for lock in ("pip.lock", "tools.lock", "build.lock"):
+        assert "--hash=sha256:" in (root / "requirements" / lock).read_text(encoding="utf-8")

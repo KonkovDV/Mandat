@@ -67,7 +67,7 @@ def pct(values: list[float], q: float) -> float:
 
 
 class Server:
-    def __init__(self, store: str, rate: int, workdir: Path):
+    def __init__(self, store: str, rate: int, workdir: Path, workers: int = 1):
         self.port = _free_port()
         self.token = secrets.token_hex(32)
         self.journal = workdir / "journal.jsonl"
@@ -80,11 +80,15 @@ class Server:
             "MANDAT_API_STORE": {"memory": "", "sqlite": f"sqlite:///{workdir / 'api.db'}"}.get(store, store),
         }
         env.pop("MANDAT_API_USERS", None)
+        # Журнал сервера — в файл, не в PIPE: непрочитанный PIPE заполняется (64 КБ) предупреждениями
+        # uvicorn о превышении limit_concurrency, и сервер блокируется на записи в stderr (R3-LOAD-1).
+        workdir.mkdir(parents=True, exist_ok=True)
+        self.log = (workdir / "server.log").open("wb")
         self.proc = subprocess.Popen(  # noqa: S603
-            [sys.executable, "-m", "mandat.cli", "serve", "--port", str(self.port)],
+            [sys.executable, "-m", "mandat.cli", "serve", "--port", str(self.port), "--workers", str(workers)],
             env=env,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            stderr=self.log,
         )
         self.base = f"http://127.0.0.1:{self.port}"
         deadline = time.time() + 20
@@ -103,6 +107,7 @@ class Server:
             self.proc.wait(10)
         except subprocess.TimeoutExpired:
             self.proc.kill()
+        self.log.close()
 
 
 async def stage(server: Server, manifests: list[dict[str, Any]], users: int, seconds: float) -> dict[str, Any]:
@@ -160,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--soak-seconds", type=float, default=0)
     p.add_argument("--overload", action="store_true", help="фаза с лимитом 120/мин: ожидаются 429")
     p.add_argument("--smoke", action="store_true", help="короткий прогон для CI с порогами")
+    p.add_argument("--workers", type=int, default=1, help="воркеры uvicorn (нужно sqlite или redis)")
     p.add_argument("--out", help="JSON с результатами")
     args = p.parse_args(argv)
     if args.smoke:
@@ -167,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     manifests = _manifests(25)
     result: dict[str, Any] = {"store": args.store, "cpu": os.cpu_count(), "stages": []}
     with tempfile.TemporaryDirectory() as tmp:
-        server = Server(args.store, 0, Path(tmp))
+        server = Server(args.store, 0, Path(tmp), args.workers)
         try:
             result["rss_start_kb"] = _rss_kb(server.proc.pid)
             for users in [int(x) for x in args.stages.split(",")]:
@@ -185,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             server.stop()
         if args.overload:
-            limited = Server(args.store, 120, Path(tmp) / "o")
+            limited = Server(args.store, 120, Path(tmp) / "o", args.workers)
             try:
                 r = asyncio.run(stage(limited, manifests, 16, 5))
                 result["overload"] = r

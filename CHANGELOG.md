@@ -2,12 +2,18 @@
 
 ## Готовится (после 0.3.0, в main)
 
+Аудит R3 14.10.2026:
+
+- Внешний якорь журнала (`audit/anchor.py`): утверждение о каждом закрытом сегменте (хеш последней записи и корень Меркла) уходит в `file:`/`webhook:`, `tsa:` (RFC 3161, extra `[tsa]`) или `rekor:` (hashedrekord); `verify_journal` проверяет квитанции у приёмников; в pilot/prod без якоря — предупреждение или отказ старта (`MANDAT_JOURNAL_ANCHOR_POLICY`).
+- pip, build, cyclonedx-bom и pip-audit — из lock-файлов с хешами (`requirements/pip.lock`, `tools.lock`) в CI, Dockerfile, run-demo и Makefile.
+- Нагрузка на Redis (1 и 4 воркера): TCP_NODELAY при `--workers` (было +40 мс на запрос), дочитывание журнала после записи соседнего процесса вместо полной проверки, стенд больше не блокирует сервер непрочитанным stderr. 4 воркера на Redis: до 242 RPS.
+
 Аудит R2.1 14.10.2026:
 
 - Журнал сегментами (R2-PERF-2): закрытые сегменты `<журнал>.NNNNNN` (0400), цепочка через границы, стоимость записи не растёт с длиной журнала; soak 180 с — около 147 RPS без падения (было 151→75).
 - Общие ответы 422/500/503 с `request_id` и заголовком `X-Request-ID`; подробности только в логе `mandat.api`, без ПДн (R2-API-3).
 - `requirements/build.lock`: setuptools с хешами, сборка с `--no-build-isolation` в Dockerfile и CI (R2-SC-1).
-- `build_evidence.py` пишет свежие числа до прогона pytest; `lint_claims` отвергает красный прогон и сверяет число тестов на слайдах (было 714 против 715). Колода пересобрана: 731 автотест.
+- `build_evidence.py` пишет свежие числа до прогона pytest; `lint_claims` отвергает красный прогон и сверяет число тестов на слайдах (было 714 против 715). Колода пересобрана: 762 автотест.
 
 Аудит R2 14.10.2026 ([docs/audit/AUDIT-2026-10-14-R2.md](docs/audit/AUDIT-2026-10-14-R2.md)):
 
@@ -15,7 +21,7 @@
 - Защитные заголовки и CSP на всех ответах API; `limit_concurrency`, без заголовка `server`; CIS-лимиты в compose.
 - Журнал: дозапись `O_APPEND`+`fsync` вместо перезаписи, ~4× RPS под нагрузкой.
 - ЕГРЮЛ: статусы «реорганизация» (на проверку) и «прекращено» (отказ), ст.188 п.1 подп.4 ГК.
-- mypy strict, доступность карточки (WCAG 2.2), мутационный mini-runner, нагрузочный стенд `tools/load/`, smoke-load в CI, [сценарии](docs/testing/TEST_SCENARIOS.md) и [отчёт о нагрузке](docs/testing/LOAD_REPORT-2026-10-14.md). Колода пересобрана: 731 автотестов.
+- mypy strict, доступность карточки (WCAG 2.2), мутационный mini-runner, нагрузочный стенд `tools/load/`, smoke-load в CI, [сценарии](docs/testing/TEST_SCENARIOS.md) и [отчёт о нагрузке](docs/testing/LOAD_REPORT-2026-10-14.md). Колода пересобрана: 762 автотестов.
 
 Аудит 14.10.2026 (ветка `audit/do-now`, [docs/audit/REDTEAM-2026-10-14.md](docs/audit/REDTEAM-2026-10-14.md)):
 

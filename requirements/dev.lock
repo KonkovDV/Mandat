@@ -14,6 +14,10 @@ anyio==4.15.1 \
     # via
     #   httpx
     #   starlette
+asn1crypto==1.5.1 \
+    --hash=sha256:13ae38502be632115abf8a24cbe5f4da52e3b5231990aff31123c805306ccb9c \
+    --hash=sha256:db4e40728b728508912cbb3d44f19ce188f218e9eba635821bb4b68564f8fd67
+    # via mandat (pyproject.toml)
 ast-serialize==0.13.0 \
     --hash=sha256:017ddd4f22e727ef93e66df2d53340a6ff809b7e34cc2218f67918ae6239aad0 \
     --hash=sha256:12441bc7e41e495db5634c98adc8f8886b619ce2f1e68effe3f792a2adca9f47 \

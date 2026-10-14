@@ -28,7 +28,7 @@ import hmac
 import json
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -212,6 +212,7 @@ def append(
     key: str | None = None,
     now: datetime | None = None,
     precondition: Callable[[list[dict[str, Any]]], dict[str, Any] | None] | None = None,
+    anchors: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
     """Добавить запись под блокировкой журнала.
 
@@ -227,6 +228,10 @@ def append(
     try:
         content = _content_digest(path)
         tail = _verified_tail(path, signing, content.hexdigest()) if precondition is None else None
+        if tail is None and precondition is None:
+            # Другой процесс дописал журнал после нашей записи: проверить только новые записи от
+            # проверенного хвоста, а не всю историю (несколько воркеров uvicorn, R2-PERF-3).
+            tail = _catch_up(path, signing)
         if tail is None:
             if journal_files(path) or witness_path(path).exists():
                 # Новая запись продолжает только целую историю: битый префикс или срезанный хвост — отказ.
@@ -287,6 +292,14 @@ def append(
             os.replace(path, target)
             os.chmod(target, 0o400)  # закрытый сегмент только читается
             content = hashlib.sha256()
+            # Внешний якорь: хеш закрытого сегмента уходит за пределы машины. Недоступный приёмник журнал
+            # не останавливает — неопубликованный сегмент дописывается при следующем закрытии, а
+            # verify_journal без квитанции не проходит.
+            from mandat.audit import anchor
+
+            sinks = anchor.configured_sinks() if anchors is None else anchors
+            if sinks:
+                anchor.publish_pending(path, sinks)
         _remember_tail(path, record["seq"], record["hash"], signing, content.hexdigest())
         return record
     finally:
@@ -303,7 +316,10 @@ def append(
 # растяжка, а не доказательство: правка той же длины в пределах грубого тика часов ФС ей не видна.
 # Доказательство целостности закрытых сегментов — ``verify_journal`` (цепочка, HMAC, свидетель);
 # сегменты закрываются с правами 0400.
-_TAILS: dict[str, tuple[tuple[str, bytes, str, tuple[tuple[str, int, int, int, int], ...]], tuple[int, str]]] = {}
+SealedStats = tuple[tuple[str, int, int, int, int], ...]
+Fingerprint = tuple[str, bytes, str, SealedStats]
+# Значение: отпечаток, (seq, hash) последней записи, размер активного сегмента в байтах на тот момент.
+_TAILS: dict[str, tuple[Fingerprint, tuple[int, str], int]] = {}
 
 
 def _cache_key(path: Path) -> str:
@@ -322,19 +338,25 @@ def _content_digest(path: Path) -> Any:
     return digest
 
 
-def _fingerprint(
-    path: Path, signing: str | None, content: str | None = None
-) -> tuple[str, bytes, str, tuple[tuple[str, int, int, int, int], ...]] | None:
+def _marker(signing: str | None) -> str:
+    return hashlib.sha256((signing or "").encode("utf-8")).hexdigest()
+
+
+def _sealed_stats(path: Path) -> SealedStats:
+    out = []
+    for item in sealed_segments(path):
+        st = item.stat()
+        out.append((item.name, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns))
+    return tuple(out)
+
+
+def _fingerprint(path: Path, signing: str | None, content: str | None = None) -> Fingerprint | None:
     try:
         witness = witness_path(path).read_bytes()
-        sealed = []
-        for item in sealed_segments(path):
-            st = item.stat()
-            sealed.append((item.name, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns))
+        sealed = _sealed_stats(path)
     except OSError:
         return None
-    marker = hashlib.sha256((signing or "").encode("utf-8")).hexdigest()
-    return (content or _content_digest(path).hexdigest(), witness, marker, tuple(sealed))
+    return (content or _content_digest(path).hexdigest(), witness, _marker(signing), sealed)
 
 
 def _verified_tail(path: Path, signing: str | None, content: str) -> tuple[int, str] | None:
@@ -345,10 +367,65 @@ def _verified_tail(path: Path, signing: str | None, content: str) -> tuple[int, 
     return cached[1] if fingerprint is not None and fingerprint == cached[0] else None
 
 
+def _catch_up(path: Path, signing: str | None) -> tuple[int, str] | None:
+    """Проверить только записи, появившиеся после проверенного этим процессом хвоста.
+
+    Условия: те же закрытые сегменты (по stat) плюс, возможно, новые; первые ``offset`` байт бывшего
+    активного сегмента не изменились (SHA-256); новые записи продолжают цепочку и совпадают со
+    свидетелем. Любое расхождение — ``None``, и вызывающий делает полную проверку.
+    """
+    cached = _TAILS.get(_cache_key(path))
+    if cached is None:
+        return None
+    (prefix, _, marker, old), (seq, head), offset = cached
+    try:
+        if marker != _marker(signing):
+            return None
+        stats = _sealed_stats(path)
+        if stats[: len(old)] != old:
+            return None
+        files = [*sealed_segments(path)[len(old) :], *([path] if path.exists() else [])]
+        if not files:
+            return None
+        first = files[0].read_bytes()
+        if hashlib.sha256(first[:offset]).hexdigest() != prefix:
+            return None
+        blob = first[offset:] + b"".join(f.read_bytes() for f in files[1:])
+        witness = strict_loads(witness_path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    previous, count = head, seq
+    for line in blob.decode("utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = strict_loads(line)
+        except ValueError:
+            return None
+        count += 1
+        if not isinstance(record, dict) or record.get("seq") != count or record.get("prev") != previous:
+            return None
+        if record.get("hash") != _digest(record):
+            return None
+        if signing:
+            sig = record.get("sig")
+            if not isinstance(sig, str) or not hmac.compare_digest(sig, _sign(record["hash"], signing)):
+                return None
+        previous = record["hash"]
+    if not isinstance(witness, dict) or witness.get("records") != count or witness.get("hash") != previous:
+        return None
+    if signing:
+        mac = witness.get("mac")
+        if not isinstance(mac, str) or not hmac.compare_digest(mac, _witness_mac(count, previous, signing)):
+            return None
+    return count, previous
+
+
 def _remember_tail(path: Path, seq: int, head: str, signing: str | None, content: str) -> None:
     fingerprint = _fingerprint(path, signing, content)
     if fingerprint is not None:
-        _TAILS[_cache_key(path)] = (fingerprint, (seq, head))
+        offset = path.stat().st_size if path.exists() else 0
+        _TAILS[_cache_key(path)] = (fingerprint, (seq, head), offset)
 
 
 @dataclass(frozen=True)
@@ -362,7 +439,9 @@ class JournalCheck:
         return {"ok": self.ok, "records": self.records, "broken_at": self.broken_at, "reason": self.reason}
 
 
-def verify_journal(path: Path, *, anchor: str | None = None, key: str | None = None) -> JournalCheck:
+def verify_journal(
+    path: Path, *, anchor: str | None = None, key: str | None = None, anchors: Sequence[Any] | None = None
+) -> JournalCheck:
     try:
         records = read_journal(path)
     except JournalError as exc:
@@ -398,4 +477,11 @@ def verify_journal(path: Path, *, anchor: str | None = None, key: str | None = N
                 return JournalCheck(False, len(records), None, "подпись свидетеля .head не совпадает с ключом журнала")
     if anchor is not None and anchor != head:
         return JournalCheck(False, len(records), None, "внешний якорь не совпадает с последней записью")
+    from mandat.audit import anchor as external
+
+    sinks = external.configured_sinks() if anchors is None else anchors
+    if sinks:
+        problem = external.check_anchors(path, sinks)
+        if problem:
+            return JournalCheck(False, len(records), None, problem)
     return JournalCheck(True, len(records))

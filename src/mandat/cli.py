@@ -347,9 +347,13 @@ def cmd_examples(args: argparse.Namespace) -> int:
 
 def cmd_serve(args: argparse.Namespace) -> int:
     from mandat.api.principals import access_problem
+    from mandat.audit.anchor import missing_anchor_problem
     from mandat.services.env_policy import key_problem
 
-    problem = access_problem() or key_problem()
+    try:
+        problem = access_problem() or key_problem() or missing_anchor_problem()
+    except ValueError as exc:
+        problem = str(exc)
     if problem:
         print(f"ошибка: {problem}", file=sys.stderr)
         return 2
@@ -392,7 +396,14 @@ def server_options() -> dict[str, Any]:
     """
     raw = os.environ.get("MANDAT_API_MAX_CONCURRENCY", "").strip()
     limit = int(raw) if raw.isdigit() and int(raw) > 0 else 64
-    return {"limit_concurrency": limit, "timeout_keep_alive": 5, "server_header": False, "proxy_headers": False}
+    return {
+        "limit_concurrency": limit,
+        "timeout_keep_alive": 5,
+        "server_header": False,
+        "proxy_headers": False,
+        # TCP_NODELAY и при --workers N: иначе +40 мс на запрос по keep-alive (R2-PERF-3, api/nodelay.py).
+        "http": "mandat.api.nodelay:NoDelayH11Protocol",
+    }
 
 
 def cmd_webhook_secret(args: argparse.Namespace) -> int:

@@ -3,7 +3,9 @@ PY ?= python
 .PHONY: install lint test claims rules-doc cedar check demo eval evidence serve doctor clean deck demo-cards
 
 install:
-	$(PY) -m pip install -e ".[dev,api,cedar]"
+	$(PY) -m pip install --require-hashes -r requirements/pip.lock
+	$(PY) -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
+	$(PY) -m pip install --no-deps --no-build-isolation -e .
 
 lint:
 	$(PY) -m ruff check src tests scripts tools
