@@ -107,6 +107,20 @@ def render(report: dict[str, Any]) -> str:
         if (report.get("rule_pack") or {}).get("status", "draft") == "draft"
         else ""
     )
+    docs = "".join(
+        f"<tr><td>{_e(d.get('number'))}</td><td>{_e(_date(d.get('issue_date')))}</td>"
+        f"<td>{_e(_date(d.get('effective_until')))}{' (по закону)' if d.get('term_by_law') else ''}</td>"
+        f"<td>{_e(d.get('signer'))}</td><td>{_e(', '.join(d.get('representatives') or []))}</td></tr>"
+        for d in (report.get("chain") or {}).get("documents") or []
+    )
+    docs_html = (
+        '<div class="card"><h2>Документы, подтверждающие полномочия</h2><table>'
+        '<caption class="muted">Сведения для идентификации представителя клиента (115-ФЗ, ст. 7, п. 1, пп. 1)</caption>'
+        '<tr><th scope="col">Номер</th><th scope="col">Выдана</th><th scope="col">Действует до</th>'
+        f'<th scope="col">Выдал</th><th scope="col">Представитель</th></tr>{docs}</table></div>'
+        if docs
+        else ""
+    )
     return f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Мандат — кейс {_e(report["case_id"])}</title><style>{CSS}</style></head><body><main>
@@ -120,6 +134,7 @@ def render(report: dict[str, Any]) -> str:
 {signals_html}
 {stand_html}
 <div class="card"><h2>Цепочка полномочий</h2><ul>{chain}</ul></div>
+{docs_html}
 <div class="card"><h2>Что сделать дальше</h2><ul>{steps}</ul>
 <p class="muted">Очередь: {_e(QUEUE_RU.get(str(routing.get("queue")), routing.get("queue")))}
  · приоритет {_e(routing.get("priority") or "—")} · SLA {_e(routing.get("sla_hours") or "—")} ч (заглушка до калибровки с банком)</p>

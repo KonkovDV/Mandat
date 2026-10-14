@@ -2,6 +2,8 @@
 
 ## Готовится (после 0.3.0, в main)
 
+- Разведка 14.10.2026: `docs/research/` (OSINT, SOTA, матрица требований) и враждебный разбор `docs/audit/MURDER_BOARD-2026-10-14.md`. Отчёт содержит `chain.documents` (номер, дата выдачи, срок, в том числе срок по закону, доверитель, представители), а карточка — таблицу «Документы, подтверждающие полномочия» (115-ФЗ, ст. 7). В REGULATORY добавлены 821-П (ред. 7220-У), 851-П и 115-ФЗ/499-П. В презентации обновлён слайд сравнения с Контуром и добавлен слайд критериев жюри.
+
 - Проход жюри: `run-demo.sh` исполняемый в git (в свежем клоне `./run-demo.sh` падал с Permission denied); `docker-compose.yml` передаёт все переменные из `.env.example` (`MANDAT_SIGNER`, `MANDAT_SIGNING_KEY_PASSPHRASE`, `MANDAT_LLM_MODEL`, `MANDAT_LLM_API_KEY` раньше молча терялись); CI поднимает `docker compose` с `.env` из образца и проверяет `/health` и 401; карточки `docs/demo/` пересобраны из текущего `mandat demo`; первый экран README — карточка, числа и границы; `docs/JURY.md` — питч, демо, трудные вопросы, метрики.
 
 - Вебхуки: асимметричная подпись Standard Webhooks `v1a` (Ed25519, `whsk_`/`whpk_`, `mandat webhook-secret --asymmetric`); read-back якоря с ключом получателя `MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK_KEY`.
