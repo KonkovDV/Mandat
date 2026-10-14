@@ -2,7 +2,7 @@
 
 Rekor v2 (log2025-1): два checkpoint подряд, подпись Ed25519, доказательство согласованности по тайлам.
 Rekor v1: последняя запись — SET, включение, checkpoint; согласованность через /api/v1/log/proof.
-Ключи журналов — из TrustedRoot Sigstore (TUF, sigstore/root-signing).
+Ключи журналов — из TrustedRoot Sigstore через TUF; checkpoint v2 заверен 2 свидетелями (C2SP tlog-cosignature).
 
     python scripts/tlog_live_check.py [--wait 15]
 """
@@ -10,9 +10,8 @@ Rekor v1: последняя запись — SET, включение, checkpoin
 from __future__ import annotations
 
 import argparse
-import base64
-import json
 import sys
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -20,11 +19,13 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from cryptography.hazmat.primitives import serialization  # noqa: E402
+from mandat.audit import anchor, tlog, trust  # noqa: E402
 
-from mandat.audit import anchor, tlog  # noqa: E402
-
-TRUSTED_ROOT = "https://raw.githubusercontent.com/sigstore/root-signing/main/targets/trusted_root.json"
+# Свидетели Rekor v2 из списков witness-network.org (ключи опубликованы операторами).
+WITNESSES = (
+    "witness.navigli.sunlight.geomys.org+a3e00fe2+BNy/co4C1Hn1p+INwJrfUlgz7W55dSZReusH/GhUhJ/G",
+    "witness.stagemole.eu+67f7aea0+BEqSG3yu9YrmcM3BHvQYTxwFj3uSWakQepafafpUqklv",
+)
 
 
 def _open(request: urllib.request.Request) -> Any:
@@ -32,15 +33,11 @@ def _open(request: urllib.request.Request) -> Any:
 
 
 def _keys() -> dict[str, bytes]:
-    root = json.loads(tlog.read_url(_open, TRUSTED_ROOT))
-    out = {}
-    for item in root["tlogs"]:
-        der = base64.b64decode(item["publicKey"]["rawBytes"])
-        pem = serialization.load_der_public_key(der).public_bytes(
-            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
-        )
-        out[item["baseUrl"]] = pem
-    return out
+    """Ключи журналов из TrustedRoot, полученного через TUF Sigstore (вшитый корень, extra [tuf])."""
+    with tempfile.TemporaryDirectory() as cache:
+        loaded = trust.load({"MANDAT_SIGSTORE_TUF_CACHE": cache})
+    print(f"TrustedRoot: {loaded.source}, журналов {len(loaded.root.tlogs)}")
+    return {item.base_url: item.key_pem for item in loaded.root.tlogs}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -51,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     v2 = next(u for u in keys if "log20" in u)
     origin = v2.split("://", 1)[1]
     state = tlog.CheckpointState()
+    witnesses = tlog.WitnessPolicy(tuple(tlog.parse_vkey(v) for v in WITNESSES), 2)
     fetched: list[str] = []
 
     def fetch(path: str) -> bytes:
@@ -58,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
         return tlog.read_url(_open, f"{v2}/{path}")
 
     for _ in range(2):
-        cp = tlog.verify_checkpoint(fetch("checkpoint").decode(), keys[v2], origin=origin)
+        cp = tlog.verify_checkpoint(fetch("checkpoint").decode(), keys[v2], origin=origin, witnesses=witnesses)
         problem = state.observe(*cp, tlog.tile_prover(fetch))
         print(f"v2 {origin}: размер {cp[1]}, согласованность: {problem or 'ok'}")
         if problem:
