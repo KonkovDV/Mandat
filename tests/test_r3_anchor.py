@@ -470,12 +470,21 @@ class FakeRekor:
         self.bodies: list[bytes] = []
         self.entries: dict[str, int] = {}
         self.tamper: str | None = None
+        self.live_reads = 0
+        self.proof_queries: list[dict] = []
 
     @property
     def log_key_pem(self) -> bytes:
         return self.log_key.public_key().public_bytes(
             serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
         )
+
+    @property
+    def log_id(self) -> str:
+        spki = self.log_key.public_key().public_bytes(
+            serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        return hashlib.sha256(spki).hexdigest()
 
     def checkpoint(self, size: int, root: bytes, key=None, name="rekor.example") -> str:
         from mandat.audit import merkle  # noqa: F401
@@ -508,17 +517,25 @@ class FakeRekor:
         body = self.bodies[index]
         if self.tamper == "body":
             body = body.replace(b"sha256", b"sha257")
+        encoded = base64.b64encode(body).decode()
+        set_payload = {"body": encoded, "integratedTime": 1760000000 + index, "logID": self.log_id, "logIndex": index}
+        if self.tamper == "set":
+            set_payload["integratedTime"] += 1
+        set_sig = self.log_key.sign(anchor.canonical(set_payload), ec.ECDSA(hashes.SHA256()))
         return {
-            "body": base64.b64encode(body).decode(),
+            "body": encoded,
+            "integratedTime": 1760000000 + index,
+            "logID": "00" * 32 if self.tamper == "logid" else self.log_id,
             "logIndex": index,
             "verification": {
+                "signedEntryTimestamp": base64.b64encode(set_sig).decode(),
                 "inclusionProof": {
                     "logIndex": index,
                     "treeSize": len(leaves),
                     "rootHash": root.hex(),
                     "hashes": proof,
                     "checkpoint": checkpoint,
-                }
+                },
             },
         }
 
@@ -540,6 +557,20 @@ class FakeRekor:
             uuid = "2" * 16 + merkle.leaf_hash(request.data).hex()
             self.entries[uuid] = len(self.bodies) - 1
             return Response(json.dumps({uuid: self.entry(uuid)}).encode(), status=201)
+        from mandat.audit import tlog
+
+        leaves = [merkle.leaf_hash(b) for b in self.bodies]
+        if request.full_url.endswith("/api/v1/log"):
+            self.live_reads += 1
+            return Response(json.dumps({"signedTreeHead": self.checkpoint(len(leaves), merkle.root(leaves))}).encode())
+        if "/api/v1/log/proof?" in request.full_url:
+            from urllib.parse import parse_qs, urlsplit
+
+            query = parse_qs(urlsplit(request.full_url).query)
+            self.proof_queries.append(query)
+            first, last = int(query["firstSize"][0]), int(query["lastSize"][0])
+            proof = tlog.consistency_proof(first, last, tlog.leaves_hasher(leaves))
+            return Response(json.dumps({"hashes": [h.hex() for h in proof]}).encode())
         uuid = request.full_url.rsplit("/", 1)[1]
         if uuid not in self.entries:
             raise OSError("404")
@@ -568,7 +599,7 @@ def test_rekor_sink_roundtrip(tmp_path):
     assert not journal.verify_journal(path, key=KEY, anchors=[sink]).ok
 
 
-@pytest.mark.parametrize("tamper", ["proof", "root", "foreign-key", "size", "body"])
+@pytest.mark.parametrize("tamper", ["proof", "root", "foreign-key", "size", "body", "set", "logid"])
 def test_rekor_rejects_bad_proof_or_checkpoint(tamper):
     rekor = FakeRekor()
     sink = _rekor(rekor)
@@ -592,7 +623,7 @@ def test_checkpoint_format_errors():
 
     ed = ed25519.Ed25519PrivateKey.generate().public_key()
     pem = ed.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
-    with pytest.raises(ValueError, match="ECDSA"):
+    with pytest.raises(ValueError, match="нет подписи"):  # Ed25519 поддержан, но подписывал другой ключ
         anchor.verify_checkpoint(rekor.checkpoint(1, b"\x00" * 32), pem)
     origin, size, root = anchor.verify_checkpoint(rekor.checkpoint(5, b"\x07" * 32), rekor.log_key_pem)
     assert (origin, size, root) == (FakeRekor.ORIGIN, 5, b"\x07" * 32)

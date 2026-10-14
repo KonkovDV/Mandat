@@ -2,6 +2,15 @@
 
 ## Готовится (после 0.3.0, в main)
 
+Аудит R5 14.10.2026:
+
+- Rekor v2 (`rekor2:https://…`, rekor-tiles): hashedrekord v0.0.2, квитанция — TransparencyLogEntry, проверка офлайн; checkpoint Ed25519 по C2SP signed-note.
+- Rekor v1: проверка SignedEntryTimestamp и logID.
+- Согласованность checkpoint (RFC 6962/9162) с состоянием `MANDAT_JOURNAL_ANCHOR_REKOR_STATE`: v1 — `/api/v1/log/proof`, v2 — по тайлам C2SP tlog-tiles; переписанная история журнала обнаруживается.
+- Отзыв сертификатов TSA: OCSP с откатом на CRL, кеш, таймаут, политика `MANDAT_JOURNAL_ANCHOR_TSA_REVOCATION` (`off`/`soft`/`hard`).
+- Webhook-якорь: проверка у получателя по контракту read-back (`MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK`).
+- `scripts/tlog_live_check.py`: ручная проверка на живых журналах Sigstore.
+
 Аудит R4 14.10.2026:
 - CI: Scorecard запускается и на PR; Dockerfile ставит пакет из собранного wheel с `--no-deps` (Scorecard Pinned-Dependencies, `pipCommand not pinned by hash`).
 

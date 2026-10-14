@@ -120,12 +120,18 @@ Ed25519 в Мандате подписывает внутренние удост
 
 | Переменная | Значение |
 |---|---|
-| `MANDAT_JOURNAL_ANCHOR` | приёмники через запятую: `file:/путь/на/другом/томе`, `webhook:https://…`, `tsa:https://…` (RFC 3161, `pip install 'mandat[tsa]'`), `rekor:https://rekor.sigstore.dev` |
+| `MANDAT_JOURNAL_ANCHOR` | приёмники через запятую: `file:/путь/на/другом/томе`, `webhook:https://…`, `tsa:https://…` (RFC 3161, `pip install 'mandat[tsa]'`), `rekor:https://rekor.sigstore.dev` (Rekor v1), `rekor2:https://log2025-1.rekor.sigstore.dev` (Rekor v2, rekor-tiles) |
 | `MANDAT_JOURNAL_ANCHOR_SECRET` | секрет Standard Webhooks для `webhook:` (`mandat webhook-secret`) |
 | `MANDAT_JOURNAL_ANCHOR_TSA_ROOTS` | PEM-файл доверенных корней TSA: цепочка сертификата TSA проверяется на момент метки, EKU — только timeStamping (critical) |
 | `MANDAT_JOURNAL_ANCHOR_TSA_CERT` | SHA-256 DER-сертификата TSA: метка с другим сертификатом не принимается. Нужен хотя бы один из двух параметров TSA |
 | `MANDAT_JOURNAL_ANCHOR_REKOR_KEY` | путь к ключу ECDSA P-256 (PEM) для записей hashedrekord |
 | `MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY` | открытый ключ журнала Rekor (PEM): им проверяется подпись checkpoint, к корню которого сходится доказательство включения |
+| `MANDAT_JOURNAL_ANCHOR_REKOR_STATE` | файл последнего проверенного checkpoint каждого журнала. Задан — каждый новый checkpoint (из записи и текущий) принимается только с доказательством согласованности (RFC 9162): v1 — `/api/v1/log/proof`, v2 — по тайлам. Без него проверка записи офлайн, раздвоение журнала не ловится. Ключ журнала v2 — Ed25519 из TrustedRoot Sigstore |
+| `MANDAT_JOURNAL_ANCHOR_TSA_REVOCATION` | `off`, `soft` (по умолчанию) или `hard`: отзыв сертификатов цепочки TSA по OCSP, при неудаче по CRL. `soft` — недоступный статус в лог, `hard` — отказ; отозванный отвергается всегда (по RFC 3161, разд. 4). Работает при заданных `..._TSA_ROOTS` |
+| `MANDAT_JOURNAL_ANCHOR_TSA_REVOCATION_TIMEOUT` / `..._CACHE` | таймаут запроса OCSP/CRL, с (5, не больше 60); срок кеша ответа, с (3600, но не дольше nextUpdate) |
+| `MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK` | адрес read-back получателя с `{sha256}`, например `https://anchor.example/anchors/{sha256}`. Контракт ниже |
 | `MANDAT_JOURNAL_ANCHOR_POLICY` | `warn` (по умолчанию) или `fail`: в pilot/prod без якоря `mandat serve` не стартует |
 
 Закрытые сегменты перечислены в манифесте `<журнал>.segments` (SHA-256 и диапазон записей каждого). Квитанции лежат рядом с журналом в `<журнал>.anchors`; `mandat journal-verify` с заданным `MANDAT_JOURNAL_ANCHOR` требует квитанцию на каждый закрытый сегмент и перепроверяет её у приёмника. Публичный Rekor раскрывает хеши и время записи, но не содержимое журнала.
+
+Контракт read-back вебхук-якоря. Запрос: `GET <адрес с подставленным sha256>` с заголовками Standard Webhooks (`webhook-id: readback-<16 hex>`, `webhook-timestamp`, `webhook-signature` — HMAC над пустым телом тем же секретом). Ответ получателя: `200`, `application/json`, тело `{"sha256": "<hex>", "statement": {…как получено…}, "delivery_id": "<webhook-id доставки>"}` и заголовки Standard Webhooks над телом ответа с тем же секретом и **тем же** `webhook-id`, что в запросе. Неизвестный хеш — `404`. «Мандат» пересчитывает хеш утверждения и сверяет `delivery_id` с квитанцией; любое расхождение, неверная подпись или старая метка времени (больше 5 минут) — сегмент не подтверждён.

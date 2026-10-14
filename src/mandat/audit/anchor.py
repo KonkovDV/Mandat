@@ -13,11 +13,14 @@
 
 * ``file:/путь`` — JSON Lines в файл на другом томе или машине (по умолчанию для стенда);
 * ``webhook:https://…`` — POST с подписью Standard Webhooks (``services/webhooks.py``), секрет
-  ``MANDAT_JOURNAL_ANCHOR_SECRET``;
+  ``MANDAT_JOURNAL_ANCHOR_SECRET``; сверка у получателя — ``MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK``;
 * ``tsa:https://…`` — метка времени RFC 3161; разбор и проверка ответа — extra ``[tsa]`` (asn1crypto),
-  импорт ленивый; ``MANDAT_JOURNAL_ANCHOR_TSA_CERT`` — SHA-256 сертификата TSA для закрепления;
-* ``rekor:https://…`` — запись hashedrekord в Sigstore Rekor, ключ ECDSA P-256 в PEM по пути
-  ``MANDAT_JOURNAL_ANCHOR_REKOR_KEY``.
+  импорт ленивый; доверие — корни ``MANDAT_JOURNAL_ANCHOR_TSA_ROOTS`` (с проверкой отзыва, ``revocation.py``)
+  и/или закреплённый SHA-256 сертификата ``MANDAT_JOURNAL_ANCHOR_TSA_CERT``;
+* ``rekor:https://…`` — hashedrekord v0.0.1 в Rekor v1, ``rekor2:https://…`` — hashedrekord v0.0.2 в Rekor v2
+  (rekor-tiles); ключ ECDSA P-256 в PEM по пути ``MANDAT_JOURNAL_ANCHOR_REKOR_KEY``, ключ журнала —
+  ``MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY``, согласованность checkpoint — ``MANDAT_JOURNAL_ANCHOR_REKOR_STATE``
+  (``tlog.py``).
 
 Квитанции хранятся рядом с журналом в ``<журнал>.anchors``; это только указатели, доказательство —
 у приёмника. ``verify_journal`` при заданных приёмниках требует квитанцию на каждый закрытый сегмент и
@@ -39,7 +42,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from mandat.audit import merkle
+from mandat.audit import merkle, tlog
+from mandat.audit.revocation import RevocationChecker
+from mandat.audit.revocation import from_env as revocation_from_env
 
 log = logging.getLogger("mandat.anchor")
 STATEMENT_TYPE = "mandat.journal.anchor/v1"
@@ -48,6 +53,11 @@ Opener = Callable[[urllib.request.Request], Any]
 
 def _urlopen(request: urllib.request.Request) -> Any:
     return urllib.request.urlopen(request, timeout=10)  # noqa: S310 - адрес задаёт администратор, схема проверена
+
+
+def _slow_urlopen(request: urllib.request.Request) -> Any:
+    """Rekor v2 отвечает на запись после выпуска checkpoint: клиентам рекомендован таймаут от 20 с."""
+    return urllib.request.urlopen(request, timeout=30)  # noqa: S310 - адрес задаёт администратор, схема проверена
 
 
 def canonical(data: dict[str, Any]) -> bytes:
@@ -119,10 +129,20 @@ class FileSink:
 
 
 class WebhookSink:
-    """POST утверждения с подписью Standard Webhooks. Копия — у получателя; локально сверяется квитанция."""
+    """POST утверждения с подписью Standard Webhooks.
 
-    def __init__(self, url: str, secret: str, opener: Opener | None = None) -> None:
+    Без ``readback`` квитанция сверяется только локально. С ``readback`` (шаблон адреса с ``{sha256}``,
+    ``MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK``) ``check`` спрашивает у получателя, что он хранит: GET с
+    подписанным заголовком ``webhook-id: readback-<случайное>``; ответ 200 — JSON ``{"sha256", "statement",
+    "delivery_id"}`` с подписью Standard Webhooks тем же секретом и тем же ``webhook-id`` (привязка ответа к
+    запросу, повтор старого ответа не проходит). Хеш утверждения пересчитывается; 404 или иной ответ — отказ.
+    """
+
+    def __init__(self, url: str, secret: str, opener: Opener | None = None, readback: str | None = None) -> None:
         self.url, self.secret = _https(url), secret
+        self.readback = _https(readback) if readback else None
+        if self.readback and "{sha256}" not in self.readback:
+            raise ValueError("адрес read-back вебхук-якоря должен содержать {sha256}")
         self.name = f"webhook:{self.url}"
         self._open = opener or _urlopen
 
@@ -139,8 +159,46 @@ class WebhookSink:
             raise OSError(f"приёмник якоря ответил {status}")
         return {"sha256": digest(stmt), "delivery_id": delivery, "status": status}
 
+    def remote_problem(self, stmt: dict[str, Any], receipt: dict[str, Any]) -> str | None:
+        from mandat.services.webhooks import response_signature_ok, sign_headers
+
+        assert self.readback is not None  # noqa: S101 - вызывается только при заданном read-back
+        want = digest(stmt)
+        request_id = f"readback-{secrets.token_hex(8)}"
+        headers = {"accept": "application/json", **sign_headers(self.secret, request_id, b"", datetime.now(UTC))}
+        headers.pop("Content-Type", None)
+        request = urllib.request.Request(self.readback.replace("{sha256}", want), headers=headers)  # noqa: S310
+        try:
+            with self._open(request) as response:
+                status = int(getattr(response, "status", 200))
+                answer_headers = dict(response.headers.items()) if getattr(response, "headers", None) else {}
+                body = response.read()
+        except Exception as exc:  # noqa: BLE001 - 404 и сетевые ошибки — не подтверждено
+            return f"read-back недоступен: {type(exc).__name__}"
+        if status != 200:
+            return f"read-back ответил {status}"
+        if not response_signature_ok(self.secret, answer_headers, body, datetime.now(UTC), request_id):
+            return "подпись ответа read-back не сходится"
+        try:
+            row = json.loads(body)
+            stored = row["statement"]
+        except (ValueError, KeyError, TypeError):
+            return "ответ read-back не разбирается"
+        if row.get("sha256") != want or digest(stored) != want:
+            return "получатель хранит другое утверждение"
+        if row.get("delivery_id") != receipt.get("delivery_id"):
+            return "получатель хранит другую доставку"
+        return None
+
     def check(self, stmt: dict[str, Any], receipt: dict[str, Any]) -> bool:
-        return receipt.get("sha256") == digest(stmt) and isinstance(receipt.get("delivery_id"), str)
+        if receipt.get("sha256") != digest(stmt) or not isinstance(receipt.get("delivery_id"), str):
+            return False
+        if self.readback is None:
+            return True
+        problem = self.remote_problem(stmt, receipt)
+        if problem:
+            log.error("webhook-якорь: %s", problem)
+        return problem is None
 
 
 # --- RFC 3161 -------------------------------------------------------------------------------------
@@ -190,10 +248,11 @@ def load_roots(pem: bytes) -> list[Any]:
     return roots
 
 
-def tsa_chain_problem(
-    leaf_der: bytes, intermediates_der: Sequence[bytes], roots: Sequence[Any], at: datetime
-) -> str | None:
-    """Цепочка сертификата TSA до заданного корня на момент метки и EKU timeStamping (RFC 3161, разд. 2.3)."""
+def tsa_chain(leaf_der: bytes, intermediates_der: Sequence[bytes], roots: Sequence[Any], at: datetime) -> list[Any]:
+    """Цепочка от сертификата TSA до заданного корня на момент метки (лист первым, корень последним).
+
+    Лист обязан иметь единственный EKU timeStamping с флагом critical (RFC 3161, разд. 2.3).
+    """
     from cryptography import x509
     from cryptography.x509 import verification as v
 
@@ -201,9 +260,9 @@ def tsa_chain_problem(
     try:
         eku = leaf.extensions.get_extension_for_class(x509.ExtendedKeyUsage)
     except x509.ExtensionNotFound:
-        return "у сертификата TSA нет расширения ExtendedKeyUsage"
+        raise ValueError("у сертификата TSA нет расширения ExtendedKeyUsage") from None
     if not eku.critical or [o.dotted_string for o in eku.value] != [TIME_STAMPING_EKU]:
-        return "сертификат TSA не только для меток времени (EKU timeStamping, critical)"
+        raise ValueError("сертификат TSA не только для меток времени (EKU timeStamping, critical)")
     builder = (
         v.PolicyBuilder()
         .store(v.Store(list(roots)))
@@ -211,9 +270,21 @@ def tsa_chain_problem(
         .extension_policies(ca_policy=v.ExtensionPolicy.webpki_defaults_ca(), ee_policy=v.ExtensionPolicy.permit_all())
     )
     try:
-        builder.build_client_verifier().verify(leaf, [x509.load_der_x509_certificate(d) for d in intermediates_der])
+        verified = builder.build_client_verifier().verify(
+            leaf, [x509.load_der_x509_certificate(d) for d in intermediates_der]
+        )
     except v.VerificationError as exc:
-        return f"сертификат TSA не выводится из доверенного корня: {exc}"
+        raise ValueError(f"сертификат TSA не выводится из доверенного корня: {exc}") from None
+    return list(verified.chain)
+
+
+def tsa_chain_problem(
+    leaf_der: bytes, intermediates_der: Sequence[bytes], roots: Sequence[Any], at: datetime
+) -> str | None:
+    try:
+        tsa_chain(leaf_der, intermediates_der, roots, at)
+    except ValueError as exc:
+        return str(exc)
     return None
 
 
@@ -223,11 +294,13 @@ def verify_tsa_token(
     nonce: int | None,
     pinned_cert: str | None,
     roots: Sequence[Any] | None = None,
+    revocation: RevocationChecker | None = None,
 ) -> str | None:
     """Проверить метку времени: imprint, nonce, подпись CMS, доверие к сертификату TSA.
 
     Доверие — цепочка до корня из ``MANDAT_JOURNAL_ANCHOR_TSA_ROOTS`` на момент метки (с EKU
-    timeStamping) и/или закреплённый SHA-256 сертификата (``MANDAT_JOURNAL_ANCHOR_TSA_CERT``). Без
+    timeStamping) и/или закреплённый SHA-256 сертификата (``MANDAT_JOURNAL_ANCHOR_TSA_CERT``). С корнем и
+    ``revocation`` каждый сертификат цепочки, кроме корня, проверяется на отзыв (``revocation.py``). Без
     того и другого метка не принимается: подпись сертификатом из самого ответа ничего не доказывает.
     Возвращает причину отказа или ``None``.
     """
@@ -284,7 +357,13 @@ def verify_tsa_token(
         return "подпись метки времени не сходится"
     if roots:
         others = [c.dump() for c in certs[1:]]
-        return tsa_chain_problem(cert_der, others, roots, tst["gen_time"].native)
+        issued = tst["gen_time"].native
+        try:
+            chain = tsa_chain(cert_der, others, roots, issued)
+        except ValueError as exc:
+            return str(exc)
+        if revocation is not None:
+            return revocation.problem(chain, issued)
     return None
 
 
@@ -297,8 +376,10 @@ class TsaSink:
         pinned_cert: str | None = None,
         opener: Opener | None = None,
         roots: Sequence[Any] | None = None,
+        revocation: RevocationChecker | None = None,
     ) -> None:
         self.url, self.pinned, self.roots = _https(url), pinned_cert, list(roots or [])
+        self.revocation = revocation
         self.name = f"tsa:{self.url}"
         self._open = opener or _urlopen
 
@@ -324,7 +405,7 @@ class TsaSink:
         if status not in {"granted", "granted_with_mods"}:
             raise OSError(f"TSA отказал: {status}")
         token = tsp.TimeStampResp.load(raw)["time_stamp_token"].dump()
-        problem = verify_tsa_token(token, imprint, nonce, self.pinned, self.roots)
+        problem = verify_tsa_token(token, imprint, nonce, self.pinned, self.roots, self.revocation)
         if problem:
             raise OSError(problem)
         return {"sha256": digest(stmt), "nonce": nonce, "token": base64.b64encode(token).decode()}
@@ -337,85 +418,112 @@ class TsaSink:
         except (KeyError, ValueError, TypeError):
             return False
         imprint = bytes.fromhex(digest(stmt))
-        return verify_tsa_token(token, imprint, receipt.get("nonce"), self.pinned, self.roots) is None
+        problem = verify_tsa_token(token, imprint, receipt.get("nonce"), self.pinned, self.roots, self.revocation)
+        if problem:
+            log.error("TSA: %s", problem)
+        return problem is None
 
 
-def verify_checkpoint(text: str, log_key_pem: bytes) -> tuple[str, int, bytes]:
-    """Подписанный checkpoint Rekor (формат signed note, как в sumdb/C2SP): origin, размер, корень.
+verify_checkpoint = tlog.verify_checkpoint
 
-    Тело — строки до пустой; подпись — строка ``— <имя> <base64(4 байта id ключа || подпись)>``,
-    id ключа — первые 4 байта SHA-256 от DER SubjectPublicKeyInfo. Подпись ECDSA-SHA256 по телу.
+
+def _ecdsa_pub(pem: bytes) -> Any:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    key = serialization.load_pem_public_key(pem)
+    if not isinstance(key, ec.EllipticCurvePublicKey):
+        raise ValueError("ключ журнала Rekor v1 — ECDSA")
+    return key
+
+
+def verify_set(entry: dict[str, Any], log_key_pem: bytes) -> None:
+    """SignedEntryTimestamp Rekor v1: подпись журнала над {body, integratedTime, logID, logIndex}.
+
+    Полезная нагрузка — канонический JSON (RFC 8785; ключи по алфавиту, без пробелов), logID — SHA-256
+    от DER SubjectPublicKeyInfo ключа журнала. Так проверяют sigstore-go и sigstore-python.
     """
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import ec
 
-    body, sep, signatures = text.partition("\n\n")
-    lines = body.split("\n")
-    if not sep or len(lines) < 3:
-        raise ValueError("checkpoint не в формате signed note")
-    origin, size, root = lines[0], int(lines[1]), base64.b64decode(lines[2], validate=True)
-    key = serialization.load_pem_public_key(log_key_pem)
-    if not isinstance(key, ec.EllipticCurvePublicKey):
-        raise ValueError("ключ журнала Rekor — ECDSA")
+    key = _ecdsa_pub(log_key_pem)
     spki = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-    key_id = hashlib.sha256(spki).digest()[:4]
-    name = origin.split(" ", 1)[0]
-    for line in signatures.splitlines():
-        if not line.startswith("\u2014 "):
-            continue
-        signer, _, encoded = line[2:].rpartition(" ")
-        raw = base64.b64decode(encoded, validate=True)
-        if signer != name or raw[:4] != key_id:
-            continue
-        key.verify(raw[4:], (body + "\n").encode("utf-8"), ec.ECDSA(hashes.SHA256()))
-        return origin, size, root
-    raise ValueError("в checkpoint нет подписи заданного ключа журнала Rekor")
+    if entry.get("logID") != hashlib.sha256(spki).hexdigest():
+        raise ValueError("logID записи — не ключ заданного журнала Rekor")
+    payload = {
+        "body": entry["body"],
+        "integratedTime": int(entry["integratedTime"]),
+        "logID": entry["logID"],
+        "logIndex": int(entry["logIndex"]),
+    }
+    sig = base64.b64decode(entry["verification"]["signedEntryTimestamp"], validate=True)
+    key.verify(sig, canonical(payload), ec.ECDSA(hashes.SHA256()))
 
 
 def verify_rekor_entry(uuid: str, entry: dict[str, Any], log_key_pem: bytes) -> bytes:
-    """Доказательство включения записи (RFC 6962) в дерево из подписанного checkpoint. Возвращает тело записи."""
+    """Запись Rekor v1: uuid — хеш листа, SET, включение (RFC 6962) в подписанный checkpoint. Возвращает тело."""
+    return _verify_rekor_entry(uuid, entry, log_key_pem)[0]
+
+
+def _verify_rekor_entry(uuid: str, entry: dict[str, Any], log_key_pem: bytes) -> tuple[bytes, tuple[str, int, bytes]]:
     body = base64.b64decode(entry["body"], validate=True)
     leaf = merkle.leaf_hash(body)
     if uuid[-64:].lower() != leaf.hex():
         raise ValueError("uuid записи не совпадает с хешем листа")
+    verify_set(entry, log_key_pem)
     proof = entry["verification"]["inclusionProof"]
     root = bytes.fromhex(proof["rootHash"])
     hashes_ = [bytes.fromhex(h) for h in proof["hashes"]]
     if not merkle.verify_inclusion(leaf, int(proof["logIndex"]), int(proof["treeSize"]), hashes_, root):
         raise ValueError("доказательство включения не сходится с корнем")
-    _, size, signed_root = verify_checkpoint(proof["checkpoint"], log_key_pem)
-    if size != int(proof["treeSize"]) or signed_root != root:
+    checkpoint = verify_checkpoint(proof["checkpoint"], log_key_pem)
+    if checkpoint[1] != int(proof["treeSize"]) or checkpoint[2] != root:
         raise ValueError("checkpoint подписан для другого дерева")
-    return body
+    return body, checkpoint
+
+
+def _ec_signer(key_pem: bytes) -> Any:
+    from cryptography.hazmat.primitives.asymmetric import ec  # lazy
+    from cryptography.hazmat.primitives.serialization import load_pem_private_key
+
+    key = load_pem_private_key(key_pem, password=None)
+    if not isinstance(key, ec.EllipticCurvePrivateKey):
+        raise ValueError("ключ Rekor — ECDSA P-256 в PEM")
+    return key
 
 
 class RekorSink:
-    """Запись hashedrekord v0.0.1 в Sigstore Rekor.
+    """Запись hashedrekord v0.0.1 в Sigstore Rekor v1.
 
-    ``check`` читает запись по uuid и проверяет: uuid — хеш листа, доказательство включения (RFC 6962)
-    сходится с корнем, корень и размер дерева подписаны ключом журнала Rekor (checkpoint), тело записи
-    несёт хеш утверждения. Без ключа журнала (``MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY``) запись не принимается.
+    ``check`` читает запись по uuid и проверяет: uuid — хеш листа, SignedEntryTimestamp подписан журналом,
+    доказательство включения (RFC 6962) сходится с корнем, корень и размер подписаны ключом журнала
+    (checkpoint), тело несёт хеш утверждения. Без ключа журнала (``MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY``)
+    запись не принимается. С ``state`` (``MANDAT_JOURNAL_ANCHOR_REKOR_STATE``) каждый увиденный checkpoint
+    — из записи и текущий ``/api/v1/log`` — сверяется с последним проверенным доказательством
+    согласованности (``/api/v1/log/proof``, RFC 6962, разд. 2.1.2).
     """
 
     def __init__(
-        self, url: str, key_pem: bytes, opener: Opener | None = None, log_key_pem: bytes | None = None
+        self,
+        url: str,
+        key_pem: bytes,
+        opener: Opener | None = None,
+        log_key_pem: bytes | None = None,
+        state: tlog.CheckpointState | None = None,
     ) -> None:
-        self.url, self._key_pem, self.log_key = _https(url), key_pem, log_key_pem
+        self.url, self._key_pem, self.log_key, self.state = _https(url), key_pem, log_key_pem, state
         self.name = f"rekor:{self.url}"
         self._open = opener or _urlopen
 
     def _key(self) -> Any:
-        from cryptography.hazmat.primitives.asymmetric import ec  # lazy
-        from cryptography.hazmat.primitives.serialization import load_pem_private_key
-
-        key = load_pem_private_key(self._key_pem, password=None)
-        if not isinstance(key, ec.EllipticCurvePrivateKey):
-            raise ValueError("ключ Rekor — ECDSA P-256 в PEM")
-        return key
+        return _ec_signer(self._key_pem)
 
     def _json(self, request: urllib.request.Request) -> Any:
         with self._open(request) as response:
             return json.loads(response.read().decode("utf-8"))
+
+    def _get(self, path: str) -> Any:
+        return json.loads(tlog.read_url(self._open, self.url + path, "application/json").decode("utf-8"))
 
     def publish(self, stmt: dict[str, Any]) -> dict[str, Any]:
         from cryptography.hazmat.primitives import hashes, serialization
@@ -447,21 +555,172 @@ class RekorSink:
         uuid, body = next(iter(answer.items()))
         return {"sha256": digest(stmt), "uuid": uuid, "log_index": body.get("logIndex")}
 
+    def _prover(self, origin: str) -> tlog.Prover:
+        tree = origin.rpartition(" - ")[2] if " - " in origin else ""
+
+        def prove(size1: int, size2: int) -> list[bytes]:
+            query = f"/api/v1/log/proof?firstSize={size1}&lastSize={size2}" + (f"&treeID={tree}" if tree else "")
+            return [bytes.fromhex(h) for h in self._get(query)["hashes"]]
+
+        return prove
+
+    def consistency_problem(self, checkpoint: tuple[str, int, bytes]) -> str | None:
+        """Checkpoint записи и текущий checkpoint журнала согласованы с последним проверенным."""
+        if self.state is None or self.log_key is None:
+            return None
+        origin, size, root = checkpoint
+        problem = self.state.observe(origin, size, root, self._prover(origin))
+        if problem:
+            return problem
+        try:
+            live = verify_checkpoint(self._get("/api/v1/log")["signedTreeHead"], self.log_key)
+        except Exception as exc:  # noqa: BLE001 - недоступный журнал при включённом мониторинге — отказ
+            return f"текущий checkpoint Rekor не получен: {type(exc).__name__}"
+        return self.state.observe(live[0], live[1], live[2], self._prover(live[0]))
+
     def check(self, stmt: dict[str, Any], receipt: dict[str, Any]) -> bool:
         if receipt.get("sha256") != digest(stmt) or not isinstance(receipt.get("uuid"), str):
+            return False
+        if not self.log_key:
             return False
         request = urllib.request.Request(  # noqa: S310
             f"{self.url}/api/v1/log/entries/{receipt['uuid']}", headers={"accept": "application/json"}
         )
-        if not self.log_key:
-            return False
         try:
             answer = self._json(request)
-            raw = verify_rekor_entry(receipt["uuid"], answer[receipt["uuid"]], self.log_key)
+            raw, checkpoint = _verify_rekor_entry(receipt["uuid"], answer[receipt["uuid"]], self.log_key)
             body = json.loads(raw)
-            return bool(body["spec"]["data"]["hash"]["value"] == digest(stmt))
+            if body["spec"]["data"]["hash"]["value"] != digest(stmt):
+                return False
         except Exception:  # noqa: BLE001 - любая ошибка разбора или подписи — запись не подтверждена
             return False
+        problem = self.consistency_problem(checkpoint)
+        if problem:
+            log.error("Rekor: %s", problem)
+        return problem is None
+
+
+V2_KIND = ("hashedrekord", "0.0.2")
+
+
+def verify_rekor_v2_entry(
+    tle: dict[str, Any], log_key_pem: bytes, origin: str | None
+) -> tuple[bytes, tuple[str, int, bytes]]:
+    """TransparencyLogEntry Rekor v2: тело известного вида, включение в дерево подписанного checkpoint.
+
+    Размер и корень берутся только из проверенного checkpoint; ``inclusionProof.rootHash`` и ``treeSize``
+    игнорируются, номер записи — верхний ``logIndex`` (rekor-tiles, CLIENTS.md).
+    """
+    kv = tle.get("kindVersion") or {}
+    if (kv.get("kind"), kv.get("version")) != V2_KIND:
+        raise ValueError("неизвестный вид записи Rekor v2")
+    body = base64.b64decode(tle["canonicalizedBody"], validate=True)
+    parsed = json.loads(body)
+    if (parsed.get("kind"), parsed.get("apiVersion")) != V2_KIND:
+        raise ValueError("тело записи Rekor v2 другого вида")
+    proof = tle["inclusionProof"]
+    checkpoint = verify_checkpoint(proof["checkpoint"]["envelope"], log_key_pem, origin=origin)
+    hashes_ = [base64.b64decode(h, validate=True) for h in proof.get("hashes") or []]
+    index = int(tle["logIndex"])
+    if not merkle.verify_inclusion(merkle.leaf_hash(body), index, checkpoint[1], hashes_, checkpoint[2]):
+        raise ValueError("доказательство включения не сходится с checkpoint")
+    return body, checkpoint
+
+
+class RekorV2Sink:
+    """Запись hashedrekord v0.0.2 в Rekor v2 (rekor-tiles).
+
+    Rekor v2 не отдаёт записи и доказательства по API: квитанция — весь TransparencyLogEntry, ``check``
+    проверяет его офлайн (подпись checkpoint ключом журнала, origin = адрес без схемы, включение по RFC 6962).
+    С ``state`` checkpoint записи и текущий ``/checkpoint`` сверяются с последним проверенным доказательством
+    согласованности, посчитанным по тайлам (C2SP tlog-tiles). Таймаут записи — 30 с: журнал отвечает после
+    выпуска checkpoint.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        key_pem: bytes,
+        opener: Opener | None = None,
+        log_key_pem: bytes | None = None,
+        state: tlog.CheckpointState | None = None,
+    ) -> None:
+        self.url, self._key_pem, self.log_key, self.state = _https(url), key_pem, log_key_pem, state
+        self.origin = self.url.split("://", 1)[1]
+        self.name = f"rekor2:{self.url}"
+        self._open = opener or _slow_urlopen
+
+    def publish(self, stmt: dict[str, Any]) -> dict[str, Any]:
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        key = _ec_signer(self._key_pem)
+        signature = key.sign(canonical(stmt), ec.ECDSA(hashes.SHA256()))
+        spki = key.public_key().public_bytes(
+            serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        request_body = {
+            "hashedRekordRequestV002": {
+                "digest": base64.b64encode(bytes.fromhex(digest(stmt))).decode(),
+                "signature": {
+                    "content": base64.b64encode(signature).decode(),
+                    "verifier": {
+                        "publicKey": {"rawBytes": base64.b64encode(spki).decode()},
+                        "keyDetails": "PKIX_ECDSA_P256_SHA_256",
+                    },
+                },
+            }
+        }
+        request = urllib.request.Request(  # noqa: S310
+            self.url + "/api/v2/log/entries",
+            data=canonical(request_body),
+            headers={"content-type": "application/json", "accept": "application/json"},
+            method="POST",
+        )
+        with self._open(request) as response:
+            tle = json.loads(response.read().decode("utf-8"))
+        receipt = {"sha256": digest(stmt), "log_index": int(tle.get("logIndex", -1)), "tle": tle}
+        if self.log_key and not self._entry_ok(stmt, receipt):
+            raise OSError("Rekor v2 вернул запись, которая не проверяется")
+        return receipt
+
+    def _entry_ok(self, stmt: dict[str, Any], receipt: dict[str, Any]) -> tuple[str, int, bytes] | None:
+        if receipt.get("sha256") != digest(stmt) or not self.log_key:
+            return None
+        try:
+            raw, checkpoint = verify_rekor_v2_entry(receipt["tle"], self.log_key, self.origin)
+            data = json.loads(raw)["spec"]["hashedRekordV002"]["data"]
+            want = base64.b64encode(bytes.fromhex(digest(stmt))).decode()
+            if data.get("algorithm") != "SHA2_256" or data.get("digest") != want:
+                return None
+        except Exception:  # noqa: BLE001 - любая ошибка разбора или подписи — запись не подтверждена
+            return None
+        return checkpoint
+
+    def _fetch(self, path: str) -> bytes:
+        return tlog.read_url(self._open, f"{self.url}/{path}")
+
+    def consistency_problem(self, checkpoint: tuple[str, int, bytes]) -> str | None:
+        if self.state is None or self.log_key is None:
+            return None
+        prove = tlog.tile_prover(self._fetch)
+        problem = self.state.observe(*checkpoint, prove)
+        if problem:
+            return problem
+        try:
+            live = verify_checkpoint(self._fetch("checkpoint").decode("utf-8"), self.log_key, origin=self.origin)
+        except Exception as exc:  # noqa: BLE001 - недоступный журнал при включённом мониторинге — отказ
+            return f"текущий checkpoint Rekor v2 не получен: {type(exc).__name__}"
+        return self.state.observe(*live, prove)
+
+    def check(self, stmt: dict[str, Any], receipt: dict[str, Any]) -> bool:
+        checkpoint = self._entry_ok(stmt, receipt)
+        if checkpoint is None:
+            return False
+        problem = self.consistency_problem(checkpoint)
+        if problem:
+            log.error("Rekor v2: %s", problem)
+        return problem is None
 
 
 # --- настройка ------------------------------------------------------------------------------------
@@ -480,22 +739,26 @@ def configured_sinks(value: str | None = None) -> list[Sink]:
             secret = os.environ.get("MANDAT_JOURNAL_ANCHOR_SECRET", "")
             if not secret:
                 raise ValueError("webhook-якорь требует MANDAT_JOURNAL_ANCHOR_SECRET")
-            sinks.append(WebhookSink(target, secret))
+            readback = os.environ.get("MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK") or None
+            sinks.append(WebhookSink(target, secret, readback=readback))
         elif kind == "tsa":
             pinned = os.environ.get("MANDAT_JOURNAL_ANCHOR_TSA_CERT") or None
             roots_path = os.environ.get("MANDAT_JOURNAL_ANCHOR_TSA_ROOTS", "")
             roots = load_roots(Path(roots_path).read_bytes()) if roots_path else []
             if not pinned and not roots:
                 raise ValueError("tsa-якорь требует MANDAT_JOURNAL_ANCHOR_TSA_ROOTS или MANDAT_JOURNAL_ANCHOR_TSA_CERT")
-            sinks.append(TsaSink(target, pinned, roots=roots))
-        elif kind == "rekor":
+            sinks.append(TsaSink(target, pinned, roots=roots, revocation=revocation_from_env() if roots else None))
+        elif kind in {"rekor", "rekor2"}:
             key_path = os.environ.get("MANDAT_JOURNAL_ANCHOR_REKOR_KEY", "")
             if not key_path:
                 raise ValueError("rekor-якорь требует MANDAT_JOURNAL_ANCHOR_REKOR_KEY (ECDSA P-256, PEM)")
             log_key = os.environ.get("MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY", "")
             if not log_key:
                 raise ValueError("rekor-якорь требует MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY (ключ журнала Rekor, PEM)")
-            sinks.append(RekorSink(target, Path(key_path).read_bytes(), log_key_pem=Path(log_key).read_bytes()))
+            state_path = os.environ.get("MANDAT_JOURNAL_ANCHOR_REKOR_STATE", "")
+            state = tlog.CheckpointState(Path(state_path)) if state_path else None
+            cls = RekorSink if kind == "rekor" else RekorV2Sink
+            sinks.append(cls(target, Path(key_path).read_bytes(), log_key_pem=Path(log_key).read_bytes(), state=state))
         else:
             raise ValueError(f"неизвестный якорь журнала: {spec}")
     return sinks

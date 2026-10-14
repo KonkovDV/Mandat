@@ -133,6 +133,27 @@ def signature_ok(
     return seen is None or seen.first_seen(f"webhook:{delivery_id}", 2 * skew, now.timestamp())
 
 
+def response_signature_ok(
+    secret: str | Iterable[str], headers: Mapping[str, str], body: bytes, now: datetime, expected_id: str
+) -> bool:
+    """Ответ получателя подписан тем же секретом и привязан к запросу: ``webhook-id`` равен ``expected_id``.
+
+    Хранилище повторов не нужно: идентификатор случайный и одноразовый, старый ответ к новому запросу не подойдёт.
+    """
+    lower = {k.lower(): v for k, v in headers.items()}
+    if lower.get("webhook-id") != expected_id:
+        return False
+    stamp = lower.get("webhook-timestamp") or ""
+    offered = [s for s in (lower.get("webhook-signature") or "").split(" ") if s.startswith("v1,")]
+    if not stamp.isascii() or not stamp.isdigit() or not offered or abs(now.timestamp() - int(stamp)) > SKEW_SECONDS:
+        return False
+    matched = False
+    for want in (_sign(k, expected_id, stamp, body) for k in parse_secrets(secret)):
+        for got in offered:
+            matched |= hmac.compare_digest(want.encode(), got.encode())
+    return matched
+
+
 def delivery(payload: dict[str, Any], secret: str | Iterable[str], *, now: datetime | None = None) -> dict[str, Any]:
     """Тело и заголовки. Идентификатор доставки зависит только от тела: повтор доставки — тот же id."""
     moment = now or datetime.now(UTC)
