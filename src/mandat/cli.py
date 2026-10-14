@@ -407,8 +407,13 @@ def server_options() -> dict[str, Any]:
 
 
 def cmd_webhook_secret(args: argparse.Namespace) -> int:
-    from mandat.services.webhooks import new_secret
+    from mandat.services.webhooks import new_secret, new_signing_key
 
+    if args.asymmetric:
+        signing, verifying = new_signing_key()
+        print(f"{signing}  # ключ подписи: только отправителю (MANDAT_WEBHOOK_SECRET)")
+        print(f"{verifying}  # ключ проверки: получателю, он не секретный")
+        return 0
     print(new_secret())
     return 0
 
@@ -498,7 +503,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--port", type=int, default=8000)
     s.add_argument("--workers", type=int, default=1, help="больше одного нужен MANDAT_API_STORE")
     s.set_defaults(func=cmd_serve)
-    w = sub.add_parser("webhook-secret", help="новый секрет вебхука в формате whsec_")
+    w = sub.add_parser("webhook-secret", help="новый секрет вебхука: whsec_ (HMAC) или пара whsk_/whpk_ (Ed25519)")
+    w.add_argument("--asymmetric", action="store_true", help="пара ключей Ed25519 для подписи v1a")
     w.set_defaults(func=cmd_webhook_secret)
     return p
 

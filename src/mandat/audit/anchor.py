@@ -134,12 +134,24 @@ class WebhookSink:
     Без ``readback`` квитанция сверяется только локально. С ``readback`` (шаблон адреса с ``{sha256}``,
     ``MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK``) ``check`` спрашивает у получателя, что он хранит: GET с
     подписанным заголовком ``webhook-id: readback-<случайное>``; ответ 200 — JSON ``{"sha256", "statement",
-    "delivery_id"}`` с подписью Standard Webhooks тем же секретом и тем же ``webhook-id`` (привязка ответа к
-    запросу, повтор старого ответа не проходит). Хеш утверждения пересчитывается; 404 или иной ответ — отказ.
+    "delivery_id"}`` с подписью Standard Webhooks тем же ``webhook-id`` (привязка ответа к
+    запросу, повтор старого ответа не проходит): тем же секретом или, если задан ``readback_key``
+    (``MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK_KEY``, ``whpk_``), только подписью ``v1a`` ключом получателя.
+    Хеш утверждения пересчитывается; 404 или иной ответ — отказ.
     """
 
-    def __init__(self, url: str, secret: str, opener: Opener | None = None, readback: str | None = None) -> None:
+    def __init__(
+        self,
+        url: str,
+        secret: str,
+        opener: Opener | None = None,
+        readback: str | None = None,
+        readback_key: str | None = None,
+    ) -> None:
         self.url, self.secret = _https(url), secret
+        if readback_key is not None and not readback_key.strip().startswith("whpk_"):
+            raise ValueError("ключ проверки read-back — открытый ключ получателя whpk_ (Ed25519)")
+        self.readback_key = readback_key
         self.readback = _https(readback) if readback else None
         if self.readback and "{sha256}" not in self.readback:
             raise ValueError("адрес read-back вебхук-якоря должен содержать {sha256}")
@@ -177,7 +189,9 @@ class WebhookSink:
             return f"read-back недоступен: {type(exc).__name__}"
         if status != 200:
             return f"read-back ответил {status}"
-        if not response_signature_ok(self.secret, answer_headers, body, datetime.now(UTC), request_id):
+        # С ключом получателя (whpk_) принимается только его подпись v1a: общий секрет её не подделает.
+        verify_with = self.readback_key or self.secret
+        if not response_signature_ok(verify_with, answer_headers, body, datetime.now(UTC), request_id):
             return "подпись ответа read-back не сходится"
         try:
             row = json.loads(body)
@@ -750,7 +764,8 @@ def configured_sinks(value: str | None = None) -> list[Sink]:
             if not secret:
                 raise ValueError("webhook-якорь требует MANDAT_JOURNAL_ANCHOR_SECRET")
             readback = os.environ.get("MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK") or None
-            sinks.append(WebhookSink(target, secret, readback=readback))
+            readback_key = os.environ.get("MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK_KEY") or None
+            sinks.append(WebhookSink(target, secret, readback=readback, readback_key=readback_key))
         elif kind == "tsa":
             pinned = os.environ.get("MANDAT_JOURNAL_ANCHOR_TSA_CERT") or None
             roots_path = os.environ.get("MANDAT_JOURNAL_ANCHOR_TSA_ROOTS", "")

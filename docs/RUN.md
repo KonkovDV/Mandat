@@ -65,7 +65,7 @@ Docker поднимает API только на localhost: `docker compose up --
 | `MANDAT_API_DOCS` | `1` включает Swagger на `/docs` | выключено |
 | `MANDAT_API_RATE_PER_MIN` | запросов в минуту с одного адреса, `0` снимает ограничение | 120 |
 | `MANDAT_API_STORE` | общее хранилище лимита и отчётов: `memory`, `sqlite:///…`, `redis://…` | `memory` |
-| `MANDAT_WEBHOOK_SECRET` | секрет подписи событий мониторинга, `whsec_…`; несколько через пробел для смены ключа, первый текущий. Новый печатает `mandat webhook-secret` | подпись не ставится |
+| `MANDAT_WEBHOOK_SECRET` | секрет подписи событий мониторинга, `whsec_…` (HMAC) или `whsk_…` (Ed25519, `v1a`, `mandat webhook-secret --asymmetric`); несколько через пробел для смены ключа, первый текущий. Новый печатает `mandat webhook-secret` | подпись не ставится |
 | `MANDAT_ENV` | `demo`, `dev`, `test` или `pilot`, `prod` | `demo` |
 | `MANDAT_JOURNAL_KEY` | ключ HMAC журнала | на стенде по желанию, в `pilot` и `prod` обязателен |
 | `MANDAT_API_JOURNAL` | журнал аудита HTTP API: запись о проверке пишется до сохранения отчёта; журнал не цел или недоступен — 503, отчёт не сохраняется | на стенде не ведётся; в `pilot` и `prod` без него `POST /v1/cases` отвечает 503 |

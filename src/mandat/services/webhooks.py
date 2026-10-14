@@ -8,6 +8,9 @@
 * Для смены ключа без простоя задаются несколько секретов через пробел: первый текущий,
   остальные старые. Заголовок ``webhook-signature`` несёт подписи всеми ключами через пробел,
   получатель принимает сообщение, если сошлась любая подпись с любым его ключом.
+* Асимметричная подпись ``v1a`` (Ed25519): ключ подписи ``whsk_<base64>`` (32 байта seed или 64 байта
+  seed‖открытый ключ), ключ проверки ``whpk_<base64>`` (32 байта). Получателю не нужен секрет: даже тот,
+  кто прочитал его настройки, не подделает подпись. Ключи разных типов можно смешивать в одном списке.
 * Получатель отвергает метку времени вне окна (по умолчанию 5 минут) и, если ему дали хранилище,
   повтор того же ``webhook-id``.
 
@@ -25,6 +28,7 @@ import logging
 import re
 import secrets
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -33,6 +37,7 @@ from mandat.services.env_policy import protected
 
 SKEW_SECONDS = 300
 PREFIX = "whsec_"
+SIGN_PREFIX, VERIFY_PREFIX = "whsk_", "whpk_"
 MIN_KEY, MAX_KEY = 24, 64
 _ID = re.compile(r"[A-Za-z0-9_\-]{1,128}")
 
@@ -76,6 +81,66 @@ def new_secret() -> str:
     return PREFIX + base64.b64encode(secrets.token_bytes(32)).decode("ascii")
 
 
+def _b64(body: str) -> bytes:
+    try:
+        return base64.b64decode(body + "=" * (-len(body) % 4), validate=True)
+    except binascii.Error as exc:
+        raise ValueError("ключ вебхука должен быть в base64") from exc
+
+
+@dataclass(frozen=True)
+class Ed25519Key:
+    """Ключ ``v1a``: ``private`` есть только у отправителя."""
+
+    public: bytes
+    private: bytes | None = None
+
+
+def _ed25519(item: str) -> Ed25519Key:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+
+    if item.startswith(VERIFY_PREFIX):
+        raw = _b64(item[len(VERIFY_PREFIX) :])
+        if len(raw) != 32:
+            raise ValueError("ключ whpk_ — 32 байта Ed25519")
+        return Ed25519Key(raw)
+    raw = _b64(item[len(SIGN_PREFIX) :])
+    if len(raw) not in (32, 64):
+        raise ValueError("ключ whsk_ — 32 байта seed или 64 байта seed и открытый ключ")
+    public = (
+        ed25519.Ed25519PrivateKey.from_private_bytes(raw[:32])
+        .public_key()
+        .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    )
+    if len(raw) == 64 and raw[32:] != public:
+        raise ValueError("в ключе whsk_ открытая часть не от этого seed")
+    return Ed25519Key(public, raw[:32])
+
+
+def parse_keys(value: str | Iterable[str]) -> list[bytes | Ed25519Key]:
+    """Секреты HMAC (``whsec_`` и старый формат) и ключи Ed25519 (``whsk_``, ``whpk_``) в одном списке."""
+    items = value.split() if isinstance(value, str) else [s for v in value for s in v.split()]
+    keys: list[bytes | Ed25519Key] = [
+        _ed25519(s) if s.startswith((SIGN_PREFIX, VERIFY_PREFIX)) else decode_secret(s) for s in items
+    ]
+    if not keys:
+        raise ValueError("не задан ни один секрет вебхука")
+    return keys
+
+
+def new_signing_key() -> tuple[str, str]:
+    """Пара ``(whsk_…, whpk_…)``: ключ подписи — отправителю, ключ проверки — получателю."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+
+    key = ed25519.Ed25519PrivateKey.generate()
+    seed = key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())
+    public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    encode = base64.b64encode
+    return SIGN_PREFIX + encode(seed + public).decode(), VERIFY_PREFIX + encode(public).decode()
+
+
 def canonical_body(payload: dict[str, Any]) -> bytes:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
@@ -88,6 +153,45 @@ def _sign(key: bytes, delivery_id: str, stamp: str, body: bytes) -> str:
     return "v1," + base64.b64encode(mac).decode("ascii")
 
 
+def _sign_any(key: bytes | Ed25519Key, delivery_id: str, stamp: str, body: bytes) -> str:
+    if isinstance(key, bytes):
+        return _sign(key, delivery_id, stamp, body)
+    if key.private is None:
+        raise ValueError("ключом проверки whpk_ нельзя подписать: нужен whsk_")
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+
+    signature = ed25519.Ed25519PrivateKey.from_private_bytes(key.private).sign(
+        f"{delivery_id}.{stamp}.".encode() + body
+    )
+    return "v1a," + base64.b64encode(signature).decode("ascii")
+
+
+def _matches(keys: Iterable[bytes | Ed25519Key], delivery_id: str, stamp: str, body: bytes, offered: list[str]) -> bool:
+    """Сошлась ли хоть одна подпись: ``v1`` — HMAC с постоянным временем сравнения, ``v1a`` — Ed25519."""
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+
+    message = f"{delivery_id}.{stamp}.".encode() + body
+    matched = False
+    for key in keys:
+        for got in offered:
+            if isinstance(key, bytes):
+                if got.startswith("v1,"):
+                    # Все пары без досрочного выхода: время не подсказывает, какой ключ сошёлся.
+                    matched |= hmac.compare_digest(_sign(key, delivery_id, stamp, body).encode(), got.encode())
+            elif got.startswith("v1a,"):
+                try:
+                    raw = base64.b64decode(got[4:], validate=True)
+                    ed25519.Ed25519PublicKey.from_public_bytes(key.public).verify(raw, message)
+                    matched = True
+                except Exception:  # noqa: BLE001, S112 - чужая подпись, мусор в base64 — просто не совпала
+                    continue
+    return matched
+
+
+def _offered(header: str) -> list[str]:
+    return [s for s in header.split(" ") if s.startswith(("v1,", "v1a,"))]
+
+
 def sign_headers(secret: str | Iterable[str], delivery_id: str, body: bytes, now: datetime) -> dict[str, str]:
     if not _ID.fullmatch(delivery_id):
         raise ValueError("webhook-id: латиница, цифры, _ и -, без точки")
@@ -95,7 +199,7 @@ def sign_headers(secret: str | Iterable[str], delivery_id: str, body: bytes, now
     return {
         "webhook-id": delivery_id,
         "webhook-timestamp": stamp,
-        "webhook-signature": " ".join(_sign(k, delivery_id, stamp, body) for k in parse_secrets(secret)),
+        "webhook-signature": " ".join(_sign_any(k, delivery_id, stamp, body) for k in parse_keys(secret)),
         "Content-Type": "application/json",
     }
 
@@ -116,18 +220,12 @@ def signature_ok(
     lower = {k.lower(): v for k, v in headers.items()}
     delivery_id = lower.get("webhook-id") or ""
     stamp = lower.get("webhook-timestamp") or ""
-    offered = [s for s in (lower.get("webhook-signature") or "").split(" ") if s.startswith("v1,")]
+    offered = _offered(lower.get("webhook-signature") or "")
     if not _ID.fullmatch(delivery_id) or not stamp.isascii() or not stamp.isdigit() or not offered:
         return False
     if abs(now.timestamp() - int(stamp)) > skew:
         return False
-    expected = [_sign(k, delivery_id, stamp, body) for k in parse_secrets(secret)]
-    # Сравниваем все пары, не выходя досрочно: время не подсказывает, какой ключ сошёлся.
-    matched = False
-    for want in expected:
-        for got in offered:
-            matched |= hmac.compare_digest(want.encode(), got.encode())
-    if not matched:
+    if not _matches(parse_keys(secret), delivery_id, stamp, body, offered):
         return False
     # Повтор того же сообщения в пределах окна отвергается. Ключ живёт два окна: метка может уйти в обе стороны.
     return seen is None or seen.first_seen(f"webhook:{delivery_id}", 2 * skew, now.timestamp())
@@ -136,7 +234,9 @@ def signature_ok(
 def response_signature_ok(
     secret: str | Iterable[str], headers: Mapping[str, str], body: bytes, now: datetime, expected_id: str
 ) -> bool:
-    """Ответ получателя подписан тем же секретом и привязан к запросу: ``webhook-id`` равен ``expected_id``.
+    """Ответ получателя подписан и привязан к запросу: ``webhook-id`` равен ``expected_id``.
+
+    Подпись — тем же секретом (``v1``) или ключом получателя ``whsk_`` (``v1a``, проверка его ``whpk_``).
 
     Хранилище повторов не нужно: идентификатор случайный и одноразовый, старый ответ к новому запросу не подойдёт.
     """
@@ -144,14 +244,10 @@ def response_signature_ok(
     if lower.get("webhook-id") != expected_id:
         return False
     stamp = lower.get("webhook-timestamp") or ""
-    offered = [s for s in (lower.get("webhook-signature") or "").split(" ") if s.startswith("v1,")]
+    offered = _offered(lower.get("webhook-signature") or "")
     if not stamp.isascii() or not stamp.isdigit() or not offered or abs(now.timestamp() - int(stamp)) > SKEW_SECONDS:
         return False
-    matched = False
-    for want in (_sign(k, expected_id, stamp, body) for k in parse_secrets(secret)):
-        for got in offered:
-            matched |= hmac.compare_digest(want.encode(), got.encode())
-    return matched
+    return _matches(parse_keys(secret), expected_id, stamp, body, offered)
 
 
 def delivery(payload: dict[str, Any], secret: str | Iterable[str], *, now: datetime | None = None) -> dict[str, Any]:
