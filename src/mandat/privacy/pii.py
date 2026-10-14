@@ -47,15 +47,22 @@ DETECTORS = (
 )
 
 
+MIN_KEY_BYTES = 32
+
+
 class PiiKeyMissing(RuntimeError):
     """Режим требует собственный ключ псевдонимизации, а ``MANDAT_PII_KEY`` не задан."""
 
 
 def _key() -> bytes:
+    from mandat.services.env_policy import protected
+
     value = os.environ.get("MANDAT_PII_KEY", "").strip()
     if value:
+        if protected() and len(value.encode("utf-8")) < MIN_KEY_BYTES:
+            # Короткий ключ HMAC (RFC 2104, разд. 3) делает токен ИНН подбираемым вместе с ключом.
+            raise PiiKeyMissing(f"MANDAT_PII_KEY короче {MIN_KEY_BYTES} байт")
         return value.encode("utf-8")
-    from mandat.services.env_policy import protected
 
     if protected():
         # Ключ разработки лежит в репозитории: токен ИНН по нему восстанавливается перебором.

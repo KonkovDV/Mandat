@@ -1,6 +1,6 @@
 """Доводит презентацию после build_deck.js: цвета темы, alt-текст, метаданные, проверки.
 
-    python finish_deck.py ../../Mandat_VTB.pptx
+    python finish_deck.py ../slides/Mandat_VTB.pptx
 
 pptxgenjs записывает в тему стандартную палитру Office и подставляет имя файла
 картинки в alt-текст, если он не задан. Здесь палитра заменяется цветами из

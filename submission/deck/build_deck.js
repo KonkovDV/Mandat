@@ -1,7 +1,7 @@
 // Презентация «Мандата» как код: все числа о продукте берутся из evidence.json.
 //
-//   node build_deck.js ../../evidence.json ../../Mandat_VTB.pptx
-//   python finish_deck.py ../../Mandat_VTB.pptx      # цвета темы, alt-текст, метаданные
+//   node build_deck.js ../../evidence.json ../slides/Mandat_VTB.pptx
+//   python finish_deck.py ../slides/Mandat_VTB.pptx      # цвета темы, alt-текст, метаданные
 //
 // Числа рынка и эффекта — из открытых источников и допущений команды; каждое из них
 // записано в CLAIMS_REGISTRY.md вместе с источником или командой воспроизведения.

@@ -6,10 +6,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
-COPY pyproject.toml README.md LICENSE ./
+COPY requirements/runtime.lock ./requirements/runtime.lock
+# Зависимости только из lock-файла с хешами; сам пакет ставится без разрешения зависимостей.
+RUN pip install --require-hashes -r requirements/runtime.lock
+COPY pyproject.toml README.md LICENSE NOTICE.md ./
 COPY src ./src
 COPY examples ./examples
-RUN pip install ".[api]" && useradd --create-home --uid 10001 mandat && mkdir -p /app/var && chown mandat /app/var
+RUN pip install --no-deps . && useradd --create-home --uid 10001 mandat && mkdir -p /app/var && chown mandat /app/var
 
 USER mandat
 EXPOSE 8000

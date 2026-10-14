@@ -11,9 +11,9 @@
 ```bash
 cd submission/deck
 npm ci                                   # первый раз; зависимости закреплены в package.json
-node build_deck.js ../../evidence.json ../../Mandat_VTB.pptx
-python finish_deck.py ../../Mandat_VTB.pptx
-cd ../.. && soffice --headless --convert-to pdf Mandat_VTB.pptx
+node build_deck.js ../../evidence.json ../slides/Mandat_VTB.pptx
+python finish_deck.py ../slides/Mandat_VTB.pptx
+soffice --headless --convert-to pdf --outdir ../slides ../slides/Mandat_VTB.pptx
 ```
 
 То же одной командой: `make deck`.

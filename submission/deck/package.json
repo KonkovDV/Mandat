@@ -3,7 +3,7 @@
   "private": true,
   "description": "Сборка презентации «Мандата» из evidence.json",
   "scripts": {
-    "build": "node build_deck.js ../../evidence.json ../../Mandat_VTB.pptx"
+    "build": "node build_deck.js ../../evidence.json ../slides/Mandat_VTB.pptx"
   },
   "dependencies": {
     "pptxgenjs": "4.0.1",

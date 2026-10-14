@@ -32,16 +32,30 @@ from mandat.services.verify import verify_case
 ROOT = Path(__file__).resolve().parents[1]
 
 
+try:
+    import pytest_cov  # noqa: F401
+
+    COVERAGE_ARGS: tuple[str, ...] = ("--cov=mandat", "--cov-report=json:var/coverage.json", "--cov-fail-under=0")
+except ModuleNotFoundError:
+    COVERAGE_ARGS = ()
+
+
 def pytest_summary() -> dict:
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-o", "addopts=", "-p", "no:warnings"],
+        [sys.executable, "-m", "pytest", "-q", "-o", "addopts=", "-p", "no:warnings", *COVERAGE_ARGS],
         cwd=ROOT,
         capture_output=True,
         text=True,
     )
     tail = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else ""
     counts = {k: int(v) for v, k in re.findall(r"(\d+) (passed|failed|skipped|error)", tail)}
-    return {"command": "python -m pytest -q", "returncode": proc.returncode, "summary": tail, **counts}
+    tail = next((line for line in reversed(proc.stdout.strip().splitlines()) if re.search(r"\d+ passed", line)), tail)
+    counts = {k: int(v) for v, k in re.findall(r"(\d+) (passed|failed|skipped|error)", tail)}
+    out: dict = {"command": "python -m pytest -q", "returncode": proc.returncode, "summary": tail, **counts}
+    cov = ROOT / "var" / "coverage.json"
+    if COVERAGE_ARGS and cov.exists():
+        out["coverage_percent"] = round(json.loads(cov.read_text(encoding="utf-8"))["totals"]["percent_covered"], 1)
+    return out
 
 
 # Исходники, от которых зависят числа в evidence.json. Сам evidence.json и документы сюда не входят.

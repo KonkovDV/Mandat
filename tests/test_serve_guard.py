@@ -45,7 +45,7 @@ STRONG = "k" * 32
 
 def _access(monkeypatch):
     monkeypatch.delenv("MANDAT_API_USERS", raising=False)
-    monkeypatch.setenv("MANDAT_API_TOKEN", "secret")
+    monkeypatch.setenv("MANDAT_API_TOKEN", STRONG)
 
 
 @pytest.mark.parametrize("env", ["pilot", "prod", "unknown"])

@@ -2,6 +2,12 @@
 
 ## Готовится (после 0.3.0, в main)
 
+Аудит 14.10.2026 (ветка `audit/do-now`, [docs/audit/REDTEAM-2026-10-14.md](docs/audit/REDTEAM-2026-10-14.md)):
+
+- `mandat serve` в pilot/prod не стартует без `MANDAT_JOURNAL_KEY`, `MANDAT_PII_KEY` (от 32 байт) и с коротким `MANDAT_API_TOKEN`; compose требует явный `MANDAT_ENV`.
+- Модель ключей [docs/KEYS.md](docs/KEYS.md). Lock-файлы с хешами для CI и Docker, `cedarpy` закреплён точно, Trivy и проверка ключей контейнера в CI, порог покрытия 93 %, запрет пропущенных тестов, число тестов и покрытие в `evidence.json`.
+- CODEOWNERS, CONTRIBUTING.md, шаблоны issue и PR, контакт для уязвимостей; презентации перенесены в `submission/slides/`.
+
 Слито исправление по аудиту октября 2026 (запись — [docs/audit/AUDIT.md](docs/audit/AUDIT.md)), затем доработки. Версия пакета пока 0.3.0.
 
 Проверка полномочий:
