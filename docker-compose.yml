@@ -16,7 +16,11 @@ services:
       MANDAT_ENV: ${MANDAT_ENV:?задайте MANDAT_ENV в .env (demo, dev, test, pilot или prod)}
       MANDAT_JOURNAL_KEY: ${MANDAT_JOURNAL_KEY:-}
       MANDAT_PII_KEY: ${MANDAT_PII_KEY:-}
+      MANDAT_SIGNER: ${MANDAT_SIGNER:-file}
+      MANDAT_SIGNING_KEY_PASSPHRASE: ${MANDAT_SIGNING_KEY_PASSPHRASE:-}
       MANDAT_LLM_BASE_URL: ${MANDAT_LLM_BASE_URL:-}
+      MANDAT_LLM_MODEL: ${MANDAT_LLM_MODEL:-local-model}
+      MANDAT_LLM_API_KEY: ${MANDAT_LLM_API_KEY:-}
       MANDAT_LLM_ALLOWED_HOSTS: ${MANDAT_LLM_ALLOWED_HOSTS:-127.0.0.1,localhost}
     read_only: true
     tmpfs:

@@ -2,6 +2,8 @@
 
 ## Готовится (после 0.3.0, в main)
 
+- Проход жюри: `run-demo.sh` исполняемый в git (в свежем клоне `./run-demo.sh` падал с Permission denied); `docker-compose.yml` передаёт все переменные из `.env.example` (`MANDAT_SIGNER`, `MANDAT_SIGNING_KEY_PASSPHRASE`, `MANDAT_LLM_MODEL`, `MANDAT_LLM_API_KEY` раньше молча терялись); CI поднимает `docker compose` с `.env` из образца и проверяет `/health` и 401; карточки `docs/demo/` пересобраны из текущего `mandat demo`; первый экран README — карточка, числа и границы; `docs/JURY.md` — питч, демо, трудные вопросы, метрики.
+
 - Вебхуки: асимметричная подпись Standard Webhooks `v1a` (Ed25519, `whsk_`/`whpk_`, `mandat webhook-secret --asymmetric`); read-back якоря с ключом получателя `MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK_KEY`.
 
 - Свидетели: checkpoint Rekor принимается только с кворумом косигнатур (C2SP tlog-cosignature, Ed25519), `MANDAT_JOURNAL_ANCHOR_WITNESSES`/`_QUORUM`.
