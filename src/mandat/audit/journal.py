@@ -12,6 +12,13 @@
 по одному значению, а читатель увидел бы другое), битая строка — отказ проверки, а не исключение.
 
 Ключ HMAC — переменная окружения ``MANDAT_JOURNAL_KEY``.
+
+Сегменты (R2-PERF-2). Активный файл ``<журнал>`` держит не больше ``segment_records()`` записей;
+заполненный сегмент переименовывается в ``<журнал>.NNNNNN`` и больше не меняется. Цепочка ``prev``
+и сквозные номера ``seq`` проходят через границы сегментов, поэтому ``verify_journal`` проверяет
+всю историю как одну цепочку: удалённый, переставленный или изменённый сегмент её рвёт, а
+удаление последних сегментов ловит свидетель. Запись хеширует только активный сегмент — её
+стоимость ограничена размером сегмента и не растёт с длиной журнала.
 """
 
 from __future__ import annotations
@@ -102,11 +109,49 @@ def strict_loads(text: str) -> Any:
     return json.loads(text, object_pairs_hook=_no_duplicates)
 
 
+DEFAULT_SEGMENT_RECORDS = 1000
+
+
+def segment_records() -> int:
+    """Записей в сегменте: ``MANDAT_JOURNAL_SEGMENT_RECORDS``, по умолчанию 1000, не меньше 1."""
+    raw = os.environ.get("MANDAT_JOURNAL_SEGMENT_RECORDS", "").strip()
+    try:
+        value = int(raw) if raw else DEFAULT_SEGMENT_RECORDS
+    except ValueError:
+        value = DEFAULT_SEGMENT_RECORDS
+    return max(1, value)
+
+
+def segment_path(path: Path, index: int) -> Path:
+    return path.with_name(f"{path.name}.{index:06d}")
+
+
+def sealed_segments(path: Path) -> list[Path]:
+    """Закрытые сегменты по порядку. Пропуск в нумерации — признак удаления, его ловит цепочка."""
+    prefix = path.name + "."
+    found = []
+    if path.parent.exists():
+        for item in path.parent.iterdir():
+            suffix = item.name[len(prefix) :]
+            if item.name.startswith(prefix) and len(suffix) == 6 and suffix.isdigit():
+                found.append((int(suffix), item))
+    return [item for _, item in sorted(found)]
+
+
+def journal_files(path: Path) -> list[Path]:
+    """Все файлы журнала в порядке цепочки: закрытые сегменты, затем активный."""
+    return [*sealed_segments(path), *([path] if path.exists() else [])]
+
+
 def read_journal(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
+    files = journal_files(path)
+    if not files:
         return []
+    lines: list[str] = []
+    for item in files:
+        lines.extend(item.read_text(encoding="utf-8").splitlines())
     out = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for number, line in enumerate(lines, start=1):
         if not line.strip():
             continue
         try:
@@ -183,7 +228,7 @@ def append(
         content = _content_digest(path)
         tail = _verified_tail(path, signing, content.hexdigest()) if precondition is None else None
         if tail is None:
-            if path.exists() or witness_path(path).exists():
+            if journal_files(path) or witness_path(path).exists():
                 # Новая запись продолжает только целую историю: битый префикс или срезанный хвост — отказ.
                 check = verify_journal(path, key=signing or "")
                 if not check.ok:
@@ -233,6 +278,15 @@ def append(
             _TAILS.pop(_cache_key(path), None)
             raise
         content.update(line)
+        if record["seq"] % segment_records() == 0:
+            # Сегмент заполнен: закрыть его. Следующая запись начнёт новый активный файл, хеш его
+            # содержимого снова считается от пустого.
+            sealed = sealed_segments(path)
+            index = int(sealed[-1].name.rsplit(".", 1)[1]) + 1 if sealed else 1
+            target = segment_path(path, index)
+            os.replace(path, target)
+            os.chmod(target, 0o400)  # закрытый сегмент только читается
+            content = hashlib.sha256()
         _remember_tail(path, record["seq"], record["hash"], signing, content.hexdigest())
         return record
     finally:
@@ -245,7 +299,11 @@ def append(
 # хеш файла читается линейно, но в десятки раз дешевле разбора JSON и пересчёта хешей каждой записи.
 # Отпечаток — по содержимому, а не по mtime: правка «той же длины» в пределах гранулярности часов ФС
 # по времени не видна.
-_TAILS: dict[str, tuple[tuple[str, bytes, str], tuple[int, str]]] = {}
+# Закрытые сегменты в отпечатке — по stat (имя, inode, размер, mtime_ns, ctime_ns). Это быстрая
+# растяжка, а не доказательство: правка той же длины в пределах грубого тика часов ФС ей не видна.
+# Доказательство целостности закрытых сегментов — ``verify_journal`` (цепочка, HMAC, свидетель);
+# сегменты закрываются с правами 0400.
+_TAILS: dict[str, tuple[tuple[str, bytes, str, tuple[tuple[str, int, int, int, int], ...]], tuple[int, str]]] = {}
 
 
 def _cache_key(path: Path) -> str:
@@ -264,13 +322,19 @@ def _content_digest(path: Path) -> Any:
     return digest
 
 
-def _fingerprint(path: Path, signing: str | None, content: str | None = None) -> tuple[str, bytes, str] | None:
+def _fingerprint(
+    path: Path, signing: str | None, content: str | None = None
+) -> tuple[str, bytes, str, tuple[tuple[str, int, int, int, int], ...]] | None:
     try:
         witness = witness_path(path).read_bytes()
+        sealed = []
+        for item in sealed_segments(path):
+            st = item.stat()
+            sealed.append((item.name, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns))
     except OSError:
         return None
     marker = hashlib.sha256((signing or "").encode("utf-8")).hexdigest()
-    return (content or _content_digest(path).hexdigest(), witness, marker)
+    return (content or _content_digest(path).hexdigest(), witness, marker, tuple(sealed))
 
 
 def _verified_tail(path: Path, signing: str | None, content: str) -> tuple[int, str] | None:

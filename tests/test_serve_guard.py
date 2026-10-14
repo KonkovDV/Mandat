@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -109,3 +110,14 @@ def test_server_options_bound_concurrency(monkeypatch):
     assert cli.server_options()["limit_concurrency"] == 16
     monkeypatch.setenv("MANDAT_API_MAX_CONCURRENCY", "-1")
     assert cli.server_options()["limit_concurrency"] == 64
+
+
+def test_build_backend_is_hash_pinned():
+    """R2-SC-1: setuptools из lock-файла с хешами, сборка без изоляции — pip ничего не скачивает сам."""
+    root = Path(__file__).resolve().parents[1]
+    docker = (root / "Dockerfile").read_text(encoding="utf-8")
+    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    lock = (root / "requirements" / "build.lock").read_text(encoding="utf-8")
+    assert "-r requirements/build.lock" in docker and "--no-build-isolation ." in docker
+    assert "-r requirements/build.lock" in ci and "--no-build-isolation -e ." in ci
+    assert "setuptools==" in lock and "--hash=sha256:" in lock

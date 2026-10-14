@@ -2,13 +2,20 @@
 
 ## Готовится (после 0.3.0, в main)
 
+Аудит R2.1 14.10.2026:
+
+- Журнал сегментами (R2-PERF-2): закрытые сегменты `<журнал>.NNNNNN` (0400), цепочка через границы, стоимость записи не растёт с длиной журнала; soak 180 с — около 147 RPS без падения (было 151→75).
+- Общие ответы 422/500/503 с `request_id` и заголовком `X-Request-ID`; подробности только в логе `mandat.api`, без ПДн (R2-API-3).
+- `requirements/build.lock`: setuptools с хешами, сборка с `--no-build-isolation` в Dockerfile и CI (R2-SC-1).
+- `build_evidence.py` пишет свежие числа до прогона pytest; `lint_claims` отвергает красный прогон и сверяет число тестов на слайдах (было 714 против 715). Колода пересобрана: 731 автотест.
+
 Аудит R2 14.10.2026 ([docs/audit/AUDIT-2026-10-14-R2.md](docs/audit/AUDIT-2026-10-14-R2.md)):
 
 - case_loader: `O_NOFOLLOW`, `fstat`, ограниченное чтение (S-4); тесты гонок create_case/TTL (S-3).
 - Защитные заголовки и CSP на всех ответах API; `limit_concurrency`, без заголовка `server`; CIS-лимиты в compose.
 - Журнал: дозапись `O_APPEND`+`fsync` вместо перезаписи, ~4× RPS под нагрузкой.
 - ЕГРЮЛ: статусы «реорганизация» (на проверку) и «прекращено» (отказ), ст.188 п.1 подп.4 ГК.
-- mypy strict, доступность карточки (WCAG 2.2), мутационный mini-runner, нагрузочный стенд `tools/load/`, smoke-load в CI, [сценарии](docs/testing/TEST_SCENARIOS.md) и [отчёт о нагрузке](docs/testing/LOAD_REPORT-2026-10-14.md). Колода пересобрана: 714 автотестов.
+- mypy strict, доступность карточки (WCAG 2.2), мутационный mini-runner, нагрузочный стенд `tools/load/`, smoke-load в CI, [сценарии](docs/testing/TEST_SCENARIOS.md) и [отчёт о нагрузке](docs/testing/LOAD_REPORT-2026-10-14.md). Колода пересобрана: 731 автотестов.
 
 Аудит 14.10.2026 (ветка `audit/do-now`, [docs/audit/REDTEAM-2026-10-14.md](docs/audit/REDTEAM-2026-10-14.md)):
 

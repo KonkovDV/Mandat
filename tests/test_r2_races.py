@@ -245,3 +245,96 @@ def test_journal_other_writer_invalidates_cache(tmp_path):
     _append(path, 1)
     check = journal.verify_journal(path)
     assert check.ok and check.records == 4
+
+
+# --- R2-PERF-2: сегменты журнала ---------------------------------------------------------------
+
+
+def _seg_append(path, n, **kw):
+    from mandat.audit import journal as j
+
+    for i in range(n):
+        j.append(path, action="event", actor="t", role="operator", case_id=f"c{i}", **kw)
+
+
+def test_journal_rotates_into_sealed_segments(tmp_path, monkeypatch):
+    from mandat.audit import journal as j
+
+    monkeypatch.setenv("MANDAT_JOURNAL_SEGMENT_RECORDS", "5")
+    path = tmp_path / "j.jsonl"
+    _seg_append(path, 12)
+    sealed = j.sealed_segments(path)
+    assert [s.name for s in sealed] == ["j.jsonl.000001", "j.jsonl.000002"]
+    assert len(path.read_text().splitlines()) == 2
+    records = j.read_journal(path)
+    assert [r["seq"] for r in records] == list(range(1, 13))
+    assert j.verify_journal(path).ok
+    assert records[5]["prev"] == records[4]["hash"]  # цепочка через границу сегмента
+
+
+def test_journal_segment_tamper_and_removal_detected(tmp_path, monkeypatch):
+    from mandat.audit import journal as j
+
+    monkeypatch.setenv("MANDAT_JOURNAL_SEGMENT_RECORDS", "3")
+    path = tmp_path / "j.jsonl"
+    _seg_append(path, 8)
+    first, second = j.sealed_segments(path)
+    assert second.stat().st_mode & 0o777 == 0o400
+    first.chmod(0o600)
+    second.chmod(0o600)
+    original = second.read_text()
+    second.write_text(original.replace('"c4"', '"cX"'))  # та же длина
+    assert not j.verify_journal(path).ok
+    second.write_text(original.replace('"c4"', '"cXY"'))  # другой размер: растяжка stat срабатывает
+    with pytest.raises(j.JournalError):
+        _seg_append(path, 1)
+    second.write_text(original)
+    j._TAILS.clear()
+    assert j.verify_journal(path).ok
+    second.unlink()
+    check = j.verify_journal(path)
+    assert not check.ok and check.broken_at == 4
+    first.rename(tmp_path / "keep")
+    second.write_text(original)
+    assert not j.verify_journal(path).ok
+
+
+def test_journal_last_segment_removal_caught_by_witness(tmp_path, monkeypatch):
+    from mandat.audit import journal as j
+
+    monkeypatch.setenv("MANDAT_JOURNAL_SEGMENT_RECORDS", "3")
+    path = tmp_path / "j.jsonl"
+    _seg_append(path, 6)
+    assert not path.exists() or path.read_text() == ""
+    j.sealed_segments(path)[-1].unlink()
+    assert not j.verify_journal(path).ok
+
+
+def test_journal_append_cost_bounded_by_segment(tmp_path, monkeypatch):
+    from mandat.audit import journal as j
+
+    monkeypatch.setenv("MANDAT_JOURNAL_SEGMENT_RECORDS", "50")
+    path = tmp_path / "j.jsonl"
+    sizes = []
+    real = j._content_digest
+
+    def spy(p):
+        sizes.append(p.stat().st_size if p.exists() else 0)
+        return real(p)
+
+    monkeypatch.setattr(j, "_content_digest", spy)
+    _seg_append(path, 400)
+    # хешируется только активный сегмент: объём не растёт с длиной журнала
+    assert max(sizes[-50:]) <= max(sizes[50:100]) * 1.2
+    assert j.verify_journal(path).records == 400
+
+
+def test_segment_records_env(monkeypatch):
+    from mandat.audit import journal as j
+
+    monkeypatch.setenv("MANDAT_JOURNAL_SEGMENT_RECORDS", "x")
+    assert j.segment_records() == j.DEFAULT_SEGMENT_RECORDS
+    monkeypatch.setenv("MANDAT_JOURNAL_SEGMENT_RECORDS", "0")
+    assert j.segment_records() == 1
+    monkeypatch.delenv("MANDAT_JOURNAL_SEGMENT_RECORDS")
+    assert j.segment_records() == 1000

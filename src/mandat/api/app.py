@@ -17,14 +17,18 @@ Swagger на /docs включается флагом ``MANDAT_API_DOCS=1``. Ча
 
 from __future__ import annotations
 
+import logging
 import os
+import re
 import secrets
+import traceback
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from mandat import ENGINE, __version__
@@ -53,6 +57,43 @@ SECURITY_HEADERS = [
 ]
 CARD_CSP = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"
 DEFAULT_CSP = (b"content-security-policy", b"default-src 'none'; frame-ancestors 'none'")
+
+
+# R2-API-3 (OWASP API8:2023, ASVS 5.0 V16): клиент получает общий текст и request_id, подробности — только
+# в журнале сервера, и без ПДн: значения полей из ошибок схемы не пишутся, длинные числа (ИНН, ОГРН,
+# СНИЛС, паспорт) и адреса почты маскируются.
+log = logging.getLogger("mandat.api")
+REQUEST_ID_HEADER = b"x-request-id"
+_DIGITS = re.compile(r"\d{5,}")
+_EMAIL = re.compile(r"[^\s@'\"]+@[^\s@'\"]+")
+
+
+def scrub(text: str, limit: int = 300) -> str:
+    """Текст для журнала сервера: без длинных чисел и адресов почты, не длиннее ``limit``."""
+    return _EMAIL.sub("<email>", _DIGITS.sub("<num>", text))[:limit]
+
+
+def request_id(scope: MutableMapping[str, Any]) -> str:
+    state = scope.setdefault("state", {})
+    if "request_id" not in state:
+        state["request_id"] = secrets.token_hex(8)
+    return str(state["request_id"])
+
+
+def problem(request: Request, status: int, detail: str, cause: str) -> JSONResponse:
+    rid = request_id(request.scope)
+    log.warning("request_id=%s status=%s path=%s cause=%s", rid, status, request.url.path, scrub(cause))
+    headers = {k.decode(): v.decode() for k, v in [*SECURITY_HEADERS, DEFAULT_CSP]}
+    headers[REQUEST_ID_HEADER.decode()] = rid
+    return JSONResponse({"detail": detail, "request_id": rid}, status_code=status, headers=headers)
+
+
+class ApiProblem(Exception):
+    """Отказ с общим текстом для клиента; причина ``cause`` уходит только в журнал сервера."""
+
+    def __init__(self, status: int, detail: str, cause: str) -> None:
+        super().__init__(cause)
+        self.status, self.detail, self.cause = status, detail, cause
 
 
 def json_depth_exceeds(body: bytes, limit: int = MAX_JSON_DEPTH) -> bool:
@@ -97,11 +138,13 @@ class Guard:
         path = scope.get("path", "")
         headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
 
+        rid = request_id(scope).encode("ascii")
+
         async def secured(message: MutableMapping[str, Any]) -> None:
             if message["type"] == "http.response.start":
-                existing = list(message.get("headers", []))
+                existing = [(k, v) for k, v in message.get("headers", []) if k.lower() != REQUEST_ID_HEADER]
                 extra = [] if any(k.lower() == b"content-security-policy" for k, _ in existing) else [DEFAULT_CSP]
-                message = {**message, "headers": [*existing, *SECURITY_HEADERS, *extra]}
+                message = {**message, "headers": [*existing, *SECURITY_HEADERS, *extra, (REQUEST_ID_HEADER, rid)]}
             await send(message)
 
         async def reply(status: int, detail: str, extra: dict[str, str] | None = None) -> None:
@@ -193,6 +236,23 @@ def create_app(
 
     app.add_middleware(Guard, directory=directory, limit=limit, store=shared)
 
+    @app.exception_handler(RequestValidationError)
+    async def schema_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # Только место и тип ошибки: поле «input» может содержать ПДн.
+        where = "; ".join(f"{'.'.join(map(str, e.get('loc', ())))}:{e.get('type', '')}" for e in exc.errors())
+        return problem(request, 422, "запрос не соответствует схеме", where)
+
+    @app.exception_handler(ApiProblem)
+    async def api_problem(request: Request, exc: ApiProblem) -> JSONResponse:
+        return problem(request, exc.status, exc.detail, exc.cause)
+
+    @app.exception_handler(Exception)
+    async def server_error(request: Request, exc: Exception) -> JSONResponse:
+        frames = " < ".join(
+            f"{f.filename.rsplit('/', 1)[-1]}:{f.lineno}" for f in traceback.extract_tb(exc.__traceback__)
+        )
+        return problem(request, 500, "внутренняя ошибка сервера", f"{type(exc).__name__}: {exc} @ {frames}")
+
     def auth(authorization: str = Header(default="")) -> Principal:
         if not directory.configured:
             raise HTTPException(503, "API закрыт: задайте MANDAT_API_TOKEN или MANDAT_API_USERS")
@@ -243,7 +303,7 @@ def create_app(
         try:
             case = load_case_inline(manifest)
         except CaseError as exc:
-            raise HTTPException(422, str(exc)) from exc
+            raise ApiProblem(422, "кейс не прошёл проверку входных данных", f"CaseError: {exc}") from exc
         # В pilot и prod снимки источников сверяются с часами сервера: снимок «из будущего» не доказательство.
         if protected():
             report = verify_case(case, profile=profile, now=datetime.now(UTC)).as_dict()
@@ -288,7 +348,8 @@ def create_app(
                     details={"verdict": report["verdict"], "profile": report["profile"], "via": "api"},
                 )
             except (ValueError, OSError, journal.JournalKeyMissing) as exc:
-                raise HTTPException(503, f"журнал аудита недоступен, кейс не сохранён: {exc}") from exc
+                cause = f"journal: {type(exc).__name__}: {exc}"
+                raise ApiProblem(503, "журнал аудита недоступен, кейс не сохранён", cause) from exc
         shared.put(case_id, report, principal.name, MAX_REPORTS)
         return report
 
@@ -316,7 +377,7 @@ def create_app(
             warnings: list[str] = []
             rights, events = parse_events(payload, warnings)
         except (KeyError, ValueError, TypeError) as exc:
-            raise HTTPException(422, f"события не разобраны: {exc}") from exc
+            raise ApiProblem(422, "события не разобраны", f"{type(exc).__name__}: {exc}") from exc
         alerts = [a.as_dict() for a in evaluate(rights, events, window_hours=window_hours)]
         return {"alerts": alerts, "warnings": warnings}
 

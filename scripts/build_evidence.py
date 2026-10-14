@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import re
 import subprocess
@@ -44,6 +45,8 @@ def pytest_summary() -> dict:
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-o", "addopts=", "-p", "no:warnings", *COVERAGE_ARGS],
         cwd=ROOT,
+        # Число автотестов в этот момент ещё собирается: lint_claims внутри прогона его не сверяет.
+        env={**os.environ, "MANDAT_EVIDENCE_BUILDING": "1"},
         capture_output=True,
         text=True,
     )
@@ -147,9 +150,16 @@ def main() -> int:
         },
         "classifier": classifier.summary(),
         "latency": bench(20),
-        "tests": None if args.no_tests else pytest_summary(),
+        "tests": None,
     }
-    (ROOT / "evidence.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    target = ROOT / "evidence.json"
+    # Сначала записать свежие числа без тестов, потом прогнать pytest. Иначе тест
+    # test_evidence_matches_current_engine сверяется со старым evidence.json, падает, и в файл попадает
+    # «N−1 passed, 1 failed» — так возникло расхождение 714 против 715.
+    target.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if not args.no_tests:
+        evidence["tests"] = pytest_summary()
+    target.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({k: evidence[k] for k in ("rule_pack", "tests")}, ensure_ascii=False, indent=2))
     return 0 if (evidence["tests"] is None or evidence["tests"]["returncode"] == 0) else 1
 
