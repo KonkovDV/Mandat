@@ -1,4 +1,4 @@
 # Инструменты CI вне тестов: сборка, SBOM, аудит зависимостей.
 build>=1.2
 cyclonedx-bom>=7
-pip-audit>=2.10
+pip-audit>=2.10.1
