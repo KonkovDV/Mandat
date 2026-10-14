@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
 from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
@@ -234,26 +236,55 @@ def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, 
     )
 
 
+def _read_regular(target: Path, limit: int) -> bytes:
+    """Чтение обычного файла без гонки «проверил — открыл» (S-4, CWE-367).
+
+    Файл открывается с ``O_NOFOLLOW`` (подменённая после проверки символическая ссылка не открывается)
+    и ``O_NONBLOCK`` (FIFO не вешает процесс на открытии). Тип и размер проверяются ``fstat`` по уже
+    открытому дескриптору, а не по имени, и чтение ограничено ``limit + 1`` байтами: файл, выросший
+    после ``fstat``, всё равно отвергается.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+    try:
+        fd = os.open(target, flags)
+    except OSError as exc:
+        raise ValueError(f"документ не открывается: {exc.strerror}") from exc
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("документ не является обычным файлом")
+        if info.st_size > limit:
+            raise ValueError("документ больше допустимого размера")
+    except BaseException:
+        os.close(fd)
+        raise
+    with os.fdopen(fd, "rb", buffering=0) as handle:
+        chunks, total = [], 0
+        while total <= limit:
+            chunk = handle.read(min(65536, limit + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+    if total > limit:
+        raise ValueError("документ больше допустимого размера")
+    return b"".join(chunks)
+
+
 def load_case_dir(path: Path) -> Case:
     manifest_path = path / "case.json"
-    if not manifest_path.is_file():
-        raise CaseError(f"нет {manifest_path}")
-    if manifest_path.stat().st_size > MAX_DOC_BYTES:
-        raise CaseError("case.json больше допустимого размера")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    try:
+        raw_manifest = _read_regular(manifest_path, MAX_DOC_BYTES)
+    except ValueError as exc:
+        raise CaseError(f"case.json: {exc}") from exc
+    manifest = json.loads(raw_manifest.decode("utf-8"))
     base = path.resolve()
 
     def read(doc: dict[str, Any]) -> bytes:
         target = (base / str(doc["path"])).resolve()
         if base not in target.parents:
             raise ValueError("путь документа выходит за каталог кейса")
-        # Только обычный файл: FIFO и устройства не читаются, размер проверяется до чтения.
-        if not target.is_file():
-            raise ValueError("документ не является обычным файлом")
-        if target.stat().st_size > MAX_DOC_BYTES:
-            raise ValueError("документ больше допустимого размера")
-        with target.open("rb") as handle:
-            return handle.read(MAX_DOC_BYTES + 1)
+        return _read_regular(target, MAX_DOC_BYTES)
 
     return load_case_from_manifest(manifest, read)
 

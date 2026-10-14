@@ -40,7 +40,18 @@ MAX_BODY = 8 * 1024 * 1024
 OPEN_PATHS = {"/health"}
 # Глубина вложенности JSON. Глубокий массив в 2 КБ вызывал RecursionError при разборе ошибки валидации (500).
 MAX_JSON_DEPTH = 64
-SECURITY_HEADERS = [(b"cache-control", b"no-store"), (b"x-content-type-options", b"nosniff")]
+# OWASP Secure Headers Project и ASVS 5.0 V3.4: ответы с ПДн не кэшируются, не встраиваются во фреймы,
+# не уходят с Referer. CSP по умолчанию ставится, только если маршрут не задал свою (HTML-карточка).
+SECURITY_HEADERS = [
+    (b"cache-control", b"no-store"),
+    (b"x-content-type-options", b"nosniff"),
+    (b"referrer-policy", b"no-referrer"),
+    (b"x-frame-options", b"DENY"),
+    (b"cross-origin-resource-policy", b"same-origin"),
+    (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
+]
+CARD_CSP = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"
+DEFAULT_CSP = (b"content-security-policy", b"default-src 'none'; frame-ancestors 'none'")
 
 
 def json_depth_exceeds(body: bytes, limit: int = MAX_JSON_DEPTH) -> bool:
@@ -85,8 +96,16 @@ class Guard:
         path = scope.get("path", "")
         headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
 
+        async def secured(message: dict[str, Any]) -> None:
+            if message["type"] == "http.response.start":
+                existing = list(message.get("headers", []))
+                extra = [] if any(k.lower() == b"content-security-policy" for k, _ in existing) else [DEFAULT_CSP]
+                message = {**message, "headers": [*existing, *SECURITY_HEADERS, *extra]}
+            await send(message)
+
         async def reply(status: int, detail: str, extra: dict[str, str] | None = None) -> None:
-            await JSONResponse({"detail": detail}, status_code=status, headers=extra)(scope, receive, send)
+            # Отказы (401, 413, 429) идут с теми же заголовками безопасности, что и обычные ответы.
+            await JSONResponse({"detail": detail}, status_code=status, headers=extra)(scope, receive, secured)
 
         if path not in OPEN_PATHS:
             if self.limit > 0:
@@ -131,11 +150,6 @@ class Guard:
 
         async def replay() -> dict[str, Any]:
             return messages.pop(0) if messages else await receive()
-
-        async def secured(message: dict[str, Any]) -> None:
-            if message["type"] == "http.response.start":
-                message = {**message, "headers": [*message.get("headers", []), *SECURITY_HEADERS]}
-            await send(message)
 
         await self.app(scope, replay, secured)
 
@@ -285,7 +299,9 @@ def create_app(
     def get_case_html(case_id: str, principal: Principal = Depends(auth)) -> HTMLResponse:
         return HTMLResponse(
             render(visible(case_id, principal)),
-            headers={"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"},
+            headers={
+                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"
+            },
         )
 
     @app.post("/v1/events", dependencies=[Depends(writer)])
