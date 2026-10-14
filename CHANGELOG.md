@@ -6,6 +6,8 @@
 
 - `mandat serve` в pilot/prod не стартует без `MANDAT_JOURNAL_KEY`, `MANDAT_PII_KEY` (от 32 байт) и с коротким `MANDAT_API_TOKEN`; compose требует явный `MANDAT_ENV`.
 - Модель ключей [docs/KEYS.md](docs/KEYS.md). Lock-файлы с хешами для CI и Docker, `cedarpy` закреплён точно, Trivy и проверка ключей контейнера в CI, порог покрытия 93 %, запрет пропущенных тестов, число тестов и покрытие в `evidence.json`.
+- RT-05: ключ подписи удостоверений за абстракцией `Signer` (PEM с шифрованием, PKCS#11, Vault Transit, AWS KMS), открытый PEM в pilot/prod запрещён, связка ключей `--keyring` с active/retired/revoked для проверки после ротации.
+- RT-06: лимит 2 МБ на выписку ЕГРЮЛ в `parse_egrul`.
 - CODEOWNERS, CONTRIBUTING.md, шаблоны issue и PR, контакт для уязвимостей; презентации перенесены в `submission/slides/`.
 
 Слито исправление по аудиту октября 2026 (запись — [docs/audit/AUDIT.md](docs/audit/AUDIT.md)), затем доработки. Версия пакета пока 0.3.0.
