@@ -178,12 +178,61 @@ def _asn1() -> Any:
     return tsp
 
 
-def verify_tsa_token(token: bytes, message_digest: bytes, nonce: int | None, pinned_cert: str | None) -> str | None:
-    """Проверить метку времени: imprint, nonce, подпись CMS сертификатом из ответа, закрепление сертификата.
+TIME_STAMPING_EKU = "1.3.6.1.5.5.7.3.8"
 
-    Возвращает причину отказа или ``None``. Цепочка до корня УЦ здесь не строится: доверие — через
-    закреплённый SHA-256 сертификата TSA (``MANDAT_JOURNAL_ANCHOR_TSA_CERT``).
+
+def load_roots(pem: bytes) -> list[Any]:
+    from cryptography import x509
+
+    roots = x509.load_pem_x509_certificates(pem)
+    if not roots:
+        raise ValueError("в файле корней TSA нет сертификатов")
+    return roots
+
+
+def tsa_chain_problem(
+    leaf_der: bytes, intermediates_der: Sequence[bytes], roots: Sequence[Any], at: datetime
+) -> str | None:
+    """Цепочка сертификата TSA до заданного корня на момент метки и EKU timeStamping (RFC 3161, разд. 2.3)."""
+    from cryptography import x509
+    from cryptography.x509 import verification as v
+
+    leaf = x509.load_der_x509_certificate(leaf_der)
+    try:
+        eku = leaf.extensions.get_extension_for_class(x509.ExtendedKeyUsage)
+    except x509.ExtensionNotFound:
+        return "у сертификата TSA нет расширения ExtendedKeyUsage"
+    if not eku.critical or [o.dotted_string for o in eku.value] != [TIME_STAMPING_EKU]:
+        return "сертификат TSA не только для меток времени (EKU timeStamping, critical)"
+    builder = (
+        v.PolicyBuilder()
+        .store(v.Store(list(roots)))
+        .time(at)
+        .extension_policies(ca_policy=v.ExtensionPolicy.webpki_defaults_ca(), ee_policy=v.ExtensionPolicy.permit_all())
+    )
+    try:
+        builder.build_client_verifier().verify(leaf, [x509.load_der_x509_certificate(d) for d in intermediates_der])
+    except v.VerificationError as exc:
+        return f"сертификат TSA не выводится из доверенного корня: {exc}"
+    return None
+
+
+def verify_tsa_token(
+    token: bytes,
+    message_digest: bytes,
+    nonce: int | None,
+    pinned_cert: str | None,
+    roots: Sequence[Any] | None = None,
+) -> str | None:
+    """Проверить метку времени: imprint, nonce, подпись CMS, доверие к сертификату TSA.
+
+    Доверие — цепочка до корня из ``MANDAT_JOURNAL_ANCHOR_TSA_ROOTS`` на момент метки (с EKU
+    timeStamping) и/или закреплённый SHA-256 сертификата (``MANDAT_JOURNAL_ANCHOR_TSA_CERT``). Без
+    того и другого метка не принимается: подпись сертификатом из самого ответа ничего не доказывает.
+    Возвращает причину отказа или ``None``.
     """
+    if not pinned_cert and not roots:
+        return "для TSA не задан ни доверенный корень, ни закреплённый сертификат"
     tsp = _asn1()
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes
@@ -202,10 +251,21 @@ def verify_tsa_token(token: bytes, message_digest: bytes, nonce: int | None, pin
     certs = [c.chosen for c in (signed["certificates"] or [])]
     if not certs:
         return "в метке нет сертификата TSA"
-    cert_der = certs[0].dump()
+    signer = signed["signer_infos"][0]
+    # Сертификаты в CMS — SET OF: порядок не гарантирован, сертификат подписанта ищется по sid.
+    sid = signer["sid"]
+    if sid.name == "issuer_and_serial_number":
+        want = (sid.chosen["issuer"].dump(), sid.chosen["serial_number"].native)
+        matches = [c for c in certs if (c.issuer.dump(), c.serial_number) == want]
+    else:
+        matches = [c for c in certs if c.key_identifier == sid.chosen.native]
+    if not matches:
+        return "в метке нет сертификата подписанта"
+    leaf_cert = matches[0]
+    cert_der = leaf_cert.dump()
+    certs = [leaf_cert, *(c for c in certs if c is not leaf_cert)]
     if pinned_cert and hashlib.sha256(cert_der).hexdigest() != pinned_cert.lower():
         return "сертификат TSA не совпадает с закреплённым"
-    signer = signed["signer_infos"][0]
     attrs = signer["signed_attrs"]
     content = signed["encap_content_info"]["content"].contents
     md = next((a["values"][0].native for a in attrs if a["type"].native == "message_digest"), None)
@@ -222,14 +282,23 @@ def verify_tsa_token(token: bytes, message_digest: bytes, nonce: int | None, pin
             return "тип ключа TSA не поддержан"
     except Exception:  # noqa: BLE001 - InvalidSignature и ошибки формата — одинаковый отказ
         return "подпись метки времени не сходится"
+    if roots:
+        others = [c.dump() for c in certs[1:]]
+        return tsa_chain_problem(cert_der, others, roots, tst["gen_time"].native)
     return None
 
 
 class TsaSink:
     """Метка времени RFC 3161 на хеш утверждения. Квитанция — сам токен, проверяется офлайн."""
 
-    def __init__(self, url: str, pinned_cert: str | None = None, opener: Opener | None = None) -> None:
-        self.url, self.pinned = _https(url), pinned_cert
+    def __init__(
+        self,
+        url: str,
+        pinned_cert: str | None = None,
+        opener: Opener | None = None,
+        roots: Sequence[Any] | None = None,
+    ) -> None:
+        self.url, self.pinned, self.roots = _https(url), pinned_cert, list(roots or [])
         self.name = f"tsa:{self.url}"
         self._open = opener or _urlopen
 
@@ -255,7 +324,7 @@ class TsaSink:
         if status not in {"granted", "granted_with_mods"}:
             raise OSError(f"TSA отказал: {status}")
         token = tsp.TimeStampResp.load(raw)["time_stamp_token"].dump()
-        problem = verify_tsa_token(token, imprint, nonce, self.pinned)
+        problem = verify_tsa_token(token, imprint, nonce, self.pinned, self.roots)
         if problem:
             raise OSError(problem)
         return {"sha256": digest(stmt), "nonce": nonce, "token": base64.b64encode(token).decode()}
@@ -267,14 +336,71 @@ class TsaSink:
             token = base64.b64decode(receipt["token"], validate=True)
         except (KeyError, ValueError, TypeError):
             return False
-        return verify_tsa_token(token, bytes.fromhex(digest(stmt)), receipt.get("nonce"), self.pinned) is None
+        imprint = bytes.fromhex(digest(stmt))
+        return verify_tsa_token(token, imprint, receipt.get("nonce"), self.pinned, self.roots) is None
+
+
+def verify_checkpoint(text: str, log_key_pem: bytes) -> tuple[str, int, bytes]:
+    """Подписанный checkpoint Rekor (формат signed note, как в sumdb/C2SP): origin, размер, корень.
+
+    Тело — строки до пустой; подпись — строка ``— <имя> <base64(4 байта id ключа || подпись)>``,
+    id ключа — первые 4 байта SHA-256 от DER SubjectPublicKeyInfo. Подпись ECDSA-SHA256 по телу.
+    """
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    body, sep, signatures = text.partition("\n\n")
+    lines = body.split("\n")
+    if not sep or len(lines) < 3:
+        raise ValueError("checkpoint не в формате signed note")
+    origin, size, root = lines[0], int(lines[1]), base64.b64decode(lines[2], validate=True)
+    key = serialization.load_pem_public_key(log_key_pem)
+    if not isinstance(key, ec.EllipticCurvePublicKey):
+        raise ValueError("ключ журнала Rekor — ECDSA")
+    spki = key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    key_id = hashlib.sha256(spki).digest()[:4]
+    name = origin.split(" ", 1)[0]
+    for line in signatures.splitlines():
+        if not line.startswith("\u2014 "):
+            continue
+        signer, _, encoded = line[2:].rpartition(" ")
+        raw = base64.b64decode(encoded, validate=True)
+        if signer != name or raw[:4] != key_id:
+            continue
+        key.verify(raw[4:], (body + "\n").encode("utf-8"), ec.ECDSA(hashes.SHA256()))
+        return origin, size, root
+    raise ValueError("в checkpoint нет подписи заданного ключа журнала Rekor")
+
+
+def verify_rekor_entry(uuid: str, entry: dict[str, Any], log_key_pem: bytes) -> bytes:
+    """Доказательство включения записи (RFC 6962) в дерево из подписанного checkpoint. Возвращает тело записи."""
+    body = base64.b64decode(entry["body"], validate=True)
+    leaf = merkle.leaf_hash(body)
+    if uuid[-64:].lower() != leaf.hex():
+        raise ValueError("uuid записи не совпадает с хешем листа")
+    proof = entry["verification"]["inclusionProof"]
+    root = bytes.fromhex(proof["rootHash"])
+    hashes_ = [bytes.fromhex(h) for h in proof["hashes"]]
+    if not merkle.verify_inclusion(leaf, int(proof["logIndex"]), int(proof["treeSize"]), hashes_, root):
+        raise ValueError("доказательство включения не сходится с корнем")
+    _, size, signed_root = verify_checkpoint(proof["checkpoint"], log_key_pem)
+    if size != int(proof["treeSize"]) or signed_root != root:
+        raise ValueError("checkpoint подписан для другого дерева")
+    return body
 
 
 class RekorSink:
-    """Запись hashedrekord v0.0.1 в Sigstore Rekor. ``check`` читает запись из журнала Rekor по uuid."""
+    """Запись hashedrekord v0.0.1 в Sigstore Rekor.
 
-    def __init__(self, url: str, key_pem: bytes, opener: Opener | None = None) -> None:
-        self.url, self._key_pem = _https(url), key_pem
+    ``check`` читает запись по uuid и проверяет: uuid — хеш листа, доказательство включения (RFC 6962)
+    сходится с корнем, корень и размер дерева подписаны ключом журнала Rekor (checkpoint), тело записи
+    несёт хеш утверждения. Без ключа журнала (``MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY``) запись не принимается.
+    """
+
+    def __init__(
+        self, url: str, key_pem: bytes, opener: Opener | None = None, log_key_pem: bytes | None = None
+    ) -> None:
+        self.url, self._key_pem, self.log_key = _https(url), key_pem, log_key_pem
         self.name = f"rekor:{self.url}"
         self._open = opener or _urlopen
 
@@ -327,11 +453,14 @@ class RekorSink:
         request = urllib.request.Request(  # noqa: S310
             f"{self.url}/api/v1/log/entries/{receipt['uuid']}", headers={"accept": "application/json"}
         )
+        if not self.log_key:
+            return False
         try:
             answer = self._json(request)
-            body = json.loads(base64.b64decode(answer[receipt["uuid"]]["body"]))
+            raw = verify_rekor_entry(receipt["uuid"], answer[receipt["uuid"]], self.log_key)
+            body = json.loads(raw)
             return bool(body["spec"]["data"]["hash"]["value"] == digest(stmt))
-        except (OSError, KeyError, ValueError, TypeError):
+        except Exception:  # noqa: BLE001 - любая ошибка разбора или подписи — запись не подтверждена
             return False
 
 
@@ -353,12 +482,20 @@ def configured_sinks(value: str | None = None) -> list[Sink]:
                 raise ValueError("webhook-якорь требует MANDAT_JOURNAL_ANCHOR_SECRET")
             sinks.append(WebhookSink(target, secret))
         elif kind == "tsa":
-            sinks.append(TsaSink(target, os.environ.get("MANDAT_JOURNAL_ANCHOR_TSA_CERT") or None))
+            pinned = os.environ.get("MANDAT_JOURNAL_ANCHOR_TSA_CERT") or None
+            roots_path = os.environ.get("MANDAT_JOURNAL_ANCHOR_TSA_ROOTS", "")
+            roots = load_roots(Path(roots_path).read_bytes()) if roots_path else []
+            if not pinned and not roots:
+                raise ValueError("tsa-якорь требует MANDAT_JOURNAL_ANCHOR_TSA_ROOTS или MANDAT_JOURNAL_ANCHOR_TSA_CERT")
+            sinks.append(TsaSink(target, pinned, roots=roots))
         elif kind == "rekor":
             key_path = os.environ.get("MANDAT_JOURNAL_ANCHOR_REKOR_KEY", "")
             if not key_path:
                 raise ValueError("rekor-якорь требует MANDAT_JOURNAL_ANCHOR_REKOR_KEY (ECDSA P-256, PEM)")
-            sinks.append(RekorSink(target, Path(key_path).read_bytes()))
+            log_key = os.environ.get("MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY", "")
+            if not log_key:
+                raise ValueError("rekor-якорь требует MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY (ключ журнала Rekor, PEM)")
+            sinks.append(RekorSink(target, Path(key_path).read_bytes(), log_key_pem=Path(log_key).read_bytes()))
         else:
             raise ValueError(f"неизвестный якорь журнала: {spec}")
     return sinks

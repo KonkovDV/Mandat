@@ -122,8 +122,10 @@ Ed25519 в Мандате подписывает внутренние удост
 |---|---|
 | `MANDAT_JOURNAL_ANCHOR` | приёмники через запятую: `file:/путь/на/другом/томе`, `webhook:https://…`, `tsa:https://…` (RFC 3161, `pip install 'mandat[tsa]'`), `rekor:https://rekor.sigstore.dev` |
 | `MANDAT_JOURNAL_ANCHOR_SECRET` | секрет Standard Webhooks для `webhook:` (`mandat webhook-secret`) |
-| `MANDAT_JOURNAL_ANCHOR_TSA_CERT` | SHA-256 DER-сертификата TSA: метка с другим сертификатом не принимается |
+| `MANDAT_JOURNAL_ANCHOR_TSA_ROOTS` | PEM-файл доверенных корней TSA: цепочка сертификата TSA проверяется на момент метки, EKU — только timeStamping (critical) |
+| `MANDAT_JOURNAL_ANCHOR_TSA_CERT` | SHA-256 DER-сертификата TSA: метка с другим сертификатом не принимается. Нужен хотя бы один из двух параметров TSA |
 | `MANDAT_JOURNAL_ANCHOR_REKOR_KEY` | путь к ключу ECDSA P-256 (PEM) для записей hashedrekord |
+| `MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY` | открытый ключ журнала Rekor (PEM): им проверяется подпись checkpoint, к корню которого сходится доказательство включения |
 | `MANDAT_JOURNAL_ANCHOR_POLICY` | `warn` (по умолчанию) или `fail`: в pilot/prod без якоря `mandat serve` не стартует |
 
-Квитанции лежат рядом с журналом в `<журнал>.anchors`; `mandat journal-verify` с заданным `MANDAT_JOURNAL_ANCHOR` требует квитанцию на каждый закрытый сегмент и перепроверяет её у приёмника. Публичный Rekor раскрывает хеши и время записи, но не содержимое журнала.
+Закрытые сегменты перечислены в манифесте `<журнал>.segments` (SHA-256 и диапазон записей каждого). Квитанции лежат рядом с журналом в `<журнал>.anchors`; `mandat journal-verify` с заданным `MANDAT_JOURNAL_ANCHOR` требует квитанцию на каждый закрытый сегмент и перепроверяет её у приёмника. Публичный Rekor раскрывает хеши и время записи, но не содержимое журнала.

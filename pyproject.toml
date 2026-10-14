@@ -19,7 +19,7 @@ classifiers = [
 # Ядро держим маленьким: разбор XML с защитой и подпись удостоверений.
 dependencies = [
   "defusedxml>=0.7.1",
-  "cryptography>=42",
+  "cryptography>=45",
 ]
 
 [project.optional-dependencies]

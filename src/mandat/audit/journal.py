@@ -143,6 +143,93 @@ def journal_files(path: Path) -> list[Path]:
     return [*sealed_segments(path), *([path] if path.exists() else [])]
 
 
+def manifest_path(path: Path) -> Path:
+    """Манифест закрытых сегментов: строка JSON на сегмент — имя, диапазон seq, хеш последней записи, SHA-256."""
+    return path.with_name(path.name + ".segments")
+
+
+def read_manifest(path: Path) -> list[dict[str, Any]]:
+    target = manifest_path(path)
+    if not target.exists():
+        return []
+    out = []
+    for line in target.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            row = strict_loads(line)
+            if not isinstance(row, dict):
+                raise ValueError("строка манифеста не объект")
+            out.append(row)
+    return out
+
+
+def _manifest_tail(path: Path) -> dict[str, Any] | None:
+    """Последняя строка манифеста без чтения всего файла: O(1) на запись."""
+    try:
+        with manifest_path(path).open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - 4096))
+            lines = [x for x in handle.read().splitlines() if x.strip()]
+    except FileNotFoundError:
+        return None
+    if not lines:
+        return None
+    row = strict_loads(lines[-1].decode("utf-8"))
+    return row if isinstance(row, dict) else None
+
+
+def _manifest_entry(segment: Path, index: int) -> dict[str, Any]:
+    data = segment.read_bytes()
+    rows = [strict_loads(x) for x in data.decode("utf-8").splitlines() if x.strip()]
+    return {
+        "segment": index,
+        "name": segment.name,
+        "first_seq": rows[0]["seq"] if rows else None,
+        "last_seq": rows[-1]["seq"] if rows else None,
+        "head": rows[-1]["hash"] if rows else None,
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
+def _append_manifest(path: Path, entry: dict[str, Any]) -> None:
+    line = (json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+    fd = os.open(manifest_path(path), os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_BINARY", 0), 0o600)
+    try:
+        os.write(fd, line)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def repair_manifest(path: Path) -> int:
+    """Дописать в манифест закрытые сегменты, которых в нём нет (сбой между закрытием и записью
+    манифеста или журнал до R4). Возвращает число добавленных строк. Не правит существующие строки."""
+    listed = {row.get("name") for row in read_manifest(path)}
+    added = 0
+    for segment in sealed_segments(path):
+        if segment.name not in listed:
+            _append_manifest(path, _manifest_entry(segment, int(segment.name.rsplit(".", 1)[1])))
+            added += 1
+    return added
+
+
+def manifest_problem(path: Path) -> str | None:
+    """Манифест совпадает с закрытыми сегментами: те же имена по порядку, SHA-256 и диапазоны seq."""
+    try:
+        rows = read_manifest(path)
+    except ValueError:
+        return "манифест сегментов не разбирается"
+    segments = sealed_segments(path)
+    if not rows and not segments:
+        return None
+    if [r.get("name") for r in rows] != [s.name for s in segments]:
+        return "манифест сегментов не совпадает с файлами сегментов"
+    for row, segment in zip(rows, segments, strict=True):
+        if _manifest_entry(segment, int(segment.name.rsplit(".", 1)[1])) != row:
+            return f"сегмент {segment.name} не совпадает с манифестом"
+    return None
+
+
 def read_journal(path: Path) -> list[dict[str, Any]]:
     files = journal_files(path)
     if not files:
@@ -234,6 +321,7 @@ def append(
             tail = _catch_up(path, signing)
         if tail is None:
             if journal_files(path) or witness_path(path).exists():
+                repair_manifest(path)
                 # Новая запись продолжает только целую историю: битый префикс или срезанный хвост — отказ.
                 check = verify_journal(path, key=signing or "")
                 if not check.ok:
@@ -286,11 +374,27 @@ def append(
         if record["seq"] % segment_records() == 0:
             # Сегмент заполнен: закрыть его. Следующая запись начнёт новый активный файл, хеш его
             # содержимого снова считается от пустого.
-            sealed = sealed_segments(path)
-            index = int(sealed[-1].name.rsplit(".", 1)[1]) + 1 if sealed else 1
+            last = _manifest_tail(path)
+            if last is None and sealed_segments(path):
+                repair_manifest(path)  # журнал до манифеста (R4): один раз перечислить сегменты
+                last = _manifest_tail(path)
+            index = int(last["segment"]) + 1 if last else 1
             target = segment_path(path, index)
+            sealed_hex = content.hexdigest()
             os.replace(path, target)
             os.chmod(target, 0o400)  # закрытый сегмент только читается
+            first_seq = int(last["last_seq"]) + 1 if last else 1
+            _append_manifest(
+                path,
+                {
+                    "segment": index,
+                    "name": target.name,
+                    "first_seq": first_seq,
+                    "last_seq": record["seq"],
+                    "head": record["hash"],
+                    "sha256": sealed_hex,
+                },
+            )
             content = hashlib.sha256()
             # Внешний якорь: хеш закрытого сегмента уходит за пределы машины. Недоступный приёмник журнал
             # не останавливает — неопубликованный сегмент дописывается при следующем закрытии, а
@@ -312,14 +416,15 @@ def append(
 # хеш файла читается линейно, но в десятки раз дешевле разбора JSON и пересчёта хешей каждой записи.
 # Отпечаток — по содержимому, а не по mtime: правка «той же длины» в пределах гранулярности часов ФС
 # по времени не видна.
-# Закрытые сегменты в отпечатке — по stat (имя, inode, размер, mtime_ns, ctime_ns). Это быстрая
-# растяжка, а не доказательство: правка той же длины в пределах грубого тика часов ФС ей не видна.
-# Доказательство целостности закрытых сегментов — ``verify_journal`` (цепочка, HMAC, свидетель);
-# сегменты закрываются с правами 0400.
-SealedStats = tuple[tuple[str, int, int, int, int], ...]
-Fingerprint = tuple[str, bytes, str, SealedStats]
-# Значение: отпечаток, (seq, hash) последней записи, размер активного сегмента в байтах на тот момент.
-_TAILS: dict[str, tuple[Fingerprint, tuple[int, str], int]] = {}
+# Закрытые сегменты в отпечатке — stat манифеста и последнего закрытого сегмента (R4-PERF-5): O(1)
+# на запись вместо обхода каталога и stat каждого сегмента. Это быстрая растяжка, а не доказательство;
+# доказательство целостности закрытых сегментов — ``verify_journal`` (цепочка, HMAC, свидетель,
+# SHA-256 сегментов в манифесте, внешний якорь). Сегменты закрываются с правами 0400.
+Stat = tuple[int, int, int, int]
+SealedState = tuple[Stat | None, str | None, Stat | None]
+Fingerprint = tuple[str, bytes, str, SealedState]
+# Значение: отпечаток, (seq, hash) последней записи, размер активного сегмента, (размер, SHA-256) манифеста.
+_TAILS: dict[str, tuple[Fingerprint, tuple[int, str], int, tuple[int, str]]] = {}
 
 
 def _cache_key(path: Path) -> str:
@@ -342,19 +447,25 @@ def _marker(signing: str | None) -> str:
     return hashlib.sha256((signing or "").encode("utf-8")).hexdigest()
 
 
-def _sealed_stats(path: Path) -> SealedStats:
-    out = []
-    for item in sealed_segments(path):
-        st = item.stat()
-        out.append((item.name, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns))
-    return tuple(out)
+def _stat(target: Path) -> Stat | None:
+    try:
+        st = target.stat()
+    except FileNotFoundError:
+        return None
+    return (st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+
+
+def _sealed_state(path: Path) -> SealedState:
+    last = _manifest_tail(path)
+    name = str(last["name"]) if last else None
+    return (_stat(manifest_path(path)), name, _stat(path.with_name(name)) if name else None)
 
 
 def _fingerprint(path: Path, signing: str | None, content: str | None = None) -> Fingerprint | None:
     try:
         witness = witness_path(path).read_bytes()
-        sealed = _sealed_stats(path)
-    except OSError:
+        sealed = _sealed_state(path)
+    except (OSError, ValueError):
         return None
     return (content or _content_digest(path).hexdigest(), witness, _marker(signing), sealed)
 
@@ -370,21 +481,29 @@ def _verified_tail(path: Path, signing: str | None, content: str) -> tuple[int, 
 def _catch_up(path: Path, signing: str | None) -> tuple[int, str] | None:
     """Проверить только записи, появившиеся после проверенного этим процессом хвоста.
 
-    Условия: те же закрытые сегменты (по stat) плюс, возможно, новые; первые ``offset`` байт бывшего
-    активного сегмента не изменились (SHA-256); новые записи продолжают цепочку и совпадают со
-    свидетелем. Любое расхождение — ``None``, и вызывающий делает полную проверку.
+    Условия: манифест только дописан (SHA-256 его прежнего префикса тот же), последний закрытый сегмент
+    из отпечатка не менялся (stat); первые ``offset`` байт бывшего активного сегмента не изменились
+    (SHA-256); новые записи продолжают цепочку и совпадают со свидетелем. Любое расхождение — ``None``,
+    и вызывающий делает полную проверку.
     """
     cached = _TAILS.get(_cache_key(path))
     if cached is None:
         return None
-    (prefix, _, marker, old), (seq, head), offset = cached
+    (prefix, _, marker, old), (seq, head), offset, (manifest_size, manifest_sha) = cached
     try:
         if marker != _marker(signing):
             return None
-        stats = _sealed_stats(path)
-        if stats[: len(old)] != old:
+        new_names: list[str] = []
+        if _stat(manifest_path(path)) != old[0]:
+            raw = manifest_path(path).read_bytes()
+            if len(raw) < manifest_size or hashlib.sha256(raw[:manifest_size]).hexdigest() != manifest_sha:
+                return None
+            for line in raw[manifest_size:].decode("utf-8").splitlines():
+                if line.strip():
+                    new_names.append(str(strict_loads(line)["name"]))
+        if old[1] is not None and _stat(path.with_name(old[1])) != old[2]:
             return None
-        files = [*sealed_segments(path)[len(old) :], *([path] if path.exists() else [])]
+        files = [*(path.with_name(n) for n in new_names), *([path] if path.exists() else [])]
         if not files:
             return None
         first = files[0].read_bytes()
@@ -392,7 +511,7 @@ def _catch_up(path: Path, signing: str | None) -> tuple[int, str] | None:
             return None
         blob = first[offset:] + b"".join(f.read_bytes() for f in files[1:])
         witness = strict_loads(witness_path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except (OSError, ValueError, KeyError, TypeError):
         return None
     previous, count = head, seq
     for line in blob.decode("utf-8", errors="replace").splitlines():
@@ -425,7 +544,18 @@ def _remember_tail(path: Path, seq: int, head: str, signing: str | None, content
     fingerprint = _fingerprint(path, signing, content)
     if fingerprint is not None:
         offset = path.stat().st_size if path.exists() else 0
-        _TAILS[_cache_key(path)] = (fingerprint, (seq, head), offset)
+        manifest = fingerprint[3][0]
+        if manifest is None:
+            state = (0, hashlib.sha256(b"").hexdigest())
+        else:
+            # Манифест мал (строка на 1000 записей) и меняется раз в сегмент: хеш при закрытии или промахе.
+            cached = _TAILS.get(_cache_key(path))
+            if cached is not None and cached[0][3][0] == manifest:
+                state = cached[3]
+            else:
+                raw = manifest_path(path).read_bytes()
+                state = (len(raw), hashlib.sha256(raw).hexdigest())
+        _TAILS[_cache_key(path)] = (fingerprint, (seq, head), offset, state)
 
 
 @dataclass(frozen=True)
@@ -477,6 +607,9 @@ def verify_journal(
                 return JournalCheck(False, len(records), None, "подпись свидетеля .head не совпадает с ключом журнала")
     if anchor is not None and anchor != head:
         return JournalCheck(False, len(records), None, "внешний якорь не совпадает с последней записью")
+    problem = manifest_problem(path)
+    if problem:
+        return JournalCheck(False, len(records), None, problem)
     from mandat.audit import anchor as external
 
     sinks = external.configured_sinks() if anchors is None else anchors

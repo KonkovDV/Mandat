@@ -71,10 +71,10 @@ def test_rewritten_history_with_key_is_caught_by_anchor(tmp_path):
     _fill(path, 6, [sink])
     forged = tmp_path / "forged" / "j.jsonl"
     _fill(forged, 6, [], tag="forged")
-    for item in [*journal.sealed_segments(path), journal.witness_path(path)]:
+    for item in [*journal.sealed_segments(path), journal.witness_path(path), journal.manifest_path(path)]:
         item.chmod(0o600)
         item.unlink()
-    for item in [*journal.sealed_segments(forged), journal.witness_path(forged)]:
+    for item in [*journal.sealed_segments(forged), journal.witness_path(forged), journal.manifest_path(forged)]:
         shutil.copy(item, path.parent / item.name)
     assert journal.verify_journal(path, key=KEY, anchors=[]).ok  # без якоря подделку не видно
     check = journal.verify_journal(path, key=KEY, anchors=[sink])
@@ -141,12 +141,30 @@ def test_configured_sinks(tmp_path, monkeypatch):
         anchor.configured_sinks("webhook:https://h.example/a")
     monkeypatch.setenv("MANDAT_JOURNAL_ANCHOR_SECRET", webhooks.new_secret())
     assert anchor.configured_sinks("webhook:https://h.example/a")[0].name == "webhook:https://h.example/a"
+    with pytest.raises(ValueError, match="TSA_ROOTS"):
+        anchor.configured_sinks("tsa:https://tsa.example")
+    monkeypatch.setenv("MANDAT_JOURNAL_ANCHOR_TSA_CERT", "ab" * 32)
     assert isinstance(anchor.configured_sinks("tsa:https://tsa.example")[0], anchor.TsaSink)
+    monkeypatch.delenv("MANDAT_JOURNAL_ANCHOR_TSA_CERT")
+    roots = tmp_path / "roots.pem"
+    roots.write_bytes(_cert(_ec_key()).public_bytes(serialization.Encoding.PEM))
+    monkeypatch.setenv("MANDAT_JOURNAL_ANCHOR_TSA_ROOTS", str(roots))
+    assert anchor.configured_sinks("tsa:https://tsa.example")[0].roots
+    roots.write_bytes(b"")
+    with pytest.raises(ValueError):
+        anchor.configured_sinks("tsa:https://tsa.example")
     with pytest.raises(ValueError, match="REKOR_KEY"):
         anchor.configured_sinks("rekor:https://rekor.example")
     key = tmp_path / "rekor.pem"
     key.write_bytes(_ec_pem())
     monkeypatch.setenv("MANDAT_JOURNAL_ANCHOR_REKOR_KEY", str(key))
+    with pytest.raises(ValueError, match="REKOR_PUBKEY"):
+        anchor.configured_sinks("rekor:https://rekor.example")
+    log_key = tmp_path / "rekor-log.pub"
+    log_key.write_bytes(
+        _ec_key().public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+    )
+    monkeypatch.setenv("MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY", str(log_key))
     assert isinstance(anchor.configured_sinks("rekor:https://rekor.example")[0], anchor.RekorSink)
     with pytest.raises(ValueError, match="неизвестный"):
         anchor.configured_sinks("ftp:x")
@@ -233,10 +251,70 @@ def _cert(key):
     )
 
 
+def _ca_cert(subject, issuer, key, signer, *, ca, eku=None, eku_critical=True, intermediate=False):
+    from cryptography.x509.oid import ExtendedKeyUsageOID  # noqa: F401 - для читателя: OID EKU ниже
+
+    now = datetime.now(UTC)
+    builder = (
+        x509.CertificateBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, subject)]))
+        .issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, issuer)]))
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=30))
+        .add_extension(x509.BasicConstraints(ca=ca, path_length=None), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=not ca,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=ca,
+                crl_sign=ca,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
+    )
+    if subject != issuer:
+        builder = builder.add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(signer.public_key()), critical=False
+        )
+    if eku is not None:
+        builder = builder.add_extension(x509.ExtendedKeyUsage(eku), critical=eku_critical)
+    return builder.sign(signer, hashes.SHA256())
+
+
+class Pki:
+    """Корень → (промежуточный) → сертификат TSA с EKU timeStamping."""
+
+    def __init__(self, *, eku=None, eku_critical=True, intermediate=False):
+        from cryptography.x509.oid import ExtendedKeyUsageOID
+
+        self.root_key, self.key = _ec_key(), _ec_key()
+        self.root = _ca_cert("root", "root", self.root_key, self.root_key, ca=True)
+        issuer, signer, self.extra = "root", self.root_key, []
+        if intermediate:
+            mid_key = _ec_key()
+            mid = _ca_cert("mid", "root", mid_key, self.root_key, ca=True)
+            self.extra = [mid.public_bytes(serialization.Encoding.DER)]
+            issuer, signer = "mid", mid_key
+        usage = [ExtendedKeyUsageOID.TIME_STAMPING] if eku is None else eku
+        self.leaf = _ca_cert("tsa", issuer, self.key, signer, ca=False, eku=usage, eku_critical=eku_critical)
+
+
 class FakeTsa:
-    def __init__(self, status: str = "granted", nonce_shift: int = 0, imprint: bytes | None = None):
-        self.key, self.status, self.nonce_shift, self.imprint = _ec_key(), status, nonce_shift, imprint
-        self.cert = _cert(self.key)
+    def __init__(
+        self, status: str = "granted", nonce_shift: int = 0, imprint: bytes | None = None, pki: Pki | None = None
+    ):
+        self.status, self.nonce_shift, self.imprint, self.pki = status, nonce_shift, imprint, pki
+        self.wrong_cert = False
+        self.key = pki.key if pki else _ec_key()
+        self.cert = pki.leaf if pki else _cert(self.key)
         self.cert_der = self.cert.public_bytes(serialization.Encoding.DER)
 
     def __call__(self, request):
@@ -268,12 +346,20 @@ class FakeTsa:
         )
         signature = self.key.sign(attrs.dump(), ec.ECDSA(hashes.SHA256()))
         cert = asn1_x509.Certificate.load(self.cert_der)
+        embedded = asn1_x509.Certificate.load(
+            _ca_cert("other", "other", (k := _ec_key()), k, ca=False).public_bytes(serialization.Encoding.DER)
+            if self.wrong_cert
+            else self.cert_der
+        )
         signed = cms.SignedData(
             {
                 "version": "v3",
                 "digest_algorithms": [algos.DigestAlgorithm({"algorithm": "sha256"})],
                 "encap_content_info": {"content_type": "tst_info", "content": core.ParsableOctetString(content)},
-                "certificates": [cert],
+                "certificates": [
+                    embedded,
+                    *(asn1_x509.Certificate.load(d) for d in (self.pki.extra if self.pki else [])),
+                ],
                 "signer_infos": [
                     {
                         "version": "v1",
@@ -335,18 +421,25 @@ def test_tsa_sink_roundtrip_and_pinning(tmp_path):
 )
 def test_tsa_sink_rejects_bad_responses(fake, message):
     with pytest.raises(OSError, match=message):
-        anchor.TsaSink("https://tsa.example", None, fake).publish({"segment": 1})
+        anchor.TsaSink("https://tsa.example", _pin(fake), fake).publish({"segment": 1})
+
+
+def _pin(fake) -> str:
+    return hashlib.sha256(fake.cert_der).hexdigest()
 
 
 def test_tsa_token_signature_and_garbage():
     tsa = FakeTsa()
     stmt = {"segment": 1}
-    receipt = anchor.TsaSink("https://tsa.example", None, tsa).publish(stmt)
+    receipt = anchor.TsaSink("https://tsa.example", _pin(tsa), tsa).publish(stmt)
     token = bytearray(base64.b64decode(receipt["token"]))
     token[-5] ^= 0xFF  # порча подписи
     imprint = bytes.fromhex(anchor.digest(stmt))
-    assert anchor.verify_tsa_token(bytes(token), imprint, None, None) is not None
-    assert "не разбирается" in anchor.verify_tsa_token(b"\x30\x00", imprint, None, None)
+    assert anchor.verify_tsa_token(bytes(token), imprint, None, _pin(tsa)) is not None
+    assert "не разбирается" in anchor.verify_tsa_token(b"\x30\x00", imprint, None, _pin(tsa))
+    # без доверенного корня и закрепления метка не принимается, даже целая
+    good = base64.b64decode(receipt["token"])
+    assert "ни доверенный корень" in anchor.verify_tsa_token(good, imprint, None, None)
 
 
 def test_tsa_needs_extra(monkeypatch):
@@ -368,10 +461,70 @@ def test_tsa_needs_extra(monkeypatch):
 
 
 class FakeRekor:
+    """Журнал Rekor в памяти: дерево Меркла RFC 6962 над телами записей и подписанный checkpoint."""
+
+    ORIGIN = "rekor.example - 42"
+
     def __init__(self):
-        self.entries: dict[str, dict] = {}
+        self.log_key = _ec_key()
+        self.bodies: list[bytes] = []
+        self.entries: dict[str, int] = {}
+        self.tamper: str | None = None
+
+    @property
+    def log_key_pem(self) -> bytes:
+        return self.log_key.public_key().public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+
+    def checkpoint(self, size: int, root: bytes, key=None, name="rekor.example") -> str:
+        from mandat.audit import merkle  # noqa: F401
+
+        body = f"{self.ORIGIN}\n{size}\n{base64.b64encode(root).decode()}\n"
+        signer = key or self.log_key
+        spki = signer.public_key().public_bytes(
+            serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        sig = signer.sign(body.encode(), ec.ECDSA(hashes.SHA256()))
+        line = base64.b64encode(hashlib.sha256(spki).digest()[:4] + sig).decode()
+        return body + f"\n\u2014 {name} {line}\n"
+
+    def entry(self, uuid: str) -> dict:
+        from mandat.audit import merkle
+
+        index = self.entries[uuid]
+        leaves = [merkle.leaf_hash(b) for b in self.bodies]
+        root = merkle.root(leaves)
+        proof = [h.hex() for h in merkle.inclusion_proof(index, leaves)]
+        checkpoint = self.checkpoint(len(leaves), root)
+        if self.tamper == "proof" and proof:
+            proof[0] = "00" * 32
+        if self.tamper == "root":
+            root = b"\x01" * 32
+        if self.tamper == "foreign-key":
+            checkpoint = self.checkpoint(len(leaves), root, key=_ec_key())
+        if self.tamper == "size":
+            checkpoint = self.checkpoint(len(leaves) + 1, root)
+        body = self.bodies[index]
+        if self.tamper == "body":
+            body = body.replace(b"sha256", b"sha257")
+        return {
+            "body": base64.b64encode(body).decode(),
+            "logIndex": index,
+            "verification": {
+                "inclusionProof": {
+                    "logIndex": index,
+                    "treeSize": len(leaves),
+                    "rootHash": root.hex(),
+                    "hashes": proof,
+                    "checkpoint": checkpoint,
+                }
+            },
+        }
 
     def __call__(self, request):
+        from mandat.audit import merkle
+
         if request.get_method() == "POST":
             entry = json.loads(request.data)
             spec = entry["spec"]
@@ -383,28 +536,109 @@ class FakeRekor:
                 bytes.fromhex(spec["data"]["hash"]["value"]),
                 ec.ECDSA(utils.Prehashed(hashes.SHA256())),
             )
-            uuid = hashlib.sha256(request.data).hexdigest()
-            self.entries[uuid] = {"body": base64.b64encode(request.data).decode(), "logIndex": len(self.entries)}
-            return Response(json.dumps({uuid: self.entries[uuid]}).encode(), status=201)
+            self.bodies.append(request.data)
+            uuid = "2" * 16 + merkle.leaf_hash(request.data).hex()
+            self.entries[uuid] = len(self.bodies) - 1
+            return Response(json.dumps({uuid: self.entry(uuid)}).encode(), status=201)
         uuid = request.full_url.rsplit("/", 1)[1]
         if uuid not in self.entries:
             raise OSError("404")
-        return Response(json.dumps({uuid: self.entries[uuid]}).encode())
+        return Response(json.dumps({uuid: self.entry(uuid)}).encode())
+
+
+def _rekor(rekor: FakeRekor) -> anchor.RekorSink:
+    return anchor.RekorSink("https://rekor.example", _ec_pem(), rekor, log_key_pem=rekor.log_key_pem)
 
 
 def test_rekor_sink_roundtrip(tmp_path):
     rekor = FakeRekor()
-    sink = anchor.RekorSink("https://rekor.example", _ec_pem(), rekor)
+    sink = _rekor(rekor)
     stmt = {"type": anchor.STATEMENT_TYPE, "segment": 1}
     receipt = sink.publish(stmt)
+    for i in range(4):  # чужие записи после нашей: дерево растёт, доказательство меняется
+        _rekor(rekor).publish({"segment": 100 + i})
     assert receipt["log_index"] == 0 and sink.check(stmt, receipt)
     assert not sink.check({"segment": 2}, receipt)
     assert not sink.check(stmt, {**receipt, "uuid": "missing"})
+    assert not anchor.RekorSink("https://rekor.example", _ec_pem(), rekor).check(stmt, receipt)  # нет ключа журнала
     path = tmp_path / "j.jsonl"
     _fill(path, 3, [sink])
     assert journal.verify_journal(path, key=KEY, anchors=[sink]).ok
     rekor.entries.clear()
     assert not journal.verify_journal(path, key=KEY, anchors=[sink]).ok
+
+
+@pytest.mark.parametrize("tamper", ["proof", "root", "foreign-key", "size", "body"])
+def test_rekor_rejects_bad_proof_or_checkpoint(tamper):
+    rekor = FakeRekor()
+    sink = _rekor(rekor)
+    stmt = {"segment": 1}
+    receipt = sink.publish(stmt)
+    for i in range(3):
+        _rekor(rekor).publish({"segment": 10 + i})
+    assert sink.check(stmt, receipt)
+    rekor.tamper = tamper
+    assert not sink.check(stmt, receipt)
+
+
+def test_checkpoint_format_errors():
+    rekor = FakeRekor()
+    with pytest.raises(ValueError, match="signed note"):
+        anchor.verify_checkpoint("one line", rekor.log_key_pem)
+    text = rekor.checkpoint(1, b"\x00" * 32, name="other.example")
+    with pytest.raises(ValueError, match="нет подписи"):
+        anchor.verify_checkpoint(text, rekor.log_key_pem)
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+
+    ed = ed25519.Ed25519PrivateKey.generate().public_key()
+    pem = ed.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+    with pytest.raises(ValueError, match="ECDSA"):
+        anchor.verify_checkpoint(rekor.checkpoint(1, b"\x00" * 32), pem)
+    origin, size, root = anchor.verify_checkpoint(rekor.checkpoint(5, b"\x07" * 32), rekor.log_key_pem)
+    assert (origin, size, root) == (FakeRekor.ORIGIN, 5, b"\x07" * 32)
+    with pytest.raises(ValueError, match="uuid"):
+        anchor.verify_rekor_entry("0" * 80, {"body": base64.b64encode(b"x").decode()}, rekor.log_key_pem)
+
+
+# --- цепочка TSA до корня -------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("intermediate", [False, True])
+def test_tsa_chain_to_configured_root(tmp_path, intermediate):
+    pki = Pki(intermediate=intermediate)
+    tsa = FakeTsa(pki=pki)
+    sink = anchor.TsaSink("https://tsa.example", None, tsa, roots=[pki.root])
+    stmt = {"segment": 1}
+    receipt = sink.publish(stmt)
+    assert sink.check(stmt, receipt)
+    stranger = anchor.TsaSink("https://tsa.example", None, tsa, roots=[Pki().root])
+    assert not stranger.check(stmt, receipt)
+    with pytest.raises(OSError, match="доверенного корня"):
+        stranger.publish(stmt)
+
+
+@pytest.mark.parametrize(
+    ("eku", "critical", "message"),
+    [("server", True, "только для меток"), ("ts", False, "только для меток"), ("none", True, "нет расширения")],
+)
+def test_tsa_chain_requires_timestamping_eku(eku, critical, message):
+    from cryptography.x509.oid import ExtendedKeyUsageOID
+
+    usage = {"server": [ExtendedKeyUsageOID.SERVER_AUTH], "ts": [ExtendedKeyUsageOID.TIME_STAMPING], "none": None}[eku]
+    pki = Pki(eku=usage or [ExtendedKeyUsageOID.TIME_STAMPING], eku_critical=critical)
+    if usage is None:
+        pki.leaf = _ca_cert("tsa", "root", pki.key, pki.root_key, ca=False)
+    problem = anchor.tsa_chain_problem(
+        pki.leaf.public_bytes(serialization.Encoding.DER), [], [pki.root], datetime.now(UTC)
+    )
+    assert problem is not None and message in problem
+
+
+def test_tsa_chain_checks_time():
+    pki = Pki()
+    leaf = pki.leaf.public_bytes(serialization.Encoding.DER)
+    assert anchor.tsa_chain_problem(leaf, [], [pki.root], datetime.now(UTC)) is None
+    assert anchor.tsa_chain_problem(leaf, [], [pki.root], datetime.now(UTC) + timedelta(days=90)) is not None
 
 
 def test_rekor_requires_ec_key():
@@ -471,7 +705,12 @@ def test_catch_up_without_cache_or_files(tmp_path):
     path = tmp_path / "j.jsonl"
     assert journal._catch_up(path, KEY) is None
     _fill(path, 3, [])  # активный файл после закрытия отсутствует
-    journal._TAILS[journal._cache_key(path)] = (("x", b"", journal._marker("other"), ()), (3, "h"), 0)
+    journal._TAILS[journal._cache_key(path)] = (
+        ("x", b"", journal._marker("other"), (None, None, None)),
+        (3, "h"),
+        0,
+        (0, ""),
+    )
     assert journal._catch_up(path, KEY) is None
 
 
@@ -517,3 +756,84 @@ def test_nodelay_protocol_connection_made(monkeypatch):
     proto = nodelay.NoDelayH11Protocol.__new__(nodelay.NoDelayH11Protocol)
     proto.connection_made("transport")
     assert seen == ["transport", "super"]
+
+
+# --- R4: манифест сегментов -------------------------------------------------------------------
+
+
+def test_manifest_lists_sealed_segments(tmp_path):
+    path = tmp_path / "j.jsonl"
+    _fill(path, 7, [])
+    rows = journal.read_manifest(path)
+    assert [(r["segment"], r["first_seq"], r["last_seq"]) for r in rows] == [(1, 1, 3), (2, 4, 6)]
+    seg = journal.sealed_segments(path)[0]
+    assert rows[0]["sha256"] == hashlib.sha256(seg.read_bytes()).hexdigest()
+    assert journal.manifest_problem(path) is None
+
+
+def test_manifest_tamper_detected(tmp_path):
+    path = tmp_path / "j.jsonl"
+    _fill(path, 6, [])
+    manifest = journal.manifest_path(path)
+    manifest.write_text(manifest.read_text().replace('"first_seq": 4', '"first_seq": 5'))
+    assert "не совпадает с манифестом" in journal.verify_journal(path, key=KEY).reason
+    manifest.write_text("[1]\n")
+    assert "не разбирается" in journal.verify_journal(path, key=KEY).reason
+    manifest.write_text("{bad\n")
+    assert "не разбирается" in journal.verify_journal(path, key=KEY).reason
+
+
+def test_legacy_journal_without_manifest_is_repaired(tmp_path):
+    path = tmp_path / "j.jsonl"
+    _fill(path, 7, [])
+    journal.manifest_path(path).unlink()
+    assert "не совпадает с файлами" in journal.verify_journal(path, key=KEY).reason
+    journal._TAILS.clear()
+    _fill(path, 2, [], start=7)  # полная проверка восстанавливает манифест, закрытие продолжает нумерацию
+    assert [r["segment"] for r in journal.read_manifest(path)] == [1, 2, 3]
+    assert journal.verify_journal(path, key=KEY).ok
+    assert journal.repair_manifest(path) == 0
+
+
+def test_crash_between_seal_and_manifest(tmp_path):
+    path = tmp_path / "j.jsonl"
+    _fill(path, 6, [])
+    manifest = journal.manifest_path(path)
+    manifest.write_text(manifest.read_text().splitlines()[0] + "\n")  # строка про сегмент 2 не записана
+    journal._TAILS.clear()
+    _fill(path, 3, [], start=6)
+    assert [r["segment"] for r in journal.read_manifest(path)] == [1, 2, 3]
+    assert journal.verify_journal(path, key=KEY).ok
+
+
+def test_catch_up_rejects_rewritten_manifest(tmp_path):
+    path = tmp_path / "j.jsonl"
+    _fill(path, 4, [])
+    _other_process(path, 3, 4)  # чужой процесс закрывает сегмент 2
+    manifest = journal.manifest_path(path)
+    rows = manifest.read_text().splitlines()
+    manifest.write_text(rows[0].replace('"segment": 1', '"segment": 1 ') + "\n" + rows[1] + "\n")
+    assert journal._catch_up(path, KEY) is None
+
+
+def test_manifest_tail_edge_cases(tmp_path):
+    path = tmp_path / "j.jsonl"
+    assert journal._manifest_tail(path) is None
+    journal.manifest_path(path).write_text("\n")
+    assert journal._manifest_tail(path) is None
+    journal.manifest_path(path).write_text("[1]\n")
+    assert journal._manifest_tail(path) is None
+    assert journal._manifest_entry(_empty(tmp_path), 1)["first_seq"] is None
+
+
+def _empty(tmp_path: Path) -> Path:
+    target = tmp_path / "empty.jsonl.000001"
+    target.write_text("")
+    return target
+
+
+def test_tsa_token_without_signer_certificate():
+    tsa = FakeTsa()
+    tsa.wrong_cert = True
+    with pytest.raises(OSError, match="сертификата подписанта"):
+        anchor.TsaSink("https://tsa.example", _pin(tsa), tsa).publish({"segment": 1})
