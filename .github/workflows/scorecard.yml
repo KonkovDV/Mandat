@@ -5,6 +5,9 @@ name: scorecard
 on:
   push:
     branches: [main]
+  # Задача analysis — обязательная проверка защиты main, поэтому она идёт и на PR в main.
+  pull_request:
+    branches: [main]
   schedule:
     - cron: "30 1 * * 6"
 
@@ -24,7 +27,8 @@ jobs:
         with:
           results_file: results.sarif
           results_format: sarif
-          publish_results: true
+          # Публикация в api.scorecard.dev — только с ветки по умолчанию; на PR — только локальный отчёт.
+          publish_results: ${{ github.event_name != 'pull_request' }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: scorecard-sarif
