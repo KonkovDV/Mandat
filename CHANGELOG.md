@@ -3,6 +3,7 @@
 ## Готовится (после 0.3.0, в main)
 
 Аудит R4 14.10.2026:
+- CI: Scorecard запускается и на PR; Dockerfile ставит пакет из собранного wheel с `--no-deps` (Scorecard Pinned-Dependencies, `pipCommand not pinned by hash`).
 
 - CI: из образа удалены pip и setuptools (Trivy HIGH в вендоренных в pip urllib3, msgpack, pkg_resources); `evidence.json` пересобирается последним шагом.
 - Rekor-якорь проверяет доказательство включения RFC 6962 и подписанный checkpoint ключом журнала (`MANDAT_JOURNAL_ANCHOR_REKOR_PUBKEY`); TSA-якорь строит цепочку до заданного корня (`MANDAT_JOURNAL_ANCHOR_TSA_ROOTS`) с EKU timeStamping и находит сертификат подписанта по sid. Без доверия метка не принимается.

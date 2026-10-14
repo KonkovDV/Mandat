@@ -16,7 +16,11 @@ COPY src ./src
 COPY examples ./examples
 # pip и setuptools в образе после установки не нужны, а pip несёт вендоренные копии библиотек
 # (urllib3, msgpack, pkg_resources из setuptools 70.3), которые Trivy справедливо считает уязвимыми.
-RUN pip install --no-deps --no-build-isolation . \
+# Колесо собирается локально, ставится как файл .whl без зависимостей: Scorecard Pinned-Dependencies
+# считает такую установку закреплённой (у локального каталога «.» хеша нет).
+RUN pip wheel --no-deps --no-build-isolation --wheel-dir /opt/wheels . \
+    && pip install --no-deps /opt/wheels/mandat-*.whl \
+    && rm -rf /opt/wheels build src/*.egg-info \
     && python -m pip uninstall -y setuptools pip \
     && useradd --create-home --uid 10001 mandat && mkdir -p /app/var && chown mandat /app/var
 

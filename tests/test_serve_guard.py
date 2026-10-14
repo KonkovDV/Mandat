@@ -118,7 +118,8 @@ def test_build_backend_is_hash_pinned():
     docker = (root / "Dockerfile").read_text(encoding="utf-8")
     ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     lock = (root / "requirements" / "build.lock").read_text(encoding="utf-8")
-    assert "-r requirements/build.lock" in docker and "--no-build-isolation ." in docker
+    assert "-r requirements/build.lock" in docker and "--no-build-isolation --wheel-dir /opt/wheels ." in docker
+    assert "pip install --no-deps /opt/wheels/mandat-*.whl" in docker
     assert "-r requirements/build.lock" in ci and "--no-build-isolation -e ." in ci
     assert "setuptools==" in lock and "--hash=sha256:" in lock
 
