@@ -29,3 +29,28 @@ def resolve_profile(requested: str | None) -> str:
     if requested in (None, "strict"):
         return "strict"
     raise ProfileNotAllowed(f"MANDAT_ENV={mode()}: профиль {requested} запрещён, допускается только strict")
+
+
+def key_problem() -> str | None:
+    """Почему сервис нельзя запускать в текущем режиме без ключей. ``None``, если ключи на месте.
+
+    В защищённых режимах (pilot, prod и любой неизвестный) ключ журнала и ключ псевдонимизации ПДн
+    проверяются при старте, а не при первой записи: иначе сервис поднимается и падает на первом кейсе.
+    """
+    if not protected():
+        return None
+    from mandat.audit.journal import JournalKeyMissing
+    from mandat.audit.journal import _key as journal_key
+    from mandat.privacy.pii import PiiKeyMissing
+    from mandat.privacy.pii import _key as pii_key
+
+    problems: list[str] = []
+    try:
+        journal_key(None)
+    except JournalKeyMissing as exc:
+        problems.append(str(exc))
+    try:
+        pii_key()
+    except PiiKeyMissing as exc:
+        problems.append(f"MANDAT_ENV={mode()}: {exc}")
+    return "; ".join(problems) or None

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import re
 import subprocess
@@ -32,16 +33,32 @@ from mandat.services.verify import verify_case
 ROOT = Path(__file__).resolve().parents[1]
 
 
+try:
+    import pytest_cov  # noqa: F401
+
+    COVERAGE_ARGS: tuple[str, ...] = ("--cov=mandat", "--cov-report=json:var/coverage.json", "--cov-fail-under=0")
+except ModuleNotFoundError:
+    COVERAGE_ARGS = ()
+
+
 def pytest_summary() -> dict:
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-o", "addopts=", "-p", "no:warnings"],
+        [sys.executable, "-m", "pytest", "-q", "-o", "addopts=", "-p", "no:warnings", *COVERAGE_ARGS],
         cwd=ROOT,
+        # Число автотестов в этот момент ещё собирается: lint_claims внутри прогона его не сверяет.
+        env={**os.environ, "MANDAT_EVIDENCE_BUILDING": "1"},
         capture_output=True,
         text=True,
     )
     tail = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else ""
     counts = {k: int(v) for v, k in re.findall(r"(\d+) (passed|failed|skipped|error)", tail)}
-    return {"command": "python -m pytest -q", "returncode": proc.returncode, "summary": tail, **counts}
+    tail = next((line for line in reversed(proc.stdout.strip().splitlines()) if re.search(r"\d+ passed", line)), tail)
+    counts = {k: int(v) for v, k in re.findall(r"(\d+) (passed|failed|skipped|error)", tail)}
+    out: dict = {"command": "python -m pytest -q", "returncode": proc.returncode, "summary": tail, **counts}
+    cov = ROOT / "var" / "coverage.json"
+    if COVERAGE_ARGS and cov.exists():
+        out["coverage_percent"] = round(json.loads(cov.read_text(encoding="utf-8"))["totals"]["percent_covered"], 1)
+    return out
 
 
 # Исходники, от которых зависят числа в evidence.json. Сам evidence.json и документы сюда не входят.
@@ -133,9 +150,16 @@ def main() -> int:
         },
         "classifier": classifier.summary(),
         "latency": bench(20),
-        "tests": None if args.no_tests else pytest_summary(),
+        "tests": None,
     }
-    (ROOT / "evidence.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    target = ROOT / "evidence.json"
+    # Сначала записать свежие числа без тестов, потом прогнать pytest. Иначе тест
+    # test_evidence_matches_current_engine сверяется со старым evidence.json, падает, и в файл попадает
+    # «N−1 passed, 1 failed» — так возникло расхождение 714 против 715.
+    target.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if not args.no_tests:
+        evidence["tests"] = pytest_summary()
+    target.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({k: evidence[k] for k in ("rule_pack", "tests")}, ensure_ascii=False, indent=2))
     return 0 if (evidence["tests"] is None or evidence["tests"]["returncode"] == 0) else 1
 

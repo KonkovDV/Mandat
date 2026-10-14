@@ -117,6 +117,9 @@ class Directory:
         return found
 
 
+MIN_LEGACY_TOKEN_BYTES = 32
+
+
 def access_problem() -> str | None:
     """Почему API нельзя запускать с текущим окружением. ``None``, если доступ настроен."""
     try:
@@ -125,4 +128,10 @@ def access_problem() -> str | None:
         return f"MANDAT_API_USERS не читается: {exc}"
     if not users and not os.environ.get("MANDAT_API_TOKEN", "").strip():
         return "задайте MANDAT_API_TOKEN (режим стенда) или MANDAT_API_USERS (пользователи с ролями)"
+    from mandat.services.env_policy import protected
+
+    token = os.environ.get("MANDAT_API_TOKEN", "").strip()
+    if not users and protected() and len(token.encode("utf-8")) < MIN_LEGACY_TOKEN_BYTES:
+        # Общий токен даёт роль admin: в pilot и prod короткий токен перебирается.
+        return f"MANDAT_API_TOKEN короче {MIN_LEGACY_TOKEN_BYTES} байт: в защищённом режиме нужен длинный токен"
     return None

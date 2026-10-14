@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/KonkovDV/Mandat/raw/main/Mandat_VTB.pptx"><img alt="Презентация" src="https://img.shields.io/badge/%D0%9F%D1%80%D0%B5%D0%B7%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F-PowerPoint-B7472A?style=for-the-badge&logo=libreofficeimpress&logoColor=white"></a>
-  <a href="https://github.com/KonkovDV/Mandat/blob/main/Mandat_VTB.pdf"><img alt="PDF" src="https://img.shields.io/badge/%D0%9F%D1%80%D0%B5%D0%B7%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F-PDF-EC1C24?style=for-the-badge&logo=files&logoColor=white"></a>
+  <a href="https://github.com/KonkovDV/Mandat/raw/main/submission/slides/Mandat_VTB.pptx"><img alt="Презентация" src="https://img.shields.io/badge/%D0%9F%D1%80%D0%B5%D0%B7%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F-PowerPoint-B7472A?style=for-the-badge&logo=libreofficeimpress&logoColor=white"></a>
+  <a href="https://github.com/KonkovDV/Mandat/blob/main/submission/slides/Mandat_VTB.pdf"><img alt="PDF" src="https://img.shields.io/badge/%D0%9F%D1%80%D0%B5%D0%B7%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F-PDF-EC1C24?style=for-the-badge&logo=files&logoColor=white"></a>
 </p>
 
 <p align="center">
@@ -23,6 +23,17 @@
 
 Проект для трека ВТБ «Финтех без границ: банк будущего для бизнеса и клиентов» соревнования «Академия Финтеха 2026».
 
+## С чего начать
+
+| Вы | Читайте |
+|---|---|
+| Разработчик | [docs/RUN.md](docs/RUN.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Юрист банка | [docs/RULES.md](docs/RULES.md), [docs/LEGAL_REVIEW.md](docs/LEGAL_REVIEW.md), [LIMITS.md](LIMITS.md) |
+| Информационная безопасность | [SECURITY.md](SECURITY.md), [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md), [docs/KEYS.md](docs/KEYS.md) |
+| Руководитель | [docs/MVP.md](docs/MVP.md), [docs/PILOT.md](docs/PILOT.md), [CLAIMS_REGISTRY.md](CLAIMS_REGISTRY.md) |
+
+Все 39 правил пока в статусе draft: юрист банка их не утверждал.
+
 ## Что уже работает
 
 - **Ни одного ложного «да» на синтетическом корпусе:** 0 из 288 кейсов, где подтверждать нельзя; верхняя граница 95 % — 1,3 % (C-03).
@@ -31,7 +42,7 @@
 - **Журнал, который выдаёт правку:** хеш-цепочка с HMAC и дерево Меркла; аудитор получает доказательство одной записи без всего журнала (C-09).
 - **Удостоверение со статусом:** любую систему банка, например ДБО или антифрод, можно научить проверять его без доступа к базе; отмена основной МЧД отзывает удостоверения по всей цепочке (C-10, C-11).
 - **8814 мутаций сценариев:** ложных «подтверждено» и падений нет (C-17); свойство передоверия совпадает со второй, независимой реализацией на Cedar на всех 384 цепочках (C-06).
-- **Воспроизводимо:** демо одной командой, 620 автотестов, все числа собирает код в `evidence.json` (C-13).
+- **Воспроизводимо:** демо одной командой, 843 автотестов, все числа собирает код в `evidence.json` (C-13).
 
 ## За 30 секунд
 
@@ -66,6 +77,17 @@ flowchart LR
 
 Скрипт ставит пакет в локальный `.venv` и собирает 14 демо-кейсов в `var/demo/`. Откройте `var/demo/01_ok.html`. Без установки можно посмотреть готовые карточки: [01](docs/demo/01_ok.html), [05](docs/demo/05_director_changed.html), [10](docs/demo/10_old_director_poa.html), [14](docs/demo/14_old_director_charter_cleared.html). Сценарий показа — [docs/DEMO.md](docs/DEMO.md), все команды и API — [docs/RUN.md](docs/RUN.md).
 
+### В Docker
+
+```bash
+cp .env.example .env
+# в .env: MANDAT_ENV=demo и MANDAT_API_TOKEN=<длинный случайный токен>
+docker compose up --build
+curl http://127.0.0.1:8000/health
+```
+
+Без `MANDAT_ENV` compose не стартует. В `pilot` и `prod` нужны ещё `MANDAT_JOURNAL_KEY` и `MANDAT_PII_KEY` (по 32 байта и длиннее, см. [docs/KEYS.md](docs/KEYS.md)).
+
 ## От стенда к пилоту
 
 Ядро проверки, мониторинг и журнал работают. Пилот подключает к ним источники банка: для реестра МЧД, ЕФРСБ и подписи — адаптер к готовому порту, для ЕГРЮЛ — новый порт по тому же образцу; ядро не переделывается.
@@ -92,7 +114,7 @@ flowchart LR
 | C-03 | ложных «подтверждено» 0 из 288 кейсов, где подтверждать нельзя; верхняя граница 95 % (Уилсон) — 1,3 % | та же синтетика |
 | C-05 | без человека решается 38,8 % корпуса, ошибок среди них нет (верхняя граница 3,3 %) | в профиле `strict` доля 0 %: без подписи и утверждённых правил всё уходит человеку |
 | C-06 | передоверие не шире родительской МЧД на всех 384 двухзвенных цепочках; вторая, независимая реализация правил на языке политик Cedar даёт те же решения | перебор малого домена, а не доказательство для любых входов |
-| C-13 | 620 автотестов проходят | — |
+| C-13 | 843 автотестов проходят | — |
 | C-17 | 8814 мутаций сценариев: ложных «подтверждено» и падений нет | мутации построены от наших базовых сценариев |
 | C-14 | проверка одного кейса — около 2 мс (медиана), 95 % кейсов быстрее 3 мс | машина разработчика, без сети и модели; на другой машине числа другие |
 

@@ -40,6 +40,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 from mandat.audit.jcs import canonicalize
+from mandat.audit.signing import Keyring, Signer, as_signer, checked_sign, key_id
 
 _B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 ISSUER = "did:web:mandat.example"
@@ -83,6 +84,11 @@ def _read_signing_key(path: Path) -> Ed25519PrivateKey:
 
 
 def load_or_create_key(path: Path) -> Ed25519PrivateKey:
+    """Открытый PEM: только demo/dev/test. В защищённом режиме — ``signing.signer_from_env`` (RT-05)."""
+    from mandat.services.env_policy import protected
+
+    if protected():
+        raise ValueError("ключ подписи в открытом PEM в защищённом режиме запрещён: см. docs/KEYS.md")
     if path.exists():
         return _read_signing_key(path)
     key = Ed25519PrivateKey.generate()
@@ -117,10 +123,10 @@ def _write_private(path: Path, data: bytes) -> bool:
         tmp.unlink(missing_ok=True)
 
 
-def public_key_multibase(key: Ed25519PrivateKey | Ed25519PublicKey) -> str:
-    public = key.public_key() if isinstance(key, Ed25519PrivateKey) else key
-    raw = public.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-    return "z" + b58encode(b"\xed\x01" + raw)  # multicodec ed25519-pub
+def public_key_multibase(key: Ed25519PrivateKey | Ed25519PublicKey | Signer) -> str:
+    if isinstance(key, Ed25519PublicKey):
+        return key_id(key)
+    return as_signer(key).key_id  # multicodec ed25519-pub
 
 
 def _hash_data(document: dict[str, Any], proof_config: dict[str, Any]) -> bytes:
@@ -130,24 +136,26 @@ def _hash_data(document: dict[str, Any], proof_config: dict[str, Any]) -> bytes:
     )
 
 
-def sign(document: dict[str, Any], key: Ed25519PrivateKey, *, now: datetime | None = None) -> dict[str, Any]:
+def sign(document: dict[str, Any], key: Ed25519PrivateKey | Signer, *, now: datetime | None = None) -> dict[str, Any]:
     """Доказательство Data Integrity в духе ``eddsa-jcs-2022`` для любого JSON-документа."""
+    signer = as_signer(key)
     created = (now or datetime.now(UTC)).isoformat(timespec="seconds")
     proof_config = {
         "@context": CONTEXTS,
         "type": "DataIntegrityProof",
         "cryptosuite": CRYPTOSUITE,
         "created": created,
-        "verificationMethod": f"{ISSUER}#{public_key_multibase(key)}",
+        # Идентификатор ключа (kid) в подписанной части: по нему проверяющий берёт ключ из связки.
+        "verificationMethod": f"{ISSUER}#{signer.key_id}",
         "proofPurpose": PURPOSE,
     }
-    signature = key.sign(_hash_data(document, proof_config))
+    signature = checked_sign(signer, _hash_data(document, proof_config))
     return {**document, "proof": {**proof_config, "proofValue": "z" + b58encode(signature)}}
 
 
 def issue(
     report: dict[str, Any],
-    key: Ed25519PrivateKey,
+    key: Ed25519PrivateKey | Signer,
     *,
     now: datetime | None = None,
     status: list[dict[str, str]] | None = None,
@@ -221,7 +229,7 @@ def _when(value: Any) -> datetime | None:
 
 def validate_attestation(
     credential: dict[str, Any],
-    trusted_keys: Iterable[Ed25519PublicKey],
+    trusted_keys: Iterable[Ed25519PublicKey] | Keyring,
     *,
     now: datetime,
     status_dir: Path | None = None,
@@ -231,7 +239,9 @@ def validate_attestation(
     problems: list[str] = []
     proof = credential.get("proof") or {}
     method = str(proof.get("verificationMethod") or "")
-    keys = {public_key_multibase(k): k for k in trusted_keys}
+    keyring = trusted_keys if isinstance(trusted_keys, Keyring) else Keyring.of(trusted_keys)
+    # Выведенный из выпуска ключ проверяет только подписи, сделанные до вывода (Keyring.trusted_for).
+    keys = {public_key_multibase(k): k for k in keyring.trusted_for(_when(proof.get("created")))}
     key = keys.get(method.split("#", 1)[-1]) if method.startswith(f"{ISSUER}#") else None
     if credential.get("issuer") != ISSUER:
         problems.append(f"издатель {credential.get('issuer')!r} не {ISSUER}")
@@ -256,7 +266,7 @@ def validate_attestation(
         from mandat.audit.status_list import check_status
 
         try:
-            state = check_status(credential, status_dir, key, now=now)["state"]
+            state = check_status(credential, status_dir, keyring.for_status_lists() or [key], now=now)["state"]
         except (OSError, ValueError, KeyError) as exc:
             problems.append(f"статус не проверен: {exc}")
         else:

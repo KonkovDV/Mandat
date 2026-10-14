@@ -19,6 +19,7 @@ import gzip
 import json
 import secrets
 import zlib
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -27,6 +28,7 @@ from typing import Any
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 from mandat.audit import attestation
+from mandat.audit.signing import Signer
 from mandat.domain.identifiers import normalize_poa_number
 
 MIN_BITS = 131_072
@@ -163,7 +165,7 @@ class StatusRegistry:
             )
         )
 
-    def save(self, key: Ed25519PrivateKey, *, now: datetime | None = None) -> None:
+    def save(self, key: Ed25519PrivateKey | Signer, *, now: datetime | None = None) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.sequence += 1
         state = {
@@ -184,7 +186,7 @@ class StatusRegistry:
 def status_list_credential(
     purpose: str,
     bits: bytearray,
-    key: Ed25519PrivateKey,
+    key: Ed25519PrivateKey | Signer,
     *,
     epoch: str = "",
     now: datetime | None = None,
@@ -209,10 +211,18 @@ def status_list_credential(
     return attestation.sign(document, key, now=now)
 
 
+def _verify_any(status_cred: dict[str, Any], keys: Ed25519PublicKey | Iterable[Ed25519PublicKey]) -> bool:
+    """Список переподписывается текущим ключом: после ротации он подписан не тем ключом, что удостоверение."""
+    candidates = [keys] if isinstance(keys, Ed25519PublicKey) else list(keys)
+    method = str((status_cred.get("proof") or {}).get("verificationMethod") or "")
+    kid = method.split("#", 1)[-1]
+    return any(attestation.public_key_multibase(k) == kid and attestation.verify(status_cred, k) for k in candidates)
+
+
 def check_status(
     credential: dict[str, Any],
     status_dir: Path,
-    public_key: Ed25519PublicKey,
+    public_key: Ed25519PublicKey | Iterable[Ed25519PublicKey],
     *,
     seen: dict[str, int] | None = None,
     now: datetime | None = None,
@@ -237,7 +247,7 @@ def check_status(
         status_cred = json.loads(path.read_text(encoding="utf-8"))
         if status_cred.get("id") != entry["statusListCredential"]:
             raise ValueError(f"список {path} не тот, на который ссылается удостоверение")
-        if not attestation.verify(status_cred, public_key):
+        if not _verify_any(status_cred, public_key):
             raise ValueError(f"подпись списка {path} не верна")
         subject = status_cred.get("credentialSubject") or {}
         if entry.get("epoch") and subject.get("epoch") != entry.get("epoch"):

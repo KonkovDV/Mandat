@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any
 
 from mandat.domain.model import EvidenceRef, ExtractionMethod, Finding, TextDocument
 from mandat.domain.verdict import LegalEffect
@@ -48,7 +49,7 @@ def _amount(raw: object) -> int | None:
     return None
 
 
-def ground_candidates(raw: list[dict], doc: TextDocument, *, min_confidence: float = 0.5) -> GateResult:
+def ground_candidates(raw: list[dict[str, Any]], doc: TextDocument, *, min_confidence: float = 0.5) -> GateResult:
     """Оставляем только кандидатов с цитатой из документа и достаточной уверенностью."""
     if not (isinstance(min_confidence, (int, float)) and math.isfinite(min_confidence) and 0 <= min_confidence <= 1):
         # NaN в пороге сделал бы сравнение всегда ложным: факт с любой уверенностью прошёл бы.

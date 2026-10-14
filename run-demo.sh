@@ -7,8 +7,10 @@ if [ ! -d .venv ]; then
   "$PY" -m venv .venv
 fi
 . .venv/bin/activate
-python -m pip install --quiet --upgrade pip
-python -m pip install --quiet -e .
+# pip, зависимости и бэкенд сборки — из lock-файлов с хешами (requirements/README.md).
+python -m pip install --quiet --require-hashes -r requirements/pip.lock
+python -m pip install --quiet --require-hashes -r requirements/runtime.lock -r requirements/build.lock
+python -m pip install --quiet --no-deps --no-build-isolation -e .
 mandat demo
 mandat monitor examples/events/takeover.json
 echo "Откройте var/demo/01_ok.html и var/demo/05_director_changed.html в браузере."

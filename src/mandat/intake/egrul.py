@@ -15,7 +15,12 @@ from typing import Any
 
 from mandat.domain.model import EgrulSnapshot, EvidenceRef, ExecutiveRecord, Organization, Person
 
-STATUSES = {"active", "in_liquidation", "liquidated", "unknown"}
+STATUSES = {"active", "in_liquidation", "liquidated", "reorganizing", "terminated", "unknown"}
+
+
+# Тот же предел, что у разбора XML (xml_safety.MAX_XML_BYTES): лимит действует в самом разборщике,
+# а не только у загрузчика кейса, поэтому любой вызов parse_egrul (CLI, адаптеры) ограничен одинаково.
+MAX_EGRUL_BYTES = 2 * 1024 * 1024
 
 
 class EgrulError(ValueError):
@@ -51,6 +56,8 @@ def _flag(row: dict[str, Any], key: str, where: str) -> bool:
 
 def parse_egrul(data: bytes | str, *, doc_id: str) -> EgrulSnapshot:
     raw = data.encode("utf-8") if isinstance(data, str) else data
+    if len(raw) > MAX_EGRUL_BYTES:
+        raise EgrulError(f"выписка ЕГРЮЛ больше {MAX_EGRUL_BYTES} байт")
     sha = hashlib.sha256(raw).hexdigest()
     try:
         payload = json.loads(raw.decode("utf-8"))

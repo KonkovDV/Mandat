@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 import zipfile
@@ -72,12 +73,25 @@ def fuzz_runs() -> int:
     return int(match.group(1))
 
 
+def red_run(tests: dict | None) -> str | None:
+    """Число автотестов берётся только из зелёного прогона: иначе в тексты уйдёт «N−1»."""
+    if not tests:
+        return "evidence.json: нет результатов pytest, соберите без --no-tests"
+    if tests.get("returncode") != 0 or tests.get("failed") or tests.get("error"):
+        return f"evidence.json собран на красном прогоне ({tests.get('summary', '')}): пересоберите"
+    return None
+
+
 def evidence_count_hits() -> list[str]:
     import json
 
     evidence = json.loads((ROOT / "evidence.json").read_text(encoding="utf-8"))
+    building = os.environ.get("MANDAT_EVIDENCE_BUILDING") == "1"
+    red = None if building else red_run(evidence.get("tests"))
+    if red:
+        return [red]
     expected = {
-        "автотест": evidence["tests"]["passed"],
+        "автотест": None if building else evidence["tests"]["passed"],
         "демо-кейс": len(evidence["demo_cases"]["results"]),
         "мутаци": fuzz_runs(),
     }
@@ -91,8 +105,15 @@ def evidence_count_hits() -> list[str]:
         for i, text in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
             for name, pattern in EVIDENCE_COUNTS.items():
                 for m in pattern.finditer(text):
-                    if int(re.sub(r"\D", "", m.group(1))) != expected[name]:
+                    if expected[name] is not None and int(re.sub(r"\D", "", m.group(1))) != expected[name]:
                         hits.append(f"{rel}:{i}: «{m.group(0)}», а в источнике {expected[name]}")
+    # Слайды собираются из evidence.json (make deck); устаревшая колода — тоже расхождение.
+    for deck in sorted((ROOT / "submission" / "slides").glob("*.pptx")):
+        text = pptx_text(deck)
+        for name, pattern in EVIDENCE_COUNTS.items():
+            for m in pattern.finditer(text):
+                if expected[name] is not None and int(re.sub(r"\D", "", m.group(1))) != expected[name]:
+                    hits.append(f"{deck.relative_to(ROOT).as_posix()}: «{m.group(0)}», а в источнике {expected[name]}")
     return hits
 
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Sequence
+from typing import Any
 
 from mandat.data import canonical_json
 
@@ -76,6 +77,6 @@ def verify_inclusion(leaf: bytes, index: int, size: int, proof: Sequence[bytes],
     return sn == 0 and r == expected_root
 
 
-def journal_leaves(records: Sequence[dict]) -> list[bytes]:
+def journal_leaves(records: Sequence[dict[str, Any]]) -> list[bytes]:
     """Лист — каноническая запись журнала целиком, вместе с её хешем цепочки и HMAC."""
     return [leaf_hash(canonical_json(record).encode("utf-8")) for record in records]

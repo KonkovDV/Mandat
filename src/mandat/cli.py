@@ -21,6 +21,7 @@ import os
 import secrets
 import sys
 from pathlib import Path
+from typing import Any
 
 from mandat import ENGINE
 from mandat.audit import attestation, journal, merkle
@@ -89,7 +90,13 @@ def cmd_demo(args: argparse.Namespace) -> int:
         head = log.with_name(log.name + ".head")
         if head.exists():
             head.replace(previous / f"journal-{stamp}.jsonl.head")
-    key = attestation.load_or_create_key(out / "keys" / "attestation_ed25519.pem")
+    from mandat.audit.signing import SignerError, signer_from_env
+
+    try:
+        key = signer_from_env(out / "keys" / "attestation_ed25519.pem")
+    except SignerError as exc:
+        print(f"ошибка: {exc}", file=sys.stderr)
+        return 2
     pseudonym_key = attestation.load_or_create_pseudonym_key(out / "keys" / "representative_hmac.key")
     status_dir = out / "status"
     for stale in ("registry.json", "revocation.json", "suspension.json"):
@@ -140,14 +147,21 @@ def cmd_monitor(args: argparse.Namespace) -> int:
     payload = json.loads(Path(args.events).read_text(encoding="utf-8"))
     rights, events = parse_events(payload)
     alerts = evaluate(rights, events, window_hours=args.window_hours)
-    result: dict = {"alerts": [a.as_dict() for a in alerts]}
+    result: dict[str, Any] = {"alerts": [a.as_dict() for a in alerts]}
     if args.status_dir:
         status_dir = Path(args.status_dir)
+        from mandat.audit.signing import SignerError, signer_from_env
+
         key_path = Path(args.key) if args.key else status_dir.parent / "keys" / "attestation_ed25519.pem"
-        if not key_path.exists() or not (status_dir / "registry.json").exists():
+        external = os.environ.get("MANDAT_SIGNER", "file").strip().lower() not in ("", "file")
+        if not (external or key_path.exists()) or not (status_dir / "registry.json").exists():
             print("нет списков статусов или ключа: сначала выполните mandat demo", file=sys.stderr)
             return 2
-        key = attestation.load_or_create_key(key_path)
+        try:
+            key = signer_from_env(key_path, create=False)
+        except SignerError as exc:
+            print(f"ошибка: {exc}", file=sys.stderr)
+            return 2
         registry = StatusRegistry.open(status_dir)
         changes = []
         for alert in alerts:
@@ -242,9 +256,36 @@ def cmd_formats(args: argparse.Namespace) -> int:
     return 0
 
 
+def _attest_verify_keyring(args: argparse.Namespace, cred: dict[str, Any]) -> int:
+    """Проверка по связке ключей издателя: ключ выбирается по kid из подписанного доказательства."""
+    from datetime import UTC, datetime
+
+    from mandat.audit.signing import Keyring
+    from mandat.services.env_policy import protected
+
+    try:
+        keyring = Keyring.load(Path(args.keyring))
+    except (OSError, ValueError) as exc:
+        print(f"ошибка: связка ключей не читается: {exc}", file=sys.stderr)
+        return 2
+    status_dir = Path(args.status_dir) if args.status_dir else None
+    problems = attestation.validate_attestation(
+        cred, keyring, now=datetime.now(UTC), status_dir=status_dir, allow_demo=not protected()
+    )
+    for problem in problems:
+        print(f"не принимается: {problem}", file=sys.stderr)
+    if problems:
+        return 4
+    print("подпись верна, удостоверение принимается")
+    print(f"вердикт в удостоверении: {(cred.get('credentialSubject') or {}).get('verdict')}")
+    return 0
+
+
 def cmd_attest_verify(args: argparse.Namespace) -> int:
     cred = json.loads(Path(args.path).read_text(encoding="utf-8"))
     method = cred.get("proof", {}).get("verificationMethod", "")
+    if args.keyring:
+        return _attest_verify_keyring(args, cred)
     trusted = args.public_key
     if trusted is None and args.public_key_file:
         trusted = Path(args.public_key_file).read_text(encoding="utf-8").strip()
@@ -306,8 +347,13 @@ def cmd_examples(args: argparse.Namespace) -> int:
 
 def cmd_serve(args: argparse.Namespace) -> int:
     from mandat.api.principals import access_problem
+    from mandat.audit.anchor import missing_anchor_problem
+    from mandat.services.env_policy import key_problem
 
-    problem = access_problem()
+    try:
+        problem = access_problem() or key_problem() or missing_anchor_problem()
+    except ValueError as exc:
+        problem = str(exc)
     if problem:
         print(f"ошибка: {problem}", file=sys.stderr)
         return 2
@@ -329,13 +375,35 @@ def cmd_serve(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    options = server_options()
     if args.workers > 1:
-        uvicorn.run("mandat.api.app:create_app", factory=True, host=args.host, port=args.port, workers=args.workers)
+        uvicorn.run(
+            "mandat.api.app:create_app", factory=True, host=args.host, port=args.port, workers=args.workers, **options
+        )
     else:
         from mandat.api.app import create_app
 
-        uvicorn.run(create_app(store=store), host=args.host, port=args.port)
+        uvicorn.run(create_app(store=store), host=args.host, port=args.port, **options)
     return 0
+
+
+def server_options() -> dict[str, Any]:
+    """Защита сервера от перегрузки (OWASP API4:2023, R2-API-2).
+
+    ``limit_concurrency`` — сверх этого числа одновременных соединений uvicorn сразу отвечает 503, а не
+    копит очередь до таймаутов; ``timeout_keep_alive`` закрывает простаивающие соединения; заголовок
+    ``server`` не раскрывает сервер и его версию.
+    """
+    raw = os.environ.get("MANDAT_API_MAX_CONCURRENCY", "").strip()
+    limit = int(raw) if raw.isdigit() and int(raw) > 0 else 64
+    return {
+        "limit_concurrency": limit,
+        "timeout_keep_alive": 5,
+        "server_header": False,
+        "proxy_headers": False,
+        # TCP_NODELAY и при --workers N: иначе +40 мс на запрос по keep-alive (R2-PERF-3, api/nodelay.py).
+        "http": "mandat.api.nodelay:NoDelayH11Protocol",
+    }
 
 
 def cmd_webhook_secret(args: argparse.Namespace) -> int:
@@ -411,6 +479,7 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--public-key", help="ключ издателя в multibase (public_key.txt рядом с удостоверениями)")
     a.add_argument("--public-key-file", help="файл с ключом издателя, например var/demo/public_key.txt")
     a.add_argument("--trust-embedded-key", action="store_true", help="взять ключ из удостоверения (только для отладки)")
+    a.add_argument("--keyring", help="связка ключей издателя (JSON keys[kid,status,retired_at]), см. docs/KEYS.md")
     a.add_argument("--seen-file", help="состояние проверяющего: наибольший виденный sequence каждого списка")
     a.add_argument("--status-dir", help="каталог списков статусов W3C Bitstring Status List")
     a.set_defaults(func=cmd_attest_verify)

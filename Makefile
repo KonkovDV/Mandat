@@ -3,7 +3,9 @@ PY ?= python
 .PHONY: install lint test claims rules-doc cedar check demo eval evidence serve doctor clean deck demo-cards
 
 install:
-	$(PY) -m pip install -e ".[dev,api,cedar]"
+	$(PY) -m pip install --require-hashes -r requirements/pip.lock
+	$(PY) -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
+	$(PY) -m pip install --no-deps --no-build-isolation -e .
 
 lint:
 	$(PY) -m ruff check src tests scripts tools
@@ -44,9 +46,9 @@ demo-cards: demo
 	$(PY) scripts/export_demo_cards.py
 
 deck:
-	cd submission/deck && npm ci && node build_deck.js ../../evidence.json ../../Mandat_VTB.pptx
-	$(PY) submission/deck/finish_deck.py Mandat_VTB.pptx
-	soffice --headless --convert-to pdf Mandat_VTB.pptx
+	cd submission/deck && npm ci && node build_deck.js ../../evidence.json ../slides/Mandat_VTB.pptx
+	$(PY) submission/deck/finish_deck.py submission/slides/Mandat_VTB.pptx
+	soffice --headless --convert-to pdf --outdir submission/slides submission/slides/Mandat_VTB.pptx
 
 clean:
 	rm -rf var build dist .pytest_cache .ruff_cache src/*.egg-info

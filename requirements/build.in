@@ -1,0 +1,2 @@
+# Сборочный бэкенд из [build-system] pyproject.toml. Пересборка lock: см. README.md.
+setuptools>=77

@@ -156,5 +156,8 @@ def extract_charter_facts(doc: TextDocument) -> list[CandidateFact]:
 
 def quote_is_grounded(quote: str, source: str) -> bool:
     """Цитата обязана встречаться в источнике дословно (с точностью до пробелов)."""
-    norm = lambda s: re.sub(r"\s+", " ", s).strip().casefold()  # noqa: E731
+
+    def norm(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip().casefold()
+
     return bool(quote.strip()) and norm(quote) in norm(source)
