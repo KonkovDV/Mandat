@@ -60,6 +60,8 @@ show_missing = false
 [tool.mypy]
 python_version = "3.11"
 files = ["src"]
+# R2: строгий режим для всего пакета (ruff и mypy --strict без исключений).
+strict = true
 
 [[tool.mypy.overrides]]
 module = ["defusedxml", "defusedxml.*", "cedarpy", "uvicorn", "pkcs11", "boto3"]

@@ -73,3 +73,33 @@ def test_write_none_is_noop():
     root = Element("Root")
     xpath.write(root, "A/@b", None)
     assert list(root) == [] and root.attrib == {}
+
+
+# Добито по итогам мутационного прогона (tools/mutation/mini_mutate.py): было 70 % убитых мутантов.
+
+
+def test_attribute_falls_back_to_child_element():
+    root = Element("Root")
+    SubElement(root, "Inn").text = "  7707083893 "
+    assert xpath.read(root, "@Inn") == "7707083893"
+    SubElement(root, "Empty").text = "   "
+    assert xpath.read(root, "@Empty") is None
+    assert xpath.read(root, "@Missing") is None
+
+
+def test_text_is_stripped_and_blank_is_none():
+    root = Element("Root")
+    root.text = "  значение \n"
+    assert xpath.read(root, ".") == "значение"
+    assert xpath.read(root, "") == "значение"
+    root.text = "  \n "
+    assert xpath.read(root, ".") is None
+    blank = Element("Root", {"a": "  "})
+    assert xpath.read(blank, "@a") is None
+
+
+def test_locator_for_text_and_root():
+    assert xpath.locator("Root", "A/B/.") == "/Root/A/B"
+    assert xpath.locator("Root", ".") == "/Root"
+    assert xpath.locator("Root", "") == "/Root"
+    assert xpath.locator("Root", "A", base="/X") == "/X/A"

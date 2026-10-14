@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from mandat.eval.synth import build
 
@@ -88,7 +89,7 @@ def write_examples(target: Path) -> list[Path]:
     return written
 
 
-def revocation_events() -> dict:
+def revocation_events() -> dict[str, Any]:
     """Отмена основной МЧД: удостоверения по цепочке передоверия отзываются.
 
     Банку уходит рекомендация приостановить права (п. 3 ст. 188 ГК РФ).
@@ -119,7 +120,7 @@ def revocation_events() -> dict:
     }
 
 
-def takeover_events() -> dict:
+def takeover_events() -> dict[str, Any]:
     """Сценарий «попытка захвата»: смена руководителя, новая МЧД и смена реквизитов за три часа."""
     ok = build("ok", seed=SEED)
     org_inn = ok.manifest["organization"]["inn"]

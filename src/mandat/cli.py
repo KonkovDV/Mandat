@@ -21,6 +21,7 @@ import os
 import secrets
 import sys
 from pathlib import Path
+from typing import Any
 
 from mandat import ENGINE
 from mandat.audit import attestation, journal, merkle
@@ -146,7 +147,7 @@ def cmd_monitor(args: argparse.Namespace) -> int:
     payload = json.loads(Path(args.events).read_text(encoding="utf-8"))
     rights, events = parse_events(payload)
     alerts = evaluate(rights, events, window_hours=args.window_hours)
-    result: dict = {"alerts": [a.as_dict() for a in alerts]}
+    result: dict[str, Any] = {"alerts": [a.as_dict() for a in alerts]}
     if args.status_dir:
         status_dir = Path(args.status_dir)
         from mandat.audit.signing import SignerError, signer_from_env
@@ -255,7 +256,7 @@ def cmd_formats(args: argparse.Namespace) -> int:
     return 0
 
 
-def _attest_verify_keyring(args: argparse.Namespace, cred: dict) -> int:
+def _attest_verify_keyring(args: argparse.Namespace, cred: dict[str, Any]) -> int:
     """Проверка по связке ключей издателя: ключ выбирается по kid из подписанного доказательства."""
     from datetime import UTC, datetime
 
@@ -370,13 +371,28 @@ def cmd_serve(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    options = server_options()
     if args.workers > 1:
-        uvicorn.run("mandat.api.app:create_app", factory=True, host=args.host, port=args.port, workers=args.workers)
+        uvicorn.run(
+            "mandat.api.app:create_app", factory=True, host=args.host, port=args.port, workers=args.workers, **options
+        )
     else:
         from mandat.api.app import create_app
 
-        uvicorn.run(create_app(store=store), host=args.host, port=args.port)
+        uvicorn.run(create_app(store=store), host=args.host, port=args.port, **options)
     return 0
+
+
+def server_options() -> dict[str, Any]:
+    """Защита сервера от перегрузки (OWASP API4:2023, R2-API-2).
+
+    ``limit_concurrency`` — сверх этого числа одновременных соединений uvicorn сразу отвечает 503, а не
+    копит очередь до таймаутов; ``timeout_keep_alive`` закрывает простаивающие соединения; заголовок
+    ``server`` не раскрывает сервер и его версию.
+    """
+    raw = os.environ.get("MANDAT_API_MAX_CONCURRENCY", "").strip()
+    limit = int(raw) if raw.isdigit() and int(raw) > 0 else 64
+    return {"limit_concurrency": limit, "timeout_keep_alive": 5, "server_header": False, "proxy_headers": False}
 
 
 def cmd_webhook_secret(args: argparse.Namespace) -> int:

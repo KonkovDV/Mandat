@@ -210,7 +210,7 @@ def _egrul(
     changed: Person | None = None,
     changed_on: date = date(2026, 10, 1),
     unreliable: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     executives = [
         {
             "full_name": world.director.full_name,

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from collections.abc import MutableMapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -96,7 +97,7 @@ class Guard:
         path = scope.get("path", "")
         headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
 
-        async def secured(message: dict[str, Any]) -> None:
+        async def secured(message: MutableMapping[str, Any]) -> None:
             if message["type"] == "http.response.start":
                 existing = list(message.get("headers", []))
                 extra = [] if any(k.lower() == b"content-security-policy" for k, _ in existing) else [DEFAULT_CSP]

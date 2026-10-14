@@ -15,7 +15,7 @@ from typing import Any
 
 from mandat.domain.model import EgrulSnapshot, EvidenceRef, ExecutiveRecord, Organization, Person
 
-STATUSES = {"active", "in_liquidation", "liquidated", "unknown"}
+STATUSES = {"active", "in_liquidation", "liquidated", "reorganizing", "terminated", "unknown"}
 
 
 # Тот же предел, что у разбора XML (xml_safety.MAX_XML_BYTES): лимит действует в самом разборщике,

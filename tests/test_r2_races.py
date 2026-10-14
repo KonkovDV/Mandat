@@ -194,3 +194,54 @@ def test_html_card_keeps_own_csp():
     assert response.status_code == 200
     csp = response.headers.get_list("content-security-policy")
     assert len(csp) == 1 and "style-src 'unsafe-inline'" in csp[0]
+
+
+# --- журнал под нагрузкой (R2-PERF-1) ---------------------------------------------------------
+
+
+def _append(path, n):
+    from mandat.audit import journal
+
+    for i in range(n):
+        journal.append(path, action="verify", actor="a", role="operator", case_id=f"c{i}")
+
+
+def test_journal_append_cost_does_not_grow_with_length(tmp_path):
+    from mandat.audit import journal
+
+    path = tmp_path / "j.jsonl"
+    _append(path, 50)
+    t0 = time.perf_counter()
+    _append(path, 50)
+    early = time.perf_counter() - t0
+    _append(path, 1500)
+    t0 = time.perf_counter()
+    _append(path, 50)
+    late = time.perf_counter() - t0
+    assert journal.verify_journal(path).ok
+    assert late < early * 5 + 0.05  # раньше каждая запись перечитывала и переписывала весь файл
+
+
+def test_journal_tampering_between_appends_is_still_caught(tmp_path):
+    from mandat.audit import journal
+
+    path = tmp_path / "j.jsonl"
+    _append(path, 3)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    lines[1] = lines[1].replace('"c1"', '"cX"')
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    with pytest.raises(journal.JournalError):
+        _append(path, 1)
+
+
+def test_journal_other_writer_invalidates_cache(tmp_path):
+    from mandat.audit import journal
+
+    path = tmp_path / "j.jsonl"
+    _append(path, 2)
+    journal._TAILS.clear()  # другой процесс: своего кэша нет
+    _append(path, 1)
+    journal._TAILS.clear()
+    _append(path, 1)
+    check = journal.verify_journal(path)
+    assert check.ok and check.records == 4

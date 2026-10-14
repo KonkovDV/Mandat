@@ -54,6 +54,9 @@ jobs:
           python -m pip install "pip-audit>=2.10"
           python -m pip_audit --skip-editable
           python -m pip_audit --require-hashes --disable-pip -r requirements/runtime.lock
+      - name: smoke load (API under 4 parallel clients, journal intact)
+        if: matrix.python == '3.12'
+        run: python tools/load/run_load.py --smoke
       - run: mandat demo
       - run: mandat eval --per-defect 6
       - run: mandat journal-verify var/demo/journal.jsonl

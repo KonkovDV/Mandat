@@ -92,3 +92,20 @@ def test_compose_requires_explicit_env(root):
     compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
     assert "MANDAT_ENV:?" in compose
     assert "MANDAT_ENV:-demo" not in compose
+
+
+def test_compose_follows_cis_limits(root):
+    compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
+    for needle in ("cap_drop:", "- ALL", "pids_limit:", "mem_limit:", "read_only: true", "no-new-privileges:true"):
+        assert needle in compose
+
+
+def test_server_options_bound_concurrency(monkeypatch):
+    monkeypatch.delenv("MANDAT_API_MAX_CONCURRENCY", raising=False)
+    options = cli.server_options()
+    assert options["limit_concurrency"] == 64
+    assert options["server_header"] is False and options["proxy_headers"] is False
+    monkeypatch.setenv("MANDAT_API_MAX_CONCURRENCY", "16")
+    assert cli.server_options()["limit_concurrency"] == 16
+    monkeypatch.setenv("MANDAT_API_MAX_CONCURRENCY", "-1")
+    assert cli.server_options()["limit_concurrency"] == 64

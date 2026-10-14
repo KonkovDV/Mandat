@@ -209,7 +209,7 @@ class EgrulSnapshot:
     doc_id: str
     sha256: str
     organization: Organization
-    status: str  # active | in_liquidation | liquidated | unknown
+    status: str  # active | in_liquidation | liquidated | reorganizing | terminated | unknown
     executives: tuple[ExecutiveRecord, ...]
     extracted_at: date | None
     full_name: str | None = None

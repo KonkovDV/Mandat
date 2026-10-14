@@ -180,18 +180,23 @@ def append(
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, lock = _acquire_lock(path)
     try:
-        if path.exists() or witness_path(path).exists():
-            # Новая запись продолжает только целую историю: битый префикс или срезанный хвост — отказ.
-            check = verify_journal(path, key=signing or "")
-            if not check.ok:
-                raise JournalError(check.broken_at or 0, f"журнал не цел, запись не добавлена: {check.reason}")
-        records = read_journal(path)
-        if precondition is not None:
-            done = precondition(records)
-            if done is not None:
-                return done
+        content = _content_digest(path)
+        tail = _verified_tail(path, signing, content.hexdigest()) if precondition is None else None
+        if tail is None:
+            if path.exists() or witness_path(path).exists():
+                # Новая запись продолжает только целую историю: битый префикс или срезанный хвост — отказ.
+                check = verify_journal(path, key=signing or "")
+                if not check.ok:
+                    raise JournalError(check.broken_at or 0, f"журнал не цел, запись не добавлена: {check.reason}")
+            records = read_journal(path)
+            if precondition is not None:
+                done = precondition(records)
+                if done is not None:
+                    return done
+            tail = (len(records), records[-1]["hash"] if records else GENESIS)
+        seq, prev = tail
         record: dict[str, Any] = {
-            "seq": len(records) + 1,
+            "seq": seq + 1,
             "at": (now or datetime.now(UTC)).isoformat(timespec="seconds"),
             "actor": actor,
             "role": role,
@@ -200,34 +205,86 @@ def append(
             "payload_hash": payload_hash,
             "reason": reason,
             "details": details or {},
-            "prev": records[-1]["hash"] if records else GENESIS,
+            "prev": prev,
         }
         record["hash"] = _digest(record)
         if signing:
             record["sig"] = _sign(record["hash"], signing)
-        line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
-        existing = path.read_bytes() if path.exists() else None
+        line = (json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
         witness = witness_path(path)
         previous_head = witness.read_bytes() if witness.exists() else None
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_bytes((existing or b"") + line.encode("utf-8"))
-        os.replace(tmp, path)
+        # Дозапись O_APPEND + fsync вместо переписывания всего файла: стоимость записи не растёт с длиной
+        # журнала (R2-PERF-1). Откат при сбое свидетеля — усечение до прежнего размера.
+        out = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_BINARY", 0), 0o600)
+        try:
+            before = os.fstat(out).st_size
+            os.write(out, line)
+            os.fsync(out)
+        finally:
+            os.close(out)
         try:
             _write_witness(path, record["seq"], record["hash"], signing)
         except Exception:
-            if existing is None:
-                path.unlink(missing_ok=True)
-            else:
-                path.write_bytes(existing)
+            os.truncate(path, before)
             if previous_head is None:
                 witness.unlink(missing_ok=True)
             else:
                 witness.write_bytes(previous_head)
+            _TAILS.pop(_cache_key(path), None)
             raise
+        content.update(line)
+        _remember_tail(path, record["seq"], record["hash"], signing, content.hexdigest())
         return record
     finally:
         os.close(fd)
         lock.unlink(missing_ok=True)
+
+
+# Хвост журнала, проверенный этим процессом: SHA-256 всего файла, свидетель и ключ → (seq, hash).
+# Если байты файла и свидетель с тех пор не менялись, полный разбор и пересчёт цепочки не нужны:
+# хеш файла читается линейно, но в десятки раз дешевле разбора JSON и пересчёта хешей каждой записи.
+# Отпечаток — по содержимому, а не по mtime: правка «той же длины» в пределах гранулярности часов ФС
+# по времени не видна.
+_TAILS: dict[str, tuple[tuple[str, bytes, str], tuple[int, str]]] = {}
+
+
+def _cache_key(path: Path) -> str:
+    return str(path.resolve())
+
+
+def _content_digest(path: Path) -> Any:
+    """SHA-256 содержимого файла (объект hashlib, чтобы дописать новую строку без перечитывания)."""
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(block)
+    except FileNotFoundError:
+        pass
+    return digest
+
+
+def _fingerprint(path: Path, signing: str | None, content: str | None = None) -> tuple[str, bytes, str] | None:
+    try:
+        witness = witness_path(path).read_bytes()
+    except OSError:
+        return None
+    marker = hashlib.sha256((signing or "").encode("utf-8")).hexdigest()
+    return (content or _content_digest(path).hexdigest(), witness, marker)
+
+
+def _verified_tail(path: Path, signing: str | None, content: str) -> tuple[int, str] | None:
+    cached = _TAILS.get(_cache_key(path))
+    if cached is None:
+        return None
+    fingerprint = _fingerprint(path, signing, content)
+    return cached[1] if fingerprint is not None and fingerprint == cached[0] else None
+
+
+def _remember_tail(path: Path, seq: int, head: str, signing: str | None, content: str) -> None:
+    fingerprint = _fingerprint(path, signing, content)
+    if fingerprint is not None:
+        _TAILS[_cache_key(path)] = (fingerprint, (seq, head))
 
 
 @dataclass(frozen=True)

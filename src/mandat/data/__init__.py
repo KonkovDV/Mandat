@@ -12,7 +12,8 @@ from typing import Any
 @cache
 def load_json(name: str) -> dict[str, Any]:
     text = resources.files(__name__).joinpath(name).read_text(encoding="utf-8")
-    return json.loads(text)
+    loaded: dict[str, Any] = json.loads(text)
+    return loaded
 
 
 def canonical_json(payload: Any) -> str:

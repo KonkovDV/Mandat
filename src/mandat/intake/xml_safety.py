@@ -59,4 +59,5 @@ def safe_fromstring(data: bytes | str) -> Element:
         for chunk in (node.text, node.tail):
             if chunk is not None and len(chunk) > MAX_TEXT_CHARS:
                 raise XmlRejected("слишком длинный текстовый узел")
-    return root
+    checked: Element = root
+    return checked

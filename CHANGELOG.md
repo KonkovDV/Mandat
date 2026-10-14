@@ -2,6 +2,14 @@
 
 ## Готовится (после 0.3.0, в main)
 
+Аудит R2 14.10.2026 ([docs/audit/AUDIT-2026-10-14-R2.md](docs/audit/AUDIT-2026-10-14-R2.md)):
+
+- case_loader: `O_NOFOLLOW`, `fstat`, ограниченное чтение (S-4); тесты гонок create_case/TTL (S-3).
+- Защитные заголовки и CSP на всех ответах API; `limit_concurrency`, без заголовка `server`; CIS-лимиты в compose.
+- Журнал: дозапись `O_APPEND`+`fsync` вместо перезаписи, ~4× RPS под нагрузкой.
+- ЕГРЮЛ: статусы «реорганизация» (на проверку) и «прекращено» (отказ), ст.188 п.1 подп.4 ГК.
+- mypy strict, доступность карточки (WCAG 2.2), мутационный mini-runner, нагрузочный стенд `tools/load/`, smoke-load в CI, [сценарии](docs/testing/TEST_SCENARIOS.md) и [отчёт о нагрузке](docs/testing/LOAD_REPORT-2026-10-14.md). Колода пересобрана: 714 автотестов.
+
 Аудит 14.10.2026 (ветка `audit/do-now`, [docs/audit/REDTEAM-2026-10-14.md](docs/audit/REDTEAM-2026-10-14.md)):
 
 - `mandat serve` в pilot/prod не стартует без `MANDAT_JOURNAL_KEY`, `MANDAT_PII_KEY` (от 32 байт) и с коротким `MANDAT_API_TOKEN`; compose требует явный `MANDAT_ENV`.

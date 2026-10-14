@@ -15,6 +15,7 @@ import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlparse
 
 from mandat.privacy.pii import pseudonymize
@@ -70,7 +71,7 @@ class OpenAICompatClient:
             raise LlmDisabled("модель выключена: MANDAT_LLM_BASE_URL не задан")
         return cls(base, os.environ.get("MANDAT_LLM_MODEL", "local-model"), os.environ.get("MANDAT_LLM_API_KEY"))
 
-    def body(self, messages: list[dict[str, str]]) -> dict:
+    def body(self, messages: list[dict[str, str]]) -> dict[str, Any]:
         return {"model": self.model, "temperature": 0, "seed": 7, "messages": messages}
 
     def complete(self, messages: list[dict[str, str]]) -> str:
@@ -106,7 +107,7 @@ def charter_messages(text: str) -> list[dict[str, str]]:
     ]
 
 
-def parse_facts(raw: str) -> list[dict]:
+def parse_facts(raw: str) -> list[dict[str, Any]]:
     start, end = raw.find("{"), raw.rfind("}")
     if start < 0 or end <= start:
         return []

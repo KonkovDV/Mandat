@@ -40,7 +40,7 @@ main{max-width:1080px;margin:0 auto}
 table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #e3e8ed;padding:6px 8px;text-align:left;
 vertical-align:top;font-size:14px}th{background:#eef2f5}.muted{color:#5a6673;font-size:13px}
 .warn{background:#fff6e5;border-color:#f0c36d}code{font-size:12px;word-break:break-all}
-.stand{background:#eef3fb;border-color:#9db4d6}.stand h2{margin-top:0;font-size:16px}
+caption{text-align:left;padding:0 0 6px}.stand{background:#eef3fb;border-color:#9db4d6}.stand h2{margin-top:0;font-size:16px}
 """
 
 
@@ -102,6 +102,11 @@ def render(report: dict[str, Any]) -> str:
     stand_html = f'<div class="card stand"><h2>Режим стенда</h2><ul>{stand}</ul></div>' if stand else ""
     signals = "".join(f"<li>{_e(msg)}</li>" for msg in report.get("signals") or [])
     signals_html = f'<div class="card warn"><h2>Сигналы</h2><ul>{signals}</ul></div>' if signals else ""
+    draft_html = (
+        "<li>Правила набора — черновик (draft): юрист банка их не утверждал.</li>"
+        if (report.get("rule_pack") or {}).get("status", "draft") == "draft"
+        else ""
+    )
     return f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Мандат — кейс {_e(report["case_id"])}</title><style>{CSS}</style></head><body><main>
@@ -119,11 +124,12 @@ def render(report: dict[str, Any]) -> str:
 <p class="muted">Очередь: {_e(QUEUE_RU.get(str(routing.get("queue")), routing.get("queue")))}
  · приоритет {_e(routing.get("priority") or "—")} · SLA {_e(routing.get("sla_hours") or "—")} ч (заглушка до калибровки с банком)</p>
 {right_html}</div>
-<div class="card"><h2>Группы проверок</h2><table><tr><th>Группа</th><th>Статус</th></tr>{checks}</table></div>
-<div class="card"><h2>Находки и доказательства</h2><table><tr><th>Правило</th><th>Эффект</th><th>Вывод</th>
-<th>Источник</th></tr>{"".join(rows)}</table></div>
+<div class="card"><h2>Группы проверок</h2><table><caption class="muted">Статус каждой группы проверок</caption><tr><th scope="col">Группа</th><th scope="col">Статус</th></tr>{checks}</table></div>
+<div class="card"><h2>Находки и доказательства</h2><table><caption class="muted">Правило, его эффект, вывод и ссылка на источник</caption><tr><th scope="col">Правило</th><th scope="col">Эффект</th><th scope="col">Вывод</th>
+<th scope="col">Источник</th></tr>{"".join(rows)}</table></div>
 <div class="card warn"><h2>Границы результата</h2><ul>{warnings}
 <li>«Подтверждено» означает соответствие правилам этой версии, а не юридическое заключение и не выдачу прав.</li>
+{draft_html}
 </ul></div>
 <div class="card muted">Набор правил {_e(report["rule_pack"]["pack_id"])} {_e(report["rule_pack"]["version"])}
  (<code>{_e(report["rule_pack"]["sha256"][:16])}</code>) · хеш отчёта <code>{_e(report["reproducibility_hash"][:16])}</code>

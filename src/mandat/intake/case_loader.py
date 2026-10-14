@@ -101,7 +101,7 @@ def _disposition(value: Any) -> str | None:
         return None
     if value != "no_applicable_restriction":
         raise CaseError("charter_disposition: no_applicable_restriction или пусто")
-    return value
+    return "no_applicable_restriction"
 
 
 SUBDELEGATION_FORMS = ("notarized", "legal_entity", "branch_head")
