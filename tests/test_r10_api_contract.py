@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from mandat.api.app import create_app
 
-PUBLIC = {("GET", "/health")}
+PUBLIC = {("GET", "/health"), ("GET", "/readyz")}
 
 
 def _export():

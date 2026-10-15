@@ -45,9 +45,15 @@ class Store(Protocol):
     def release(self, key: str) -> None:
         """Снять ключ ``first_seen`` раньше срока: заявка на создание кейса завершена."""
 
+    def ping(self) -> None:
+        """Проверка живости хранилища для /readyz; исключение значит «не готово»."""
+
 
 class MemoryStore:
     name = "memory"
+
+    def ping(self) -> None:
+        return None
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -118,6 +124,9 @@ class SQLiteStore:
             CREATE TABLE IF NOT EXISTS seen (key TEXT PRIMARY KEY, until REAL NOT NULL);
             """
         )
+
+    def ping(self) -> None:
+        self._db().execute("SELECT 1 FROM reports LIMIT 1").fetchall()
 
     def _db(self) -> sqlite3.Connection:
         db = getattr(self._local, "db", None)
@@ -236,6 +245,9 @@ class RedisStore:
 
     def release(self, key: str) -> None:
         self.r.delete(f"{self.prefix}seen:{key}")
+
+    def ping(self) -> None:
+        self.r.ping()
 
 
 def open_store(spec: str | None = None) -> Store:
