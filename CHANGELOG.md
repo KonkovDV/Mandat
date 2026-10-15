@@ -1,8 +1,16 @@
 # Изменения
 
+## 2026-10-15 — attest-verify print order + G-A risk JSON
+
+- Evidence/README/JURY: **1017** автотестов (line coverage 95,7 %).
+- CLI `attest-verify`: «подпись верна» только после всех проверок (не до exit 2/4).
+- G1 docs: `min(global, risk)`; LIMITS: `check_status(require_seen=False)` = диагностика.
+- G-A: в protected `MANDAT_STATUS_MAX_AGE_BY_RISK` только ужесточает defaults.
+- RESPONSE: M-13 → FIXED (код+тесты в main после #24/#25).
+
 ## 2026-10-15 — M-13 status freshness by risk
 
-- `status_max_age_for(operation_risk)`; unknown risk → strictest (min); JSON `MANDAT_STATUS_MAX_AGE_BY_RISK`
+- `status_max_age_for(operation_risk)`; unknown risk → strictest (min); JSON `MANDAT_STATUS_MAX_AGE_BY_RISK`; итог `min(global, risk)` (G1)
 - `authorize_operation` в protected требует `seen`; CLI `--operation-risk`
 - outage/POSIX notes в LIMITS/ARCHITECTURE; тесты `tests/test_m13_status_freshness_by_risk.py`
 - Evidence/README/JURY/колода: **1013** автотестов (line coverage 95,6 %).

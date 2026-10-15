@@ -113,6 +113,24 @@ def test_cli_attest_verify_prod_requires_status_dir(tmp_path, monkeypatch, capsy
     assert "принимается" not in err and "принимается" not in capsys.readouterr().out
 
 
+def test_cli_attest_verify_no_pass_print_before_exit_2(tmp_path, monkeypatch, capsys):
+    """Stage nit: «подпись верна» must not appear before exit 2/4 failures."""
+    monkeypatch.setenv("MANDAT_ENV", "prod")
+    key, cred, sd, _ = _issued(tmp_path, revoke=True)
+    path = tmp_path / "cred.json"
+    path.write_text(attestation.dump(cred), encoding="utf-8")
+    pub = attestation.public_key_multibase(key.public_key())
+    from mandat.cli import build_parser
+
+    args = build_parser().parse_args(["attest-verify", str(path), "--public-key", pub])
+    code = args.func(args)
+    captured = capsys.readouterr()
+    assert code == 2
+    combined = captured.out + captured.err
+    assert "подпись верна" not in combined
+    assert "нужен --status-dir" in captured.err
+
+
 def test_cli_crypto_only_never_says_accepted(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("MANDAT_ENV", "prod")
     key, cred, sd, _ = _issued(tmp_path, revoke=True)

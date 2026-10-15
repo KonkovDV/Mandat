@@ -49,12 +49,13 @@
 ## Свежесть списка статусов (M-13)
 
 Окно свежести подписанного списка задаёт `status_max_age_for(operation_risk)`:
-глобальный `MANDAT_STATUS_MAX_AGE_DAYS` перекрывает карту; иначе risk
+итог = min(глобальный `MANDAT_STATUS_MAX_AGE_DAYS`, окно risk-tier); risk
 (`payment` ≈ 1 ч, `archive_receipt` = 7 дней) или JSON
 `MANDAT_STATUS_MAX_AGE_BY_RISK`. Неизвестный risk → самое строгое окно (min по карте).
 Для допуска операции в pilot/prod `authorize_operation` требует high-watermark `seen`
 (fail-closed без него). CLI: `attest-verify --operation-risk payment`.
 
 **Авария / outage:** без свежего списка или без `seen` в protected — отказ, не «продолжить по кэшу».
-После отзыва кэш со state «действует» ловится watermark/`seen`. Ослабление окна —
-только явным `MANDAT_STATUS_MAX_AGE_DAYS` под ответственность ops.
+После отзыва кэш со state «действует» ловится watermark/`seen`. Глобальный `MANDAT_STATUS_MAX_AGE_DAYS` может только ужесточить окно,
+ослабить payment/high нельзя (G1). Ослабление — только правкой
+`MANDAT_STATUS_MAX_AGE_BY_RISK` под ответственность ops.
