@@ -50,6 +50,17 @@ jobs:
       - run: python scripts/lint_claims.py
       - run: python scripts/build_evidence.py --verify-source
       - run: python scripts/check_links.py
+      - name: workflow lint (actionlint, release pinned by SHA-256)
+        if: matrix.python == '3.12'
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$archive"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -no-color -oneline
       - name: known vulnerabilities in dependencies
         run: |
           # pip-audit в отдельном окружении из lock-файла с хешами; проверяется снимок окружения тестов.
@@ -84,7 +95,7 @@ jobs:
       - name: container refuses pilot mode without keys
         run: |
           set +e
-          docker run --rm -e MANDAT_ENV=pilot -e MANDAT_API_TOKEN=$(python3 -c "import secrets;print(secrets.token_hex(32))") mandat:ci
+          docker run --rm -e MANDAT_ENV=pilot -e "MANDAT_API_TOKEN=$(python3 -c 'import secrets;print(secrets.token_hex(32))')" mandat:ci
           test $? -eq 2
       - name: docker compose up with the documented .env
         run: |

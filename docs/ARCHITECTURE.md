@@ -12,6 +12,7 @@
 | Перекрёстная проверка | `rules/cedar_export.py`, `policies/cedar/` | передоверие на Cedar ([ADR-006](adr/ADR-006-decision-engine.md)) |
 | Порты | `ports.py` | реестр МЧД (запрос по номеру, ИНН доверителя и ИНН представителя, как в реестре ФНС с 01.03.2026), подпись, банкротство; в MVP заглушки |
 | Контракт API | `docs/api/openapi.json` | фиксируется `scripts/export_openapi.py`; тест сверяет его с приложением и проверяет, что каждый маршрут, кроме `/health`, требует токен |
+| Контракт манифеста кейса | `docs/api/case-manifest.schema.json` | JSON Schema 2020-12; `tests/test_r11_manifest_schema.py` проверяет, что схема и `intake/case_loader.py` принимают и отвергают одно и то же. Неизвестные ключи верхнего уровня загрузчик пропускает, схема — нет |
 | Сервисы | `services/verify.py`, `next_steps.py`, `rights.py`, `monitoring.py` | собирают проверку, о форматах не знают |
 | Аудит | `audit/journal.py`, `merkle.py`, `attestation.py`, `status_list.py` | всё проверяется без базы ([ADR-007](adr/ADR-007-status-list-and-merkle.md)) |
 | Советник | `advisory/gate.py`, `llm.py`, `explainer.py` | на вердикт не влияет ([ADR-001](adr/ADR-001-verdict-ownership.md)) |

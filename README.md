@@ -168,6 +168,7 @@ curl http://127.0.0.1:8000/health
 | [SECURITY.md](SECURITY.md), [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | безопасность и модель угроз |
 | [docs/audit/AUDIT.md](docs/audit/AUDIT.md) | аудит октября 2026: найденное, исправленное, открытое |
 | [docs/audit/AUDIT-2026-10-15-R4.md](docs/audit/AUDIT-2026-10-15-R4.md) | аудит R4: запрос к реестру по трём параметрам, контракт API; [SOTA 15.10](docs/research/SOTA-2026-10-15.md), [идеи из репозиториев](docs/research/PORTFOLIO-IDEAS-2026-10-15.md) |
+| [docs/audit/AUDIT-2026-10-15-R5.md](docs/audit/AUDIT-2026-10-15-R5.md) | глубокий проход 15.10: схема манифеста, actionlint, мутационное тестирование, Red Team; [правовая база](docs/research/LEGAL-BASIS-2026-10-15.md), [схема манифеста](docs/api/case-manifest.schema.json) |
 | [docs/audit/AUDIT-2026-10-14-R3.md](docs/audit/AUDIT-2026-10-14-R3.md) | аудит R3: отзыв сертификатов TSA, зависимости, pip-audit и Trivy |
 | [docs/audit/MURDER_BOARD-2026-10-14.md](docs/audit/MURDER_BOARD-2026-10-14.md) | враждебный разбор с девяти позиций и триаж |
 | [docs/research/REQUIREMENTS_MATRIX.md](docs/research/REQUIREMENTS_MATRIX.md) | матрица требований: жюри, банк, регулятор; разведка по открытым источникам ([OSINT](docs/research/OSINT-2026-10-14.md), [SOTA](docs/research/SOTA-2026-10-14.md)) |
