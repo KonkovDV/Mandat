@@ -297,7 +297,7 @@ def _attest_verify_keyring(args: argparse.Namespace, cred: dict[str, Any]) -> in
         if any("статус удостоверения:" in p for p in problems):
             return 3
         return 4
-    print("подпись верна, удостоверение подлинно")
+    print("подпись верна, удостоверение подлинно")  # после всех проверок
     print(f"вердикт в удостоверении: {(cred.get('credentialSubject') or {}).get('verdict')}")
     print("допуск операции: отдельно через authorize_operation / банковский контур")
     return 0
@@ -319,9 +319,10 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
         print("предупреждение: ключ взят из самого удостоверения, издатель не проверен", file=sys.stderr)
     key = attestation.public_key_from_multibase(trusted or method.split("#", 1)[-1])
     ok = attestation.verify_signature(cred, key)
-    print("подпись верна (только подпись)" if ok else "подпись НЕ верна")
     if not ok:
+        print("подпись НЕ верна", file=sys.stderr)
         return 1
+    # «подпись верна» печатаем только после всех проверок, чтобы exit 2/4 не читался как успех.
     from datetime import UTC, datetime
 
     from mandat.services.env_policy import protected, require_attestation_status
@@ -332,6 +333,7 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
             print(f"криптопроверка: {problem}", file=sys.stderr)
         if problems:
             return 4
+        print("подпись верна (только подпись)")
         print("поля удостоверения верны (только криптография, допуск операции не подтверждён)")
         print(f"вердикт в удостоверении: {(cred.get('credentialSubject') or {}).get('verdict')}")
         return 0
@@ -363,6 +365,7 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
         return 4
     # Действительное удостоверение бывает и у опровергнутого кейса: вердикт печатается всегда.
     verdict = (cred.get("credentialSubject") or {}).get("verdict")
+    print("подпись верна")
     print(f"вердикт в удостоверении: {verdict}")
     print("удостоверение подлинно; допуск операции — отдельно (authorize_operation)")
     if status_dir is None and cred.get("credentialStatus"):
