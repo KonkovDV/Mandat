@@ -164,5 +164,7 @@ def test_authorize_operation_rejects_refuted_even_with_valid_status(tmp_path, mo
         cred, [key.public_key()], now=NOW + timedelta(minutes=1), status_dir=sd, require_status=True
     )
     assert crypto == [], crypto  # квитанция подлинна даже при refuted
-    auth = attestation.authorize_operation(cred, [key.public_key()], now=NOW + timedelta(minutes=1), status_dir=sd)
+    auth = attestation.authorize_operation(
+        cred, [key.public_key()], now=NOW + timedelta(minutes=1), status_dir=sd, seen={}
+    )
     assert any("confirmed" in p or "вердикт" in p for p in auth)

@@ -45,3 +45,14 @@
 ## Статусы удостоверений (single-node)
 
 `StatusRegistry.save` берёт межпроцессный `fcntl.flock`; при конфликте sequence делает **OR только для битов revocation**; расхождение suspension или конфликт индекса → `StaleRegistryError`. Публикует `snapshots/{n}/` и атомарный `CURRENT`. Это закрывает lost update на одной машине (M-02). Несколько реплик-писателей нуждаются в общем lock или БД-CAS — текущий file backend на это не рассчитан.
+
+## Свежесть списка статусов (M-13)
+
+Окно свежести подписанного списка задаёт `status_max_age_for(operation_risk)`:
+глобальный `MANDAT_STATUS_MAX_AGE_DAYS` перекрывает карту; иначе risk
+(`payment` ≈ 1 ч, `archive_receipt` = 7 дней) или JSON
+`MANDAT_STATUS_MAX_AGE_BY_RISK`. Для допуска операции в pilot/prod
+`authorize_operation` требует high-watermark `seen` (fail-closed без него).
+Свежая подпись списка сама по себе не доказывает свежесть полномочий — только
+возраст снимка относительно политики риска.
+

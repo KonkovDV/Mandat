@@ -1,12 +1,17 @@
 # Изменения
 
+## 2026-10-15 — M-06 / M-13 (LLM TLS + status freshness by risk)
+
+- M-06: в pilot/prod `OpenAICompatClient` требует `https`, кроме loopback (`127.0.0.1`/`localhost`/`::1`) при `MANDAT_LLM_ALLOW_INSECURE_LOOPBACK=1`; SECURITY/`.env.example` обновлены.
+- M-13: `status_max_age_for(operation_risk)` (+ JSON `MANDAT_STATUS_MAX_AGE_BY_RISK`); неизвестный risk → самое строгое окно; `authorize_operation` в protected требует `seen`; CLI `--operation-risk`.
+- Тесты: `tests/test_m06_llm_tls.py`, `tests/test_m13_status_freshness_by_risk.py`.
+
 ## 2026-10-15 — M-01/M-02 attestation lifecycle (#18)
 
 - Fail-closed статус удостоверения в pilot/prod: без каталога статусов / при отзыве / приостановке / устаревшем списке — отказ; CLI `--crypto-only` не говорит «принимается».
 - `StatusRegistry`: `fcntl.flock`, CAS sequence, OR только для revocation; suspension/конфликт idx → `StaleRegistryError`; snapshots + `CURRENT`.
 - Автотесты / **line coverage**: **993** / **95,8 %** (поля `tests.passed` / `tests.coverage_percent` в `evidence.json`).
 - Docs: DEMO/ARCHITECTURE — OR только revocation.
-
 
 ## 2026-10-15 — R6 docs
 

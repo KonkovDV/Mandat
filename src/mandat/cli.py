@@ -374,6 +374,7 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
                 key,
                 seen=seen if seen_path else None,
                 now=datetime.now(UTC) if must_status else None,
+                require_seen=False,
             )
         except (OSError, ValueError, KeyError) as exc:
             print(f"статус не проверен: {exc}", file=sys.stderr)
