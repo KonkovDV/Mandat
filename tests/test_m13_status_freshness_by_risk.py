@@ -57,9 +57,13 @@ def test_unknown_risk_uses_strictest_window():
     assert status_max_age_for("xyz") < status_max_age_for("default")
 
 
-def test_global_env_overrides_risk_map(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("MANDAT_STATUS_MAX_AGE_DAYS", "3")
-    assert status_max_age_for("payment") == 3.0
+def test_global_env_is_min_with_risk_map(monkeypatch: pytest.MonkeyPatch):
+    """G1: global ceiling cannot loosen payment (min(global, risk))."""
+    monkeypatch.setenv("MANDAT_STATUS_MAX_AGE_DAYS", "7")
+    payment = status_max_age_for("payment")
+    assert payment < 1  # still ~1h, not 7d
+    monkeypatch.setenv("MANDAT_STATUS_MAX_AGE_DAYS", "0.01")
+    assert status_max_age_for("archive_receipt") == 0.01  # global tighter than archive
 
 
 def test_payment_fresh_30m(tmp_path, monkeypatch: pytest.MonkeyPatch):
