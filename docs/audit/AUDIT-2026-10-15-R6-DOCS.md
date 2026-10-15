@@ -12,7 +12,7 @@
 | R5.1-5 | План 315-ФЗ → R-FMT-001 до 01.09.2027 | [MIGRATION-315-FZ-R-FMT-001.md](../research/MIGRATION-315-FZ-R-FMT-001.md) |
 | R5.1-6 | Логические мутанты mutmut | `tests/test_r51_mutation_kills.py`, [MUTATION.md](../testing/MUTATION.md) |
 
-## 10 находок фактчека Вани (все закрыты)
+## 10 находок фактчека (все закрыты)
 
 | № | Находка | Исправление |
 |---|---|---|
