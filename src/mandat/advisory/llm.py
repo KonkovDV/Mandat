@@ -68,13 +68,13 @@ class OpenAICompatClient:
         from mandat.services.env_policy import protected
 
         if protected() and parsed.scheme != "https":
-            loopback = host in {"127.0.0.1", "localhost"}
+            loopback = host in {"127.0.0.1", "localhost", "::1"}
             flag = os.environ.get("MANDAT_LLM_ALLOW_INSECURE_LOOPBACK", "").strip().lower()
             allow_insecure = flag in {"1", "true", "yes", "on"}
             if not (loopback and allow_insecure):
                 raise ValueError(
                     "в pilot/prod MANDAT_LLM_BASE_URL должен быть https "
-                    "(для http://127.0.0.1|localhost задайте MANDAT_LLM_ALLOW_INSECURE_LOOPBACK=1)"
+                    "(для http://127.0.0.1|localhost|::1 задайте MANDAT_LLM_ALLOW_INSECURE_LOOPBACK=1)"
                 )
 
     @classmethod

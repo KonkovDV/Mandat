@@ -119,7 +119,8 @@ def status_max_age_for(operation_risk: str | None = None) -> float:
 
     Если задан ``MANDAT_STATUS_MAX_AGE_DAYS`` — он перекрывает карту рисков (ops override).
     Иначе: ``operation_risk`` из ``DEFAULT_STATUS_MAX_AGE_BY_RISK`` /
-    ``MANDAT_STATUS_MAX_AGE_BY_RISK``; неизвестный risk → ``default`` (7 дней).
+    ``MANDAT_STATUS_MAX_AGE_BY_RISK``. ``None``/пусто → ``default``.
+    Неизвестный risk → **самое строгое** окно (минимум по карте), не default.
     """
     if os.environ.get("MANDAT_STATUS_MAX_AGE_DAYS", "").strip():
         return status_max_age_days()
@@ -127,7 +128,8 @@ def status_max_age_for(operation_risk: str | None = None) -> float:
     risk = (operation_risk or "default").strip().lower() or "default"
     if risk in mapping:
         return float(mapping[risk])
-    return float(mapping.get("default", DEFAULT_STATUS_MAX_AGE_DAYS))
+    # Unknown risk: fail toward fresher lists (strictest = min days in map).
+    return float(min(mapping.values()))
 
 
 def _lock_path(directory: Path) -> Path:
