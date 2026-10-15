@@ -257,6 +257,9 @@ def validate_attestation(
     status_dir: Path | None = None,
     allow_demo: bool = False,
     require_status: bool | None = None,
+    seen: dict[str, int] | None = None,
+    operation_risk: str | None = None,
+    require_seen: bool = False,
 ) -> list[str]:
     """Подлинность удостоверения как квитанции результата.
 
@@ -315,7 +318,15 @@ def validate_attestation(
         from mandat.audit.status_list import check_status
 
         try:
-            state = check_status(credential, status_dir, keyring.for_status_lists() or [key], now=now)["state"]
+            state = check_status(
+                credential,
+                status_dir,
+                keyring.for_status_lists() or [key],
+                now=now,
+                seen=seen,
+                operation_risk=operation_risk,
+                require_seen=require_seen,
+            )["state"]
         except (OSError, ValueError, KeyError) as exc:
             problems.append(f"статус не проверен: {exc}")
         else:
@@ -331,18 +342,34 @@ def authorize_operation(
     now: datetime,
     status_dir: Path,
     allow_demo: bool = False,
+    seen: dict[str, int] | None = None,
+    operation_risk: str | None = None,
 ) -> list[str]:
     """Допуск операции по удостоверению: подлинность + статус + вердикт confirmed.
 
     Успех ``validate_attestation`` при вердикте refuted/needs_review недостаточен для операции.
+    В pilot/prod обязателен ``seen`` (high-watermark списков) и учитывается ``operation_risk`` (M-13).
     """
-    problems = validate_attestation(
-        credential,
-        trusted_keys,
-        now=now,
-        status_dir=status_dir,
-        allow_demo=allow_demo,
-        require_status=True,
+    from mandat.services.env_policy import protected
+
+    problems: list[str] = []
+    require_seen = bool(protected())
+    if require_seen and seen is None:
+        problems.append("нет high-watermark seen: в защищённом режиме обязателен для допуска операции")
+    problems.extend(
+        validate_attestation(
+            credential,
+            trusted_keys,
+            now=now,
+            status_dir=status_dir,
+            allow_demo=allow_demo,
+            require_status=True,
+            seen=seen,
+            operation_risk=operation_risk,
+            # Если seen уже отсутствует — не дублируем ошибку check_status; age всё равно проверим
+            # только когда watermark передан.
+            require_seen=require_seen and seen is not None,
+        )
     )
     verdict = (credential.get("credentialSubject") or {}).get("verdict")
     if verdict != "confirmed":
