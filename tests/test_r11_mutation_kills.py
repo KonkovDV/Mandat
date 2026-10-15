@@ -242,3 +242,86 @@ def test_format_supports_eio_direct_points_to_egrul_document():
     (f,) = [x for x in verify_case(case).findings if x.rule_id == "R-FMT-001"]
     assert f.message == "Сведения ЕГРЮЛ приняты"
     assert f.refs[0].doc_id == case.egrul.doc_id and f.refs[0].locator == "$"
+
+
+# --- R-EIO-004: статус юрлица по ЕГРЮЛ и банкротство обеих сторон ---
+
+
+@pytest.mark.parametrize(
+    ("status", "effect", "phrase"),
+    [
+        ("unknown", "not_verified", "В снимке ЕГРЮЛ не указан статус организации"),
+        ("liquidated", "refutes", "Организация ликвидирована по данным ЕГРЮЛ"),
+        ("terminated", "refutes", "Организация прекратила деятельность"),
+        ("reorganizing", "needs_review", "ГК РФ, ст. 188 п. 1 подп. 4"),
+        ("liquidating", "needs_review", "Организация в процессе ликвидации"),
+    ],
+)
+def test_org_status_egrul_effects(status, effect, phrase):
+    import dataclasses
+
+    ctx = _ctx()
+    assert ctx.case.egrul is not None
+    ctx.case = dataclasses.replace(ctx.case, egrul=dataclasses.replace(ctx.case.egrul, status=status))
+    (f,) = checks._org_status_egrul(ctx)
+    assert (f.rule_id, f.effect.value) == ("R-EIO-004", effect)
+    assert phrase in f.message
+    assert f.refs == (checks.EvidenceRef(ctx.case.egrul.doc_id, ctx.case.egrul.sha256, "$.status"),)
+
+
+def test_org_status_active_is_silent():
+    assert checks._org_status_egrul(_ctx()) == []
+
+
+class _Bankrupt:
+    name, is_stub = "fixture-bnk", True
+
+    def __init__(self, table):
+        self.table = table
+
+    def status(self, inn):
+        from mandat.ports import BankruptcyStatus
+
+        return self.table.get(inn, BankruptcyStatus.NONE)
+
+
+def _bnk_ctx(org_status, rep_status):
+    ctx = _ctx()
+    table = {ctx.case.organization.inn: org_status, ctx.case.requester.inn: rep_status}
+    ctx.ports = Ports(registry=ctx.ports.registry, signature=ctx.ports.signature, bankruptcy=_Bankrupt(table))
+    return ctx
+
+
+def test_bankruptcy_checks_both_parties_after_unrecognized_principal():
+    from mandat.data import sha256_json
+    from mandat.ports import BankruptcyStatus as B
+
+    ctx = _bnk_ctx(B.UNRECOGNIZED, B.PROPERTY_SALE)
+    first, second = checks._bankruptcy(ctx)
+    org, rep = ctx.case.organization.inn, ctx.case.requester.inn
+    assert first.message.startswith(f"Доверитель (ИНН {org}): статус банкротства из источника не распознан")
+    assert second.message.startswith(f"Представитель (ИНН {rep}): ")
+    assert second.refs == (
+        checks.EvidenceRef(
+            "efrsb:fixture-bnk",
+            sha256_json({"inn": rep, "status": "property_sale"}),
+            f"efrsb:{rep}",
+            quote="property_sale",
+        ),
+    )
+
+
+def test_bankruptcy_procedure_of_wrong_person_kind_needs_review():
+    from mandat.ports import BankruptcyStatus as B
+
+    ctx = _bnk_ctx(B.DEBT_RESTRUCTURING, B.NONE)
+    (f,) = checks._bankruptcy(ctx)
+    assert f.effect.value == "needs_review"
+    assert "процедура debt_restructuring не подходит к этому лицу" in f.message
+
+
+def test_bankruptcy_none_for_principal_still_checks_representative():
+    from mandat.ports import BankruptcyStatus as B
+
+    (f,) = checks._bankruptcy(_bnk_ctx(B.NONE, B.UNRECOGNIZED))
+    assert f.message.startswith("Представитель")
