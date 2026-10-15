@@ -113,6 +113,40 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
 
+  # M-03: пилотный compose-оверлей поднимается с постоянным томом, healthcheck по /readyz, данные переживают рестарт.
+  # Это smoke-проверка конфигурации, а не подтверждение готовности к пилоту.
+  compose-pilot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --require-hashes -r requirements/pip.lock
+      - run: python -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
+      - run: python -m pip install --no-deps --no-build-isolation -e .
+      - name: pilot compose up --wait and persistence across restart
+        run: |
+          cp .env.example .env
+          for name in MANDAT_API_TOKEN MANDAT_JOURNAL_KEY MANDAT_PII_KEY; do
+            sed -i "s/^${name}=.*/${name}=$(python3 -c 'import secrets;print(secrets.token_hex(32))')/" .env
+          done
+          MANDAT_API_TOKEN="$(grep '^MANDAT_API_TOKEN=' .env | cut -d= -f2)"
+          export MANDAT_API_TOKEN
+          docker compose -f docker-compose.yml -f deploy/compose.pilot.yml config > /dev/null
+          docker compose -f docker-compose.yml -f deploy/compose.pilot.yml up -d --build --wait --wait-timeout 180
+          python scripts/pilot_smoke.py
+      - name: compose logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml -f deploy/compose.pilot.yml logs --no-color mandat | sed -E 's/(KEY|TOKEN|SECRET)=[^ ]+/\1=***/g'
+      - name: compose down
+        if: always()
+        run: docker compose -f docker-compose.yml -f deploy/compose.pilot.yml down -v
+
   # Пакет, SBOM и подписанное происхождение сборки (SLSA provenance) только для main.
   package:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

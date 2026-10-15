@@ -1,5 +1,13 @@
 # Изменения
 
+## 2026-10-15 — M-03 pilot compose + /readyz
+
+- `deploy/compose.pilot.yml`: постоянный том `/app/var`, `MANDAT_ENV=pilot`, SQLite-хранилище, журнал, healthcheck по `/readyz`.
+- `GET /readyz` (журнал + хранилище + ключи → 200/503, без деталей в теле); `/health` остаётся liveness.
+- CI: job `compose-pilot` (`docker compose up --wait`, кейс и журнал переживают рестарт).
+- Это проверка конфигурации, не готовность к пилоту; атомарность журнал/хранилище (M-10) не решена.
+- Evidence/README/JURY: **1028** автотестов.
+
 ## 2026-10-15 — M-10 journal/store two-phase write
 
 - `POST /v1/cases`: stage → журнал → commit; 200 только после commit; сверка после сбоя; `Idempotency-Key`; fencing по номеру попытки. Не exactly-once.
