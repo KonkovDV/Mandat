@@ -54,7 +54,7 @@
 
 ## 2026-10-15 — R6 docs
 
-- Полный фактчек документации + 10 находок Вани: даты EVALUATION/CLAIMS, MUTATION (878 и fuzz≠mutmut), LEGAL_TRACEABILITY/strict, REGULATORY (315-ФЗ, R-SUB, R-BNK-001, сноска приказа № 1001), LEGAL-BASIS R-SIG, ECONOMICS/M-09, покрытие 96,0 %.
+- Полный фактчек документации + 10 находок ревью: даты EVALUATION/CLAIMS, MUTATION (878 и fuzz≠mutmut), LEGAL_TRACEABILITY/strict, REGULATORY (315-ФЗ, R-SUB, R-BNK-001, сноска приказа № 1001), LEGAL-BASIS R-SIG, ECONOMICS/M-09, покрытие 96,0 %.
 - Включены остатки R5.1: LEGAL-BASIS [П]/[П-рекв], план 315-ФЗ, `tests/test_r51_mutation_kills.py`, `scripts/finish.sh`.
 - Аудит: `docs/audit/AUDIT-2026-10-15-R6-DOCS.md`. Колода пересобрана (960 автотестов).
 
