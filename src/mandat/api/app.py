@@ -7,7 +7,7 @@
 * пользователи: ``MANDAT_API_USERS`` (см. ``api/principals.py``), у каждого роль, ``case_id`` выдаёт сервер,
   а кейс видит только тот, кто его создал, плюс аудитор и администратор.
 
-Без токенов API отвечает только на /health: закрыто по умолчанию.
+Без токенов API отвечает только на /health и /readyz: закрыто по умолчанию.
 Swagger на /docs включается флагом ``MANDAT_API_DOCS=1``. Частота запросов ограничена
 ``MANDAT_API_RATE_PER_MIN`` (по умолчанию 120 в минуту на адрес клиента, 0 выключает). Адрес берётся
 из соединения, ``X-Forwarded-For`` не читается: за прокси лимит надо ставить на самом прокси.
@@ -17,10 +17,14 @@ Swagger на /docs включается флагом ``MANDAT_API_DOCS=1``. Ча
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
+import json
 import logging
 import os
 import re
 import secrets
+import time
 import traceback
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
@@ -33,7 +37,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from mandat import ENGINE, __version__
 from mandat.api.principals import Directory, Principal, load_users
-from mandat.api.storage import Store, open_store
+from mandat.api.storage import Idem, Pending, Store, open_store
 from mandat.audit import journal
 from mandat.intake.case_loader import CaseError, load_case_inline
 from mandat.report.html import render
@@ -42,7 +46,7 @@ from mandat.services.monitoring import evaluate, parse_events
 from mandat.services.verify import verify_case
 
 MAX_BODY = 8 * 1024 * 1024
-OPEN_PATHS = {"/health"}
+OPEN_PATHS = {"/health", "/readyz"}
 # Глубина вложенности JSON. Глубокий массив в 2 КБ вызывал RecursionError при разборе ошибки валидации (500).
 MAX_JSON_DEPTH = 64
 # OWASP Secure Headers Project и ASVS 5.0 V3.4: ответы с ПДн не кэшируются, не встраиваются во фреймы,
@@ -208,6 +212,37 @@ def _env_flag(name: str) -> bool:
 
 # Сколько держится заявка на создание кейса: дольше, чем занимает проверка и запись в журнал.
 CREATE_CLAIM_SECONDS = 30.0
+# Idempotency-Key: безопасный набор символов, чтобы ключ не попал в журнал/логи как произвольный текст.
+IDEMPOTENCY_KEY = re.compile(r"[A-Za-z0-9._~-]{1,128}")
+
+
+def readiness(store: Store, journal_path: Path | None) -> dict[str, str]:
+    """Проверки для /readyz. Значения: ok | fail | not_configured (последнее только вне pilot/prod)."""
+    from mandat.services.env_policy import key_problem
+
+    checks: dict[str, str] = {}
+    try:
+        store.ping()
+        checks["store"] = "ok"
+    except Exception:
+        checks["store"] = "fail"
+    if protected() and store.name == "memory":
+        checks["store"] = "fail"  # pilot/prod: память процесса не переживает рестарт
+    if journal_path is None:
+        checks["journal"] = "fail" if protected() else "not_configured"
+    else:
+        try:
+            parent = journal_path.parent
+            parent.mkdir(parents=True, exist_ok=True)
+            ok = os.access(parent, os.W_OK) and (not journal_path.exists() or os.access(journal_path, os.W_OK))
+            checks["journal"] = "ok" if ok else "fail"
+        except OSError:
+            checks["journal"] = "fail"
+    try:
+        checks["keys"] = "fail" if key_problem() else "ok"
+    except Exception:
+        checks["keys"] = "fail"
+    return checks
 
 
 def create_app(
@@ -220,7 +255,9 @@ def create_app(
     journal_path: Path | None = None,
 ) -> FastAPI:
     expected = token if token is not None else os.environ.get("MANDAT_API_TOKEN", "")
-    directory = Directory(load_users(users), expected)
+    raw_users = (users if users is not None else os.environ.get("MANDAT_API_USERS", "")).strip()
+    users_file = Path(raw_users) if raw_users and not raw_users.startswith("[") else None
+    directory = Directory(load_users(users), expected, reload_path=users_file)
     show_docs = docs if docs is not None else _env_flag("MANDAT_API_DOCS")
     limit = rate_per_min if rate_per_min is not None else int(os.environ.get("MANDAT_API_RATE_PER_MIN", "120"))
     app = FastAPI(
@@ -284,19 +321,109 @@ def create_app(
             "store": shared.name,
         }
 
+    @app.get("/readyz")
+    def readyz() -> JSONResponse:
+        """Готовность (не живость): журнал, хранилище, ключи. 200 только если все проверки прошли.
+
+        В теле только имена проверок и ok/fail, без путей и текстов исключений. Это проверка конфигурации и
+        доступности на момент запроса, а не гарантия сохранности данных.
+        """
+        checks = readiness(shared, audit_log)
+        ready = all(v in ("ok", "not_configured") for v in checks.values())
+        body = {"status": "ready" if ready else "not_ready", "checks": checks}
+        return JSONResponse(body, status_code=200 if ready else 503)
+
+    def journal_has(pend: Pending) -> bool:
+        """В журнале есть запись именно этой попытки. Ошибка чтения журнала — исключение, а не «нет»."""
+        assert audit_log is not None
+        for rec in journal.read_journal(audit_log):
+            details = rec.get("details") or {}
+            if (
+                rec.get("action") == "verify"
+                and rec.get("case_id") == pend.case_id
+                and details.get("attempt") == pend.attempt
+                and rec.get("payload_hash") == pend.report.get("reproducibility_hash")
+            ):
+                return True
+        return False
+
+    def reconcile_one(pend: Pending, *, force: bool = False) -> str:
+        """Свести ожидающую запись с журналом после сбоя (M-10).
+
+        Запись журнала этой попытки есть → отчёт подтверждается (журнал — источник истины, клиент мог
+        не получить 200). Записи нет → попытка отбрасывается: клиенту 200 не уходил. Свежие записи
+        (моложе заявки на создание) не трогаем без ``force``: их может писать живой запрос другого
+        воркера. Если журнал не читается, ничего не решаем.
+        """
+        if not force and time.time() - pend.staged_at < CREATE_CLAIM_SECONDS:
+            return "skipped"
+        if audit_log is not None:
+            try:
+                recorded = journal_has(pend)
+            except (ValueError, OSError, journal.JournalKeyMissing, journal.JournalError):
+                return "skipped"
+            if recorded:
+                return "committed" if shared.commit(pend.case_id, pend.attempt, MAX_REPORTS) else "superseded"
+        return "discarded" if shared.discard(pend.case_id, pend.attempt) else "superseded"
+
+    def reconcile_all() -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for pend in shared.pending_all():
+            outcome = reconcile_one(pend)
+            counts[outcome] = counts.get(outcome, 0) + 1
+        return counts
+
+    app.state.reconcile = reconcile_all
+    # После падения процесса: подтвердить или отбросить то, что осталось «в полёте». Хранилище может быть
+    # недоступно при старте, тогда сверка повторится при следующем запросе по этому кейсу.
+    with contextlib.suppress(Exception):
+        reconcile_all()
+
     @app.post("/v1/cases")
     def create_case(
         manifest: dict[str, Any],
         profile: str | None = None,
         replace: bool = False,
         principal: Principal = Depends(writer),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ) -> dict[str, Any]:
         if profile is not None and profile not in PROFILES:
             raise HTTPException(422, "profile: demo или strict")
         try:
-            profile = resolve_profile(profile)
+            resolved = resolve_profile(profile)
         except ProfileNotAllowed as exc:
             raise HTTPException(403, str(exc)) from exc
+        if idempotency_key is None:
+            return _create(manifest, resolved, replace, principal, None)
+        key = idempotency_key.strip()
+        if not IDEMPOTENCY_KEY.fullmatch(key):
+            raise HTTPException(422, "Idempotency-Key: 1–128 символов из A-Z a-z 0-9 . _ ~ -")
+        canonical = json.dumps(
+            {"manifest": manifest, "profile": profile, "replace": replace}, sort_keys=True, ensure_ascii=False
+        )
+        idem = Idem(principal.name, key, hashlib.sha256(canonical.encode("utf-8")).hexdigest())
+        lease = f"idem:{idem.owner}:{idem.key}"
+        if not shared.first_seen(lease, CREATE_CLAIM_SECONDS):
+            raise HTTPException(409, "запрос с этим Idempotency-Key уже выполняется: повторите позже")
+        try:
+            stale = shared.pending_for_idem(idem.owner, idem.key)
+            if stale is not None:
+                reconcile_one(stale, force=True)  # прошлая попытка с этим ключом оборвалась посреди записи
+            done = shared.idem_get(idem.owner, idem.key)
+            if done is not None:
+                if done[1] != idem.fingerprint:
+                    raise HTTPException(422, "Idempotency-Key уже использован с другим запросом")
+                found = shared.get(done[0])
+                if found is None:
+                    raise HTTPException(409, "результат запроса с этим Idempotency-Key больше не хранится")
+                return found[0]
+            return _create(manifest, resolved, replace, principal, idem)
+        finally:
+            shared.release(lease)
+
+    def _create(
+        manifest: dict[str, Any], profile: str, replace: bool, principal: Principal, idem: Idem | None
+    ) -> dict[str, Any]:
         client_ref = manifest.get("case_id")
         if directory.multi_user:
             manifest = {**manifest, "case_id": f"case-{secrets.token_hex(8)}"}
@@ -318,13 +445,22 @@ def create_app(
         if not shared.first_seen(claim, CREATE_CLAIM_SECONDS):
             raise HTTPException(409, "кейс с таким case_id сейчас записывается другим запросом: повторите позже")
         try:
-            return _store(case_id, report, principal, client_ref, replace)
+            return _store(case_id, report, principal, client_ref, replace, idem)
         finally:
             shared.release(claim)
 
     def _store(
-        case_id: str, report: dict[str, Any], principal: Principal, client_ref: Any, replace: bool
+        case_id: str,
+        report: dict[str, Any],
+        principal: Principal,
+        client_ref: Any,
+        replace: bool,
+        idem: Idem | None,
     ) -> dict[str, Any]:
+        # Заявка у нас в руках, значит живой записи этого кейса нет: оставшееся «в полёте» — след сбоя.
+        stale = shared.pending(case_id)
+        if stale is not None:
+            reconcile_one(stale, force=True)
         existing = shared.get(case_id)
         if existing is not None and not replace:
             raise HTTPException(409, "кейс с таким case_id уже есть: передайте replace=true, чтобы перезаписать")
@@ -334,9 +470,17 @@ def create_app(
             report = {**report, "client_case_id": str(client_ref)}
         if audit_log is None and protected():
             raise HTTPException(503, "журнал аудита не настроен: задайте MANDAT_API_JOURNAL")
+        # Порядок (M-10): stage в хранилище → запись журнала → commit. Отчёт виден (GET) и 200 уходит только после
+        # commit. Сбой между шагами оставляет «ожидающую» запись, которую сверка (reconcile) подтверждает, если
+        # запись журнала этой попытки есть, и отбрасывает, если её нет. Это не распределённая транзакция и не
+        # exactly-once: журнал и хранилище остаются двумя системами, а повтор без Idempotency-Key после
+        # сбоя может получить 409 вместо повторного ответа.
+        attempt = secrets.token_hex(16)
+        try:
+            shared.stage(case_id, report, principal.name, attempt, idem)
+        except Exception as exc:
+            raise ApiProblem(503, "хранилище недоступно, кейс не сохранён", f"store: {type(exc).__name__}") from exc
         if audit_log is not None:
-            # Сначала журнал, потом хранилище: отчёт без записи в журнале не появляется. Если хранилище
-            # упадёт после журнала, в журнале останется запись о проверке без сохранённого отчёта — это видно.
             try:
                 journal.append(
                     audit_log,
@@ -345,12 +489,27 @@ def create_app(
                     role=principal.role,
                     case_id=case_id,
                     payload_hash=report["reproducibility_hash"],
-                    details={"verdict": report["verdict"], "profile": report["profile"], "via": "api"},
+                    details={
+                        "verdict": report["verdict"],
+                        "profile": report["profile"],
+                        "via": "api",
+                        "attempt": attempt,
+                    },
                 )
             except (ValueError, OSError, journal.JournalKeyMissing) as exc:
+                with contextlib.suppress(Exception):
+                    shared.discard(case_id, attempt)
                 cause = f"journal: {type(exc).__name__}: {exc}"
                 raise ApiProblem(503, "журнал аудита недоступен, кейс не сохранён", cause) from exc
-        shared.put(case_id, report, principal.name, MAX_REPORTS)
+        try:
+            committed = shared.commit(case_id, attempt, MAX_REPORTS)
+        except Exception as exc:
+            # Запись в журнале уже есть, отчёт ждёт подтверждения: клиенту не 200, сверка завершит позже.
+            raise ApiProblem(
+                503, "хранилище недоступно: кейс записан в журнал, но не подтверждён", f"store: {type(exc).__name__}"
+            ) from exc
+        if not committed:
+            raise HTTPException(409, "запись вытеснена другой попыткой: повторите запрос")
         return report
 
     @app.get("/v1/cases/{case_id}")

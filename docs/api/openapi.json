@@ -81,6 +81,23 @@
         "summary": "Health"
       }
     },
+    "/readyz": {
+      "get": {
+        "description": "Готовность (не живость): журнал, хранилище, ключи. 200 только если все проверки прошли.\n\nВ теле только имена проверок и ok/fail, без путей и текстов исключений. Это проверка конфигурации и\nдоступности на момент запроса, а не гарантия сохранности данных.",
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readyz"
+      }
+    },
     "/v1/cases": {
       "post": {
         "operationId": "create_case_v1_cases_post",
@@ -109,6 +126,22 @@
               "default": false,
               "title": "Replace",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {

@@ -1,9 +1,27 @@
 # Изменения
 
+## 2026-10-15 — M-03 pilot compose + /readyz
+
+- `deploy/compose.pilot.yml`: постоянный том `/app/var`, `MANDAT_ENV=pilot`, SQLite-хранилище, журнал, healthcheck по `/readyz`.
+- `GET /readyz` (журнал + хранилище + ключи → 200/503, без деталей в теле); `/health` остаётся liveness.
+- CI: job `compose-pilot` (`docker compose up --wait`, кейс и журнал переживают рестарт).
+- Это проверка конфигурации, не готовность к пилоту; атомарность журнал/хранилище (M-10) не решена.
+- Evidence/README/JURY: **1028** автотестов.
+
+## 2026-10-15 — M-10 journal/store two-phase write
+
+- `POST /v1/cases`: stage → журнал → commit; 200 только после commit; сверка после сбоя; `Idempotency-Key`; fencing по номеру попытки. Не exactly-once.
+
 ## 2026-10-15 — G-B + demo print
 
 - **BREAKING (интеграторы):** G-B: в pilot/prod `check_status` / `validate_attestation` / `authorize_operation` без `operation_risk` теперь получают строжайшее окно свежести статуса (не default 7 дн.) и могут отказать там, где раньше проходили. Передавайте `operation_risk` явно; явный `default` = 7 дн.; на стенде без изменений.
 - CLI `attest-verify`: статус проверяется до «подпись верна»; demo + `--status-dir` + отозвано больше не печатает успех перед exit 3.
+
+## 2026-10-15 — M-12 token lifecycle
+
+- `MANDAT_API_USERS`: `expires_at` и `revoked`; просроченные/отозванные токены → 401 в любом режиме. В pilot/prod `expires_at` обязателен (`null` = нет) и не позже 366 дней от загрузки списка (**ломающее для конфигураций без срока**).
+- Файл со списком перечитывается при смене (inode, mtime, ctime, размер + хеш содержимого для свежих файлов); обновлять атомарно (tmp + rename). Нечитаемый файл закрывает доступ (fail closed).
+- `mandat api-user --expires-in-days` (конечное, 0 < N ≤ 366).
 
 ## 2026-10-15 — attest-verify print order + G-A risk JSON
 
