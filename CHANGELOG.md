@@ -4,6 +4,10 @@
 
 - **BREAKING (интеграторы):** G-B: в pilot/prod `check_status` / `validate_attestation` / `authorize_operation` без `operation_risk` теперь получают строжайшее окно свежести статуса (не default 7 дн.) и могут отказать там, где раньше проходили. Передавайте `operation_risk` явно; явный `default` = 7 дн.; на стенде без изменений.
 - CLI `attest-verify`: статус проверяется до «подпись верна»; demo + `--status-dir` + отозвано больше не печатает успех перед exit 3.
+## 2026-10-15 — M-12 token lifecycle
+
+- `MANDAT_API_USERS`: `expires_at` (обязателен в pilot/prod) и `revoked`; просроченные/отозванные токены → 401; файл со списком перечитывается при смене, нечитаемый файл закрывает доступ (fail closed).
+- `mandat api-user --expires-in-days`.
 
 ## 2026-10-15 — attest-verify print order + G-A risk JSON
 

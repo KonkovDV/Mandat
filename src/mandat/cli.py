@@ -483,13 +483,24 @@ def cmd_webhook_secret(args: argparse.Namespace) -> int:
 
 
 def cmd_api_user(args: argparse.Namespace) -> int:
+    from datetime import UTC, datetime, timedelta
+
     from mandat.api.principals import ROLES, hash_token
+    from mandat.services.env_policy import protected
 
     if args.role not in ROLES:
         print(f"роль: одна из {', '.join(sorted(ROLES))}", file=sys.stderr)
         return 2
     token = secrets.token_urlsafe(32)
-    entry = {"name": args.name, "role": args.role, "token_sha256": hash_token(token)}
+    entry: dict[str, Any] = {"name": args.name, "role": args.role, "token_sha256": hash_token(token)}
+    if args.expires_in_days is not None:
+        if args.expires_in_days <= 0:
+            print("--expires-in-days: нужно положительное число", file=sys.stderr)
+            return 2
+        entry["expires_at"] = (datetime.now(UTC) + timedelta(days=args.expires_in_days)).isoformat(timespec="seconds")
+    elif protected():
+        print("в защищённом режиме задайте --expires-in-days (expires_at обязателен)", file=sys.stderr)
+        return 2
     print(f"токен для {args.name} (показывается один раз): {token}")
     print("строка для MANDAT_API_USERS:")
     print(json.dumps(entry, ensure_ascii=False))
@@ -570,6 +581,7 @@ def build_parser() -> argparse.ArgumentParser:
     u = sub.add_parser("api-user", help="выпустить токен пользователя API и его хеш")
     u.add_argument("--name", required=True)
     u.add_argument("--role", required=True, help="operator, reviewer, auditor или admin")
+    u.add_argument("--expires-in-days", type=float, default=None, help="срок жизни токена; в pilot/prod обязателен")
     u.set_defaults(func=cmd_api_user)
 
     s = sub.add_parser("serve", help="запустить HTTP API")

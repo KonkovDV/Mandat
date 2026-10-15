@@ -220,7 +220,9 @@ def create_app(
     journal_path: Path | None = None,
 ) -> FastAPI:
     expected = token if token is not None else os.environ.get("MANDAT_API_TOKEN", "")
-    directory = Directory(load_users(users), expected)
+    raw_users = (users if users is not None else os.environ.get("MANDAT_API_USERS", "")).strip()
+    users_file = Path(raw_users) if raw_users and not raw_users.startswith("[") else None
+    directory = Directory(load_users(users), expected, reload_path=users_file)
     show_docs = docs if docs is not None else _env_flag("MANDAT_API_DOCS")
     limit = rate_per_min if rate_per_min is not None else int(os.environ.get("MANDAT_API_RATE_PER_MIN", "120"))
     app = FastAPI(

@@ -3,9 +3,18 @@
 Токены хранятся только хешем SHA-256, сам токен знает лишь его владелец. Список задаётся
 переменной ``MANDAT_API_USERS``: JSON-массив или путь к JSON-файлу с таким массивом::
 
-    [{"name": "ivanova", "role": "operator", "token_sha256": "<64 hex>"}]
+    [{"name": "ivanova", "role": "operator", "token_sha256": "<64 hex>",
+      "expires_at": "2027-01-31T00:00:00+00:00", "revoked": false}]
 
-Хеш и новый токен печатает ``mandat api-user --name ivanova --role operator``.
+Хеш и новый токен печатает ``mandat api-user --name ivanova --role operator --expires-in-days 90``.
+
+Жизненный цикл токена (M-12): ``expires_at`` (ISO 8601 с часовым поясом) — после этого момента токен
+не принимается; ``revoked: true`` — токен не принимается сразу. Оба поля действуют в любом режиме.
+В pilot/prod (и любом защищённом режиме) ``expires_at`` обязателен у каждого пользователя, иначе
+список не загружается и ``mandat serve`` не стартует. Если ``MANDAT_API_USERS`` — путь к файлу,
+каталог перечитывает его при смене файла (отзыв без рестарта); нечитаемый файл закрывает доступ
+всем (fail closed), а не оставляет последний удачный список. Общий ``MANDAT_API_TOKEN`` срока жизни
+не имеет — это режим стенда. Это не OIDC и не сессии: проверка идёт по хешу при каждом запросе.
 """
 
 from __future__ import annotations
@@ -14,7 +23,10 @@ import hashlib
 import hmac
 import json
 import os
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -49,9 +61,33 @@ def hash_token(token: str) -> str:
 class UserEntry:
     principal: Principal
     token_sha256: str
+    expires_at: datetime | None = None
+    revoked: bool = False
+
+    def usable(self, now: datetime) -> bool:
+        """Токен действует: не отозван и срок не вышел (граница ``expires_at`` уже не действует)."""
+        if self.revoked:
+            return False
+        return self.expires_at is None or now < self.expires_at
 
 
-def parse_users(raw: Any) -> tuple[UserEntry, ...]:
+def _parse_expiry(name: str, value: Any) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"MANDAT_API_USERS: у {name} expires_at должен быть строкой ISO 8601")
+    try:
+        moment = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"MANDAT_API_USERS: у {name} expires_at не читается как ISO 8601") from exc
+    if moment.tzinfo is None:
+        raise ValueError(f"MANDAT_API_USERS: у {name} expires_at без часового пояса")
+    return moment.astimezone(UTC)
+
+
+def parse_users(raw: Any, *, require_expiry: bool | None = None) -> tuple[UserEntry, ...]:
+    if require_expiry is None:
+        from mandat.services.env_policy import protected
+
+        require_expiry = protected()
     if not isinstance(raw, list):
         raise ValueError("MANDAT_API_USERS: ожидался JSON-массив пользователей")
     users: list[UserEntry] = []
@@ -73,8 +109,16 @@ def parse_users(raw: Any) -> tuple[UserEntry, ...]:
         if digest.lower() in {entry.token_sha256 for entry in users}:
             # Один токен у двух имён: запросы и записи журнала достались бы не тому пользователю.
             raise ValueError(f"MANDAT_API_USERS: токен {name} совпадает с токеном другого пользователя")
+        revoked = item.get("revoked", False)
+        if not isinstance(revoked, bool):
+            raise ValueError(f"MANDAT_API_USERS: у {name} revoked должен быть true или false")
+        expires: datetime | None = None
+        if item.get("expires_at") is not None:
+            expires = _parse_expiry(name, item["expires_at"])
+        elif require_expiry:
+            raise ValueError(f"MANDAT_API_USERS: у {name} нет expires_at (обязателен в pilot/prod)")
         seen.add(name)
-        users.append(UserEntry(Principal(name, role), digest.lower()))
+        users.append(UserEntry(Principal(name, role), digest.lower(), expires, revoked))
     return tuple(users)
 
 
@@ -90,27 +134,67 @@ def load_users(value: str | None = None) -> tuple[UserEntry, ...]:
 class Directory:
     """Ищет пользователя по токену. Один ``MANDAT_API_TOKEN`` без списка — режим стенда: администратор.
 
-    Если задан ``MANDAT_API_USERS``, ``MANDAT_API_TOKEN`` не действует.
+    Если задан ``MANDAT_API_USERS``, ``MANDAT_API_TOKEN`` не действует. Отозванные и просроченные
+    токены не находятся. Если список пришёл из файла (``reload_path``), он перечитывается при смене
+    файла; ошибка чтения закрывает доступ всем пользователям (fail closed).
     """
 
-    def __init__(self, users: tuple[UserEntry, ...], legacy_token: str = ""):
+    def __init__(
+        self,
+        users: tuple[UserEntry, ...],
+        legacy_token: str = "",
+        *,
+        reload_path: Path | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ):
         self.users = users
         # Со списком пользователей общий токен не работает: иначе рядом с ролями жил бы безымянный администратор.
-        self.legacy_token = "" if users else legacy_token.strip()
+        self._had_users = bool(users) or reload_path is not None
+        self.legacy_token = "" if self._had_users else legacy_token.strip()
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self._reload_path = reload_path
+        self._stamp = self._file_stamp()
+        self._lock = threading.Lock()
+
+    def _file_stamp(self) -> tuple[int, int] | None:
+        if self._reload_path is None:
+            return None
+        try:
+            st = self._reload_path.stat()
+        except OSError:
+            return (-1, -1)
+        return (st.st_mtime_ns, st.st_size)
+
+    def _refresh(self) -> None:
+        if self._reload_path is None:
+            return
+        stamp = self._file_stamp()
+        if stamp == self._stamp:
+            return
+        with self._lock:
+            if stamp == self._stamp:
+                return
+            try:
+                self.users = parse_users(json.loads(self._reload_path.read_text(encoding="utf-8")))
+            except (ValueError, OSError):
+                self.users = ()  # fail closed: нечитаемый список не оставляет прежних токенов в силе
+            self._stamp = stamp
 
     @property
     def configured(self) -> bool:
-        return bool(self.users or self.legacy_token)
+        return bool(self.users or self.legacy_token or self._had_users)
 
     @property
     def multi_user(self) -> bool:
-        return bool(self.users)
+        return self._had_users
 
     def find(self, token: str) -> Principal | None:
+        self._refresh()
         presented = hash_token(token)
+        now = self._clock()
         found = None
         for entry in self.users:
-            if hmac.compare_digest(presented, entry.token_sha256):
+            if hmac.compare_digest(presented, entry.token_sha256) and entry.usable(now):
                 found = entry.principal
         if self.legacy_token and hmac.compare_digest(hash_token(token), hash_token(self.legacy_token)):
             found = Principal("default", "admin")
