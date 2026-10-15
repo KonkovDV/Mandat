@@ -2,6 +2,7 @@
 
 ## 2026-10-15 — attest-verify print order + G-A risk JSON
 
+- Evidence/README/JURY: **1017** автотестов (line coverage 95,7 %).
 - CLI `attest-verify`: «подпись верна» только после всех проверок (не до exit 2/4).
 - G1 docs: `min(global, risk)`; LIMITS: `check_status(require_seen=False)` = диагностика.
 - G-A: в protected `MANDAT_STATUS_MAX_AGE_BY_RISK` только ужесточает defaults.

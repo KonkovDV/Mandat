@@ -2,7 +2,7 @@
 
 **Срез кода:** `be0d786` (`main`, post-merge [#24](https://github.com/KonkovDV/Mandat/pull/24); leftovers [#25](https://github.com/KonkovDV/Mandat/pull/25))  
 **Аудит-пакет:** `/workspace/mandat-audit/` (`AUDIT.md`, briefs `BRIEF_P2.md`, `BRIEF_M01_M02.md`, `BRIEF_M11_M14.md`)  
-**Evidence:** 1013 passed, coverage 95,6 % (`evidence.json`)  
+**Evidence:** 1017 passed, coverage 95,7 % (`evidence.json`)  
 **Правило ответа:** без завышений; «FIXED» только при коде + тестах в `main`.
 
 | ID | Pri | Статус на `51f247d` | Что сделано / что осталось | Доказательство |
