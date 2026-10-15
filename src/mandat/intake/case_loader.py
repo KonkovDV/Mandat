@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
 from collections.abc import Callable
 from datetime import date, datetime
@@ -57,7 +58,8 @@ def _iso_day(value: Any) -> bool:
     return True
 
 
-_REGISTRY_KEYS = {"status", "event_date", "observed_at"}
+_REGISTRY_KEYS = {"status", "event_date", "observed_at", "principal_inn", "representative_inn"}
+_INN = re.compile(r"\d{10}(\d{2})?")
 
 
 def _registry_entries(value: Any) -> dict[str, str | dict[str, str]]:
@@ -76,7 +78,9 @@ def _registry_entries(value: Any) -> dict[str, str | dict[str, str]]:
             out[str(number)] = str(entry)
             continue
         if set(entry) - _REGISTRY_KEYS or not isinstance(entry.get("status"), str):
-            raise CaseError(f"registry[{number}]: поля status, event_date, observed_at")
+            raise CaseError(
+                f"registry[{number}]: поля status, event_date, observed_at, principal_inn, representative_inn"
+            )
         clean = {"status": entry["status"]}
         event = entry.get("event_date")
         if event is not None:
@@ -92,6 +96,13 @@ def _registry_entries(value: Any) -> dict[str, str | dict[str, str]]:
             if stamp is None or stamp.tzinfo is None:
                 raise CaseError(f"registry[{number}].observed_at: дата и время с часовым поясом")
             clean["observed_at"] = observed
+        for key in ("principal_inn", "representative_inn"):
+            # С кем зарегистрирована МЧД в реестре (поиск ФНС с 01.03.2026 — по номеру и двум ИНН).
+            inn = entry.get(key)
+            if inn is not None:
+                if not isinstance(inn, str) or not _INN.fullmatch(inn):
+                    raise CaseError(f"registry[{number}].{key}: 10 или 12 цифр")
+                clean[key] = inn
         out[str(number)] = clean
     return out
 

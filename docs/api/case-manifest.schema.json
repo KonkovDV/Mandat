@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/KonkovDV/Mandat/blob/main/docs/api/case-manifest.schema.json",
+  "title": "Манифест кейса «Мандата» (case.json и тело POST /v1/cases)",
+  "description": "Контракт входа. Источник истины — src/mandat/intake/case_loader.py; tests/test_r11_manifest_schema.py сверяет схему и загрузчик. Документы в каталоге кейса задаются path, в API — content.",
+  "type": "object",
+  "required": ["operation", "organization"],
+  "additionalProperties": false,
+  "properties": {
+    "case_id": {"type": "string", "minLength": 1, "maxLength": 200},
+    "title": {"type": "string", "description": "Подпись демо-кейса; движок не читает"},
+    "expected_verdict": {"type": "string", "description": "Ожидаемый вердикт демо-кейса для тестов; движок не читает"},
+    "charter_disposition_note": {"type": "string", "description": "Пояснение к charter_disposition; движок не читает"},
+    "organization": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "inn": {"$ref": "#/$defs/text"},
+        "ogrn": {"$ref": "#/$defs/text"},
+        "kpp": {"$ref": "#/$defs/text"},
+        "name": {"$ref": "#/$defs/text"}
+      }
+    },
+    "requester": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "full_name": {"$ref": "#/$defs/text"},
+        "inn": {"$ref": "#/$defs/text"},
+        "snils": {"$ref": "#/$defs/text"},
+        "position": {"$ref": "#/$defs/text"}
+      }
+    },
+    "operation": {
+      "type": "object",
+      "required": ["code", "date"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {"type": "string", "minLength": 1, "examples": ["PAYMENT_SIGN", "STATEMENT_VIEW", "REQUISITES_CHANGE", "USER_ADMIN"]},
+        "date": {"type": "string", "format": "date", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+        "amount_rub": {"type": "integer", "exclusiveMinimum": 0, "description": "Целые рубли; дробь и boolean не принимаются"},
+        "counterparty_inn": {"$ref": "#/$defs/text"}
+      }
+    },
+    "documents": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "minLength": 1, "pattern": "\\S"},
+          "kind": {"enum": ["emchd_xml", "egrul_json", "charter_text", "paper_poa_text"]},
+          "path": {"type": "string", "minLength": 1, "description": "Путь внутри каталога кейса"},
+          "content": {"description": "Для API: XML или текст строкой, ЕГРЮЛ — строкой или объектом", "type": ["string", "object", "array"]}
+        },
+        "oneOf": [{"required": ["path"]}, {"required": ["content"]}]
+      }
+    },
+    "registry": {
+      "type": "object",
+      "description": "Стенд: ответ реестра МЧД по номеру. Строка статуса или объект",
+      "additionalProperties": {
+        "oneOf": [
+          {"type": "string"},
+          {
+            "type": "object",
+            "required": ["status"],
+            "additionalProperties": false,
+            "properties": {
+              "status": {"type": "string"},
+              "event_date": {"type": "string", "format": "date", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+              "observed_at": {"type": "string", "format": "date-time", "pattern": "(Z|[+-]\\d{2}:\\d{2})$"},
+              "principal_inn": {"type": "string", "pattern": "^\\d{10}(\\d{2})?$"},
+              "representative_inn": {"type": "string", "pattern": "^\\d{10}(\\d{2})?$"}
+            }
+          }
+        ]
+      }
+    },
+    "bankruptcy": {"type": "object", "additionalProperties": {"type": "string"}},
+    "charter_disposition": {"enum": ["no_applicable_restriction", null]},
+    "subdelegation_forms": {
+      "type": "object",
+      "additionalProperties": {"enum": ["notarized", "legal_entity", "branch_head"]}
+    }
+  },
+  "$defs": {
+    "text": {"type": ["string", "null"], "description": "Реквизит строкой: число теряет ведущие нули"}
+  }
+}

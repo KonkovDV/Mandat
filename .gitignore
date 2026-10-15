@@ -12,3 +12,4 @@ var/
 *.key
 *.zip
 submission/deck/node_modules/
+mutants/
