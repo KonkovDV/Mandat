@@ -28,7 +28,7 @@
 mandat monitor examples/events/poa_revoked.json --status-dir var/demo/status
 > **Отзыв (AUDIT_MANDAT M-01/M-02):** в `pilot`/`prod` без `--status-dir` проверка **неуспешна** (fail-closed).
 > `--crypto-only` проверяет только подпись и **не** говорит «принимается»/«действует».
-> Запись списков статусов под `flock`: OR только для revocation (stale writer не стирает бит отзыва); suspension / конфликт индекса → `StaleRegistryError`.
+> Запись списков статусов под `flock` (**только Linux/Docker/WSL**; native Windows — `ImportError` на `fcntl`): OR только для revocation (stale writer не стирает бит отзыва); suspension / конфликт индекса → `StaleRegistryError`. PowerShell-фрагменты ниже — из контейнера/WSL, не с native Win Python.
 
 mandat attest-verify var/demo/attestations/03_subdelegation_ok.json --public-key (Get-Content var/demo/public_key.txt) --status-dir var/demo/status
 ```

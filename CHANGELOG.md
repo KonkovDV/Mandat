@@ -4,7 +4,7 @@
 
 - Fail-closed статус удостоверения в pilot/prod: без каталога статусов / при отзыве / приостановке / устаревшем списке — отказ; CLI `--crypto-only` не говорит «принимается».
 - `StatusRegistry`: `fcntl.flock`, CAS sequence, OR только для revocation; suspension/конфликт idx → `StaleRegistryError`; snapshots + `CURRENT`.
-- Автотесты / покрытие: **993** / **95,8 %** (`evidence.json`).
+- Автотесты / **line coverage**: **993** / **95,8 %** (поля `tests.passed` / `tests.coverage_percent` в `evidence.json`).
 - Docs: DEMO/ARCHITECTURE — OR только revocation.
 
 
