@@ -226,7 +226,7 @@ def test_multiprocess_revoke_allocate(tmp_path):
     assert check_status(cred, sd, key.public_key(), now=NOW)["revocation"] is True
 
 
-# --- Ваня blockers on PR #18 ---
+# --- Review blockers on PR #18 ---
 
 
 @pytest.mark.skipif(not POSIX, reason="fcntl.flock только на POSIX")
