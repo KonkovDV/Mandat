@@ -106,10 +106,17 @@ def test_payment_stale_2h(tmp_path, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_default_6d_ok(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    """Явный risk=default остаётся 7 дней; «не указан» в prod — строжайший (G-B, см. test_gb_none_risk_strictest)."""
     monkeypatch.setenv("MANDAT_ENV", "prod")
     key, cred, sd = _issued(tmp_path, list_age=timedelta(days=6))
     state = check_status(
-        cred, sd, key.public_key(), now=NOW + timedelta(minutes=1), operation_risk=None, seen={}, require_seen=True
+        cred,
+        sd,
+        key.public_key(),
+        now=NOW + timedelta(minutes=1),
+        operation_risk="default",
+        seen={},
+        require_seen=True,
     )["state"]
     assert state == "действует"
 

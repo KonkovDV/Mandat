@@ -363,15 +363,12 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
         if any("статус удостоверения:" in p for p in problems):
             return 3
         return 4
-    # Действительное удостоверение бывает и у опровергнутого кейса: вердикт печатается всегда.
-    verdict = (cred.get("credentialSubject") or {}).get("verdict")
-    print("подпись верна")
-    print(f"вердикт в удостоверении: {verdict}")
-    print("удостоверение подлинно; допуск операции — отдельно (authorize_operation)")
-    if status_dir is None and cred.get("credentialStatus"):
-        print("предупреждение: статус не проверялся, передайте --status-dir", file=sys.stderr)
+    # Статус проверяется ДО любого «успешного» вывода: на стенде validate его не включает (стенд смотрит
+    # демо-списки без now), и отозванное удостоверение не должно сначала напечатать «подпись верна».
+    status_state: str | None = None
+    seen_path = Path(args.seen_file) if status_dir is not None and args.seen_file else None
+    seen: dict[str, Any] = {}
     if status_dir is not None:
-        seen_path = Path(args.seen_file) if args.seen_file else None
         seen = json.loads(seen_path.read_text(encoding="utf-8")) if seen_path and seen_path.exists() else {}
         try:
             status = check_status(
@@ -388,8 +385,19 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
             return 1
         if seen_path:
             seen_path.write_text(json.dumps(seen, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"статус удостоверения: {status['state']}")
-        return 0 if status["state"] == "действует" else 3
+        status_state = str(status["state"])
+        if status_state != "действует":
+            print(f"не принимается: статус удостоверения: {status_state}", file=sys.stderr)
+            return 3
+    # Действительное удостоверение бывает и у опровергнутого кейса: вердикт печатается всегда.
+    verdict = (cred.get("credentialSubject") or {}).get("verdict")
+    print("подпись верна")
+    print(f"вердикт в удостоверении: {verdict}")
+    print("удостоверение подлинно; допуск операции — отдельно (authorize_operation)")
+    if status_dir is None and cred.get("credentialStatus"):
+        print("предупреждение: статус не проверялся, передайте --status-dir", file=sys.stderr)
+    if status_state is not None:
+        print(f"статус удостоверения: {status_state}")
     return 0
 
 
