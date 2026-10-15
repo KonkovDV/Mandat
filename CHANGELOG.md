@@ -1,5 +1,10 @@
 # Изменения
 
+## 2026-10-15 — G-B + demo print
+
+- G-B: в pilot/prod `operation_risk` не указан → строжайшее окно свежести статуса (не default 7 дн.).
+- CLI `attest-verify`: статус проверяется до «подпись верна»; demo + `--status-dir` + отозвано больше не печатает успех перед exit 3.
+
 ## 2026-10-15 — attest-verify print order + G-A risk JSON
 
 - Evidence/README/JURY: **1017** автотестов (line coverage 95,7 %).
