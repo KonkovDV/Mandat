@@ -61,9 +61,12 @@ def test_status_list_revocation_is_signed_and_checked(tmp_path: Path):
     registry.save(key)
     assert check_status(cred, tmp_path / "status", public)["state"] == "приостановлено"
 
-    listed = json.loads((tmp_path / "status" / "suspension.json").read_text(encoding="utf-8"))
+    from mandat.audit.status_list import published_root
+
+    root = published_root(tmp_path / "status")
+    listed = json.loads((root / "suspension.json").read_text(encoding="utf-8"))
     listed["credentialSubject"]["encodedList"] = encode_bits(bytearray(MIN_BITS // 8))
-    (tmp_path / "status" / "suspension.json").write_text(json.dumps(listed), encoding="utf-8")
+    (root / "suspension.json").write_text(json.dumps(listed), encoding="utf-8")
     with pytest.raises(ValueError, match="подпись"):
         check_status(cred, tmp_path / "status", public)
 

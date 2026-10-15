@@ -12,9 +12,10 @@
 Совместимость с внешними верификаторами VC не проверялась. Ed25519 — не квалифицированная
 электронная подпись по 63-ФЗ и не ГОСТ.
 
-``verify_signature`` отвечает только на вопрос «подписано этим ключом»; принимать ли удостоверение,
-решает ``validate_attestation``: доверенный ключ издателя, издатель, назначение, криптонабор, срок,
-профиль и статус.
+``verify_signature`` отвечает только на вопрос «подписано этим ключом».
+``validate_attestation`` проверяет подлинность удостоверения (издатель, срок, профиль, статус).
+``authorize_operation`` — отдельный контракт допуска операции: подлинность + вердикт confirmed.
+Успех проверки подписи или подлинности сам по себе не является банковским допуском операции.
 
 В удостоверение не попадают ФИО и паспортные данные: только ИНН организации, токен представителя
 (HMAC-SHA256 на ключе издателя, а не хеш ИНН: хеш 12 цифр перебирается словарём), операция,
@@ -227,6 +228,27 @@ def _when(value: Any) -> datetime | None:
     return moment if moment.tzinfo is not None else None
 
 
+def verify_cryptographic(
+    credential: dict[str, Any],
+    trusted_keys: Iterable[Ed25519PublicKey] | Keyring,
+    *,
+    now: datetime,
+    allow_demo: bool = False,
+) -> list[str]:
+    """Только криптография и поля удостоверения: без проверки статуса.
+
+    Не означает допуск операции и не печатается как «принимается».
+    """
+    return validate_attestation(
+        credential,
+        trusted_keys,
+        now=now,
+        status_dir=None,
+        allow_demo=allow_demo,
+        require_status=False,
+    )
+
+
 def validate_attestation(
     credential: dict[str, Any],
     trusted_keys: Iterable[Ed25519PublicKey] | Keyring,
@@ -234,8 +256,22 @@ def validate_attestation(
     now: datetime,
     status_dir: Path | None = None,
     allow_demo: bool = False,
+    require_status: bool | None = None,
 ) -> list[str]:
-    """Можно ли принять удостоверение. Пустой список — можно; иначе причины отказа."""
+    """Подлинность удостоверения как квитанции результата.
+
+    Пустой список — криптографически и по полям подлинно на момент ``now``.
+    Это **не** разрешение банковской операции: для допуска см. ``authorize_operation``.
+
+    ``require_status``: ``None`` берёт политику ``protected()`` (pilot/prod). В защищённом
+    режиме каталог статусов обязателен: без него, при неизвестном/устаревшем статусе или
+    при отсутствии ``credentialStatus`` удостоверение не считается подлинным для приёма.
+    Диагностика подписи без статуса — только при явном ``require_status=False``.
+    """
+    from mandat.services.env_policy import require_attestation_status
+
+    if require_status is None:
+        require_status = require_attestation_status()
     problems: list[str] = []
     proof = credential.get("proof") or {}
     method = str(proof.get("verificationMethod") or "")
@@ -262,7 +298,20 @@ def validate_attestation(
         problems.append(f"срок действия {start:%d.%m.%Y %H:%M}–{end:%d.%m.%Y %H:%M} не включает момент проверки")
     if (credential.get("credentialSubject") or {}).get("profile") == "demo" and not allow_demo:
         problems.append("удостоверение выпущено по профилю demo: для решения в банке не принимается")
-    if status_dir is not None and key is not None and not problems:
+    needs_status = require_status or status_dir is not None
+    if require_status and status_dir is None:
+        problems.append("каталог статусов не передан: в защищённом режиме проверка статуса обязательна")
+    elif require_status and not (credential.get("credentialStatus") or []):
+        problems.append("в удостоверении нет credentialStatus: статус проверить нельзя")
+    elif (
+        needs_status
+        and status_dir is not None
+        and key is not None
+        and not any(
+            p.startswith("ключ подписи") or p.startswith("подпись не верна") or p.startswith("издатель")
+            for p in problems
+        )
+    ):
         from mandat.audit.status_list import check_status
 
         try:
@@ -272,6 +321,32 @@ def validate_attestation(
         else:
             if state != "действует":
                 problems.append(f"статус удостоверения: {state}")
+    return problems
+
+
+def authorize_operation(
+    credential: dict[str, Any],
+    trusted_keys: Iterable[Ed25519PublicKey] | Keyring,
+    *,
+    now: datetime,
+    status_dir: Path,
+    allow_demo: bool = False,
+) -> list[str]:
+    """Допуск операции по удостоверению: подлинность + статус + вердикт confirmed.
+
+    Успех ``validate_attestation`` при вердикте refuted/needs_review недостаточен для операции.
+    """
+    problems = validate_attestation(
+        credential,
+        trusted_keys,
+        now=now,
+        status_dir=status_dir,
+        allow_demo=allow_demo,
+        require_status=True,
+    )
+    verdict = (credential.get("credentialSubject") or {}).get("verdict")
+    if verdict != "confirmed":
+        problems.append(f"вердикт {verdict!r} не разрешает операцию: нужен confirmed")
     return problems
 
 
