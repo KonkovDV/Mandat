@@ -10,7 +10,8 @@
 | Приём | `intake/xml_safety.py`, `emchd.py`, `formats.py`, `egrul.py`, `charter.py`, `case_loader.py` | ошибка разбора попадает в `intake_errors`, а не роняет проверку; форматы МЧД — адаптеры ([ADR-008](adr/ADR-008-formats-and-classifier.md)) |
 | Правила | `rules/pack.py`, `checks.py`, `classifier.py`, `data/*.json` | метаданные в JSON, логика в коде ([ADR-003](adr/ADR-003-rules-as-data.md)) |
 | Перекрёстная проверка | `rules/cedar_export.py`, `policies/cedar/` | передоверие на Cedar ([ADR-006](adr/ADR-006-decision-engine.md)) |
-| Порты | `ports.py` | реестр МЧД, подпись, банкротство; в MVP заглушки |
+| Порты | `ports.py` | реестр МЧД (запрос по номеру, ИНН доверителя и ИНН представителя, как в реестре ФНС с 01.03.2026), подпись, банкротство; в MVP заглушки |
+| Контракт API | `docs/api/openapi.json` | фиксируется `scripts/export_openapi.py`; тест сверяет его с приложением и проверяет, что каждый маршрут, кроме `/health`, требует токен |
 | Сервисы | `services/verify.py`, `next_steps.py`, `rights.py`, `monitoring.py` | собирают проверку, о форматах не знают |
 | Аудит | `audit/journal.py`, `merkle.py`, `attestation.py`, `status_list.py` | всё проверяется без базы ([ADR-007](adr/ADR-007-status-list-and-merkle.md)) |
 | Советник | `advisory/gate.py`, `llm.py`, `explainer.py` | на вердикт не влияет ([ADR-001](adr/ADR-001-verdict-ownership.md)) |

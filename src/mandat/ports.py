@@ -63,6 +63,14 @@ class PoaRegistryPort(Protocol):
     def status(self, number: str) -> RegistryStatus: ...
 
 
+class PoaRegistryQueryPort(PoaRegistryPort, Protocol):
+    """Реестр, который ищет МЧД по номеру, ИНН доверителя и ИНН представителя (ФНС с 01.03.2026)."""
+
+    def observe(
+        self, number: str, principal_inn: str | None = None, representative_inn: str | None = None
+    ) -> RegistryObservation: ...
+
+
 class SignaturePort(Protocol):
     name: str
 
@@ -77,9 +85,23 @@ class FixtureRegistry:
 
     def __init__(self, statuses: dict[str, str | dict[str, str]]):
         self._statuses = {normalize_poa_number(k) or "": v for k, v in statuses.items()}
+        self.queries: list[tuple[str, str | None, str | None]] = []
 
-    def observe(self, number: str) -> RegistryObservation:
+    def observe(
+        self, number: str, principal_inn: str | None = None, representative_inn: str | None = None
+    ) -> RegistryObservation:
+        """Запрос, как к реестру ФНС с 01.03.2026: номер, ИНН доверителя, ИНН представителя.
+
+        Фикстура отвечает по номеру; если в записи указаны ``principal_inn`` или ``representative_inn``
+        и они расходятся с запросом, реестр, как и ФНС, доверенность не находит («недоступен»).
+        """
+        self.queries.append((number, principal_inn, representative_inn))
         raw = self._statuses.get(normalize_poa_number(number) or "")
+        if isinstance(raw, dict) and any(
+            raw.get(k) and asked and raw.get(k) != asked
+            for k, asked in (("principal_inn", principal_inn), ("representative_inn", representative_inn))
+        ):
+            return RegistryObservation(number, RegistryStatus.UNAVAILABLE)
         entry = raw if isinstance(raw, dict) else {"status": raw} if raw is not None else {}
         try:
             status = RegistryStatus(entry.get("status") or "")

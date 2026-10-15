@@ -11,6 +11,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 from mandat.data import load_json, sha256_json
 from mandat.domain.graph import AuthorityChain
@@ -33,6 +34,17 @@ from mandat.services.env_policy import protected
 E = LegalEffect
 
 
+def _accepts_query(observe: Any) -> bool:
+    """Порт реестра принимает ИНН доверителя и представителя (реестр ФНС с 01.03.2026)."""
+    import inspect
+
+    try:
+        params = inspect.signature(observe).parameters
+    except (TypeError, ValueError):
+        return False
+    return "principal_inn" in params and "representative_inn" in params
+
+
 @dataclass
 class RuleContext:
     case: Case
@@ -53,12 +65,28 @@ class RuleContext:
         if key not in self._registry:
             port = self.ports.registry
             observe = getattr(port, "observe", None)
-            self._registry[key] = (
-                observe(number or "")
-                if callable(observe)
-                else RegistryObservation(number or "", port.status(number or ""))
-            )
+            query = self.registry_query(number)
+            if callable(observe):
+                args = query if _accepts_query(observe) else {}
+                self._registry[key] = observe(number or "", **args)
+            else:
+                self._registry[key] = RegistryObservation(number or "", port.status(number or ""))
         return self._registry[key]
+
+    def registry_query(self, number: str | None) -> dict[str, str | None]:
+        """ИНН доверителя и представителя к номеру МЧД.
+
+        С 01.03.2026 реестр ФНС отдаёт МЧД по трём параметрам: номер, ИНН доверителя, ИНН представителя.
+        Представитель — заявитель кейса, если он указан в этой МЧД; иначе первый представитель с ИНН.
+        """
+        key = normalize_poa_number(number) or ""
+        link = next((p for p in self.chain.links if (normalize_poa_number(p.number) or "") == key), None)
+        if link is None:
+            return {"principal_inn": None, "representative_inn": None}
+        requester = self.case.requester
+        rep = next((r for r in link.representatives if r.inn and r.inn == requester.inn), None)
+        rep = rep or next((r for r in link.representatives if r.inn), None)
+        return {"principal_inn": link.principal.inn, "representative_inn": rep.inn if rep else None}
 
     @property
     def case_ref(self) -> EvidenceRef:
