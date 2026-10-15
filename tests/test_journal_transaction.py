@@ -137,7 +137,7 @@ def test_api_journal_failure_stores_nothing(tmp_path):
 
 def test_api_store_failure_after_journal_leaves_audit_trail(tmp_path):
     class Broken(MemoryStore):
-        def put(self, *a, **k):
+        def commit(self, *a, **k):
             raise OSError("диск заполнен")
 
     path = tmp_path / "api.jsonl"
