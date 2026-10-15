@@ -13,6 +13,7 @@ from mandat.audit.status_list import StatusRegistry, _risk_age_mapping, check_st
 from mandat.cli import build_parser
 
 NOW = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
+EXIT_STATUS_NOT_CHECKED = 1  # cmd_attest_verify: список не читается / не проверен
 
 
 @pytest.fixture(autouse=True)
@@ -137,8 +138,9 @@ def test_demo_status_dir_broken_list_prints_no_success(tmp_path, monkeypatch, ca
             f.write_text("not json", encoding="utf-8")
     code = _cli(tmp_path, key, cred, "--status-dir", str(sd))
     out = capsys.readouterr()
-    assert code != 0
+    assert code == EXIT_STATUS_NOT_CHECKED
     assert "подпись верна" not in out.out + out.err
+    assert "статус не проверен" in out.err
 
 
 def test_prod_status_dir_revoked_prints_no_success(tmp_path, monkeypatch, capsys):
@@ -148,3 +150,60 @@ def test_prod_status_dir_revoked_prints_no_success(tmp_path, monkeypatch, capsys
     out = capsys.readouterr()
     assert code == 3
     assert "подпись верна" not in out.out + out.err
+
+
+def test_unknown_mandat_env_is_protected_for_blank_risk(monkeypatch):
+    """Опечатка в MANDAT_ENV не должна ослаблять окно: неизвестный режим = protected = строжайшее."""
+    from mandat.services.env_policy import protected
+
+    monkeypatch.setenv("MANDAT_ENV", "prodd")
+    assert protected()
+    assert status_max_age_for(None) == min(_risk_age_mapping().values()) < 7.0
+
+
+def test_unknown_mandat_env_rejects_6_day_list_without_risk(tmp_path, monkeypatch):
+    monkeypatch.setenv("MANDAT_ENV", "stagingg")
+    key, cred, sd = _issued(tmp_path, list_age=timedelta(days=6))
+    state = check_status(
+        cred, sd, key.public_key(), now=NOW + timedelta(minutes=1), operation_risk=None, seen={}, require_seen=True
+    )["state"]
+    assert "устарел" in state
+
+
+def test_seen_file_written_on_refusal(tmp_path, monkeypatch, capsys):
+    """high-watermark сохраняется и когда удостоверение отклонено (отозвано): откат списка потом не пройдёт."""
+    import json
+
+    monkeypatch.setenv("MANDAT_ENV", "demo")
+    key, cred, sd = _issued(tmp_path, revoke=True)
+    seen_file = tmp_path / "seen.json"
+    code = _cli(tmp_path, key, cred, "--status-dir", str(sd), "--seen-file", str(seen_file))
+    out = capsys.readouterr()
+    assert code == 3
+    assert "подпись верна" not in out.out + out.err
+    assert seen_file.exists()
+    recorded = json.loads(seen_file.read_text(encoding="utf-8"))
+    assert recorded and all(isinstance(v, int) and v >= 1 for v in recorded.values())
+
+
+def test_seen_file_not_created_when_status_unreadable(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("MANDAT_ENV", "demo")
+    key, cred, sd = _issued(tmp_path)
+    for f in sd.iterdir():
+        if f.is_file() and f.name != ".registry.lock":
+            f.write_text("not json", encoding="utf-8")
+    seen_file = tmp_path / "seen.json"
+    assert _cli(tmp_path, key, cred, "--status-dir", str(sd), "--seen-file", str(seen_file)) == EXIT_STATUS_NOT_CHECKED
+    assert not seen_file.exists()
+
+
+def test_authorize_operation_prod_without_risk_is_strictest_but_default_passes(tmp_path, monkeypatch):
+    """Документированное ломающее изменение: authorize_operation без operation_risk в prod строже явного default."""
+    monkeypatch.setenv("MANDAT_ENV", "prod")
+    key, cred, sd = _issued(tmp_path, list_age=timedelta(days=6))
+    now = NOW + timedelta(minutes=1)
+    common = {"now": now, "status_dir": sd, "seen": {}}
+    blank = attestation.authorize_operation(cred, [key.public_key()], **common)
+    assert any("устарел" in p for p in blank)
+    explicit = attestation.authorize_operation(cred, [key.public_key()], operation_risk="default", **common)
+    assert not any("устарел" in p for p in explicit)
