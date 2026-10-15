@@ -34,9 +34,9 @@
    - Demo может оставить default.  
    - В том же PR: убрать success-print на reject-path для demo+revoked.
 
-3. **M-10 / M-12** | OPEN  
+3. **M-10 / M-12** | M-12 DONE в PR #29 (ожидает merge); M-10 в PR #30  
    - **M-10** journal/store atomicity: crash-safe outbox; 200 только после обоих; Idempotency-Key; fencing; reconcile. Не exactly-once от `first_seen`.  
-   - **M-12** token lifecycle: `expires_at`/`revoked`; Directory отвергает expired/revoked в protected; docs rotation.
+   - **M-12** token lifecycle: `expires_at`/`revoked`; Directory отвергает expired/revoked в любом режиме; обязательный `expires_at` и потолок 366 дн. — только в protected; docs rotation. **DONE (PR #29).**
 
 4. **M-09** — review routes / reviewer≠operator | OPEN | `fix/m09-review-routes` (после M-12)  
    - Единые роли review↔API; `reviewer` decide; `operator` не accept/reject; запрет self-approve.  
