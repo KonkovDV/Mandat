@@ -288,6 +288,7 @@ def _attest_verify_keyring(args: argparse.Namespace, cred: dict[str, Any]) -> in
         status_dir=status_dir,
         allow_demo=not protected(),
         require_status=require_attestation_status(),
+        operation_risk=getattr(args, "operation_risk", None) or None,
     )
     for problem in problems:
         print(f"не принимается: {problem}", file=sys.stderr)
@@ -318,7 +319,7 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
         print("предупреждение: ключ взят из самого удостоверения, издатель не проверен", file=sys.stderr)
     key = attestation.public_key_from_multibase(trusted or method.split("#", 1)[-1])
     ok = attestation.verify_signature(cred, key)
-    print("подпись верна" if ok else "подпись НЕ верна")
+    print("подпись верна (только подпись)" if ok else "подпись НЕ верна")
     if not ok:
         return 1
     from datetime import UTC, datetime
@@ -343,6 +344,7 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
 
     # В pilot/prod статус (в т.ч. свежесть списка) входит в validate. На стенде status_dir
     # проверяется отдельно через check_status без now — демо-списки можно смотреть через месяц.
+    operation_risk = getattr(args, "operation_risk", None) or None
     problems = attestation.validate_attestation(
         cred,
         [key],
@@ -350,6 +352,7 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
         status_dir=status_dir if must_status else None,
         allow_demo=not protected(),
         require_status=must_status,
+        operation_risk=operation_risk,
     )
     for problem in problems:
         print(f"не принимается: {problem}", file=sys.stderr)
@@ -374,6 +377,8 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
                 key,
                 seen=seen if seen_path else None,
                 now=datetime.now(UTC) if must_status else None,
+                operation_risk=operation_risk,
+                require_seen=False,
             )
         except (OSError, ValueError, KeyError) as exc:
             print(f"статус не проверен: {exc}", file=sys.stderr)
@@ -539,6 +544,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--crypto-only",
         action="store_true",
         help="только подпись и поля: без статуса и без формулировки принятия/допуска",
+    )
+    a.add_argument(
+        "--operation-risk",
+        default=None,
+        help="риск операции для окна свежести списка (payment/archive_receipt/…); см. status_max_age_for",
     )
     a.set_defaults(func=cmd_attest_verify)
 

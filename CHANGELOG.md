@@ -1,5 +1,12 @@
 # Изменения
 
+## 2026-10-15 — M-13 status freshness by risk
+
+- `status_max_age_for(operation_risk)`; unknown risk → strictest (min); JSON `MANDAT_STATUS_MAX_AGE_BY_RISK`
+- `authorize_operation` в protected требует `seen`; CLI `--operation-risk`
+- outage/POSIX notes в LIMITS/ARCHITECTURE; тесты `tests/test_m13_status_freshness_by_risk.py`
+- Evidence/README/JURY/колода: **1013** автотестов (line coverage 95,6 %).
+
 ## 2026-10-15 — M-06 LLM HTTPS in protected
 
 - В pilot/prod `OpenAICompatClient` требует `https`; loopback `127.0.0.1`/`localhost`/`::1` только при `MANDAT_LLM_ALLOW_INSECURE_LOOPBACK=1`.

@@ -75,6 +75,66 @@ def status_max_age_days() -> float:
     return value
 
 
+# M-13: окно свежести по риску операции (дни). Глобальный ``MANDAT_STATUS_MAX_AGE_DAYS``
+# перекрывает карту. ``payment`` ≈ 1 час; архивная квитанция — до 7 дней.
+DEFAULT_STATUS_MAX_AGE_BY_RISK: dict[str, float] = {
+    "payment": 0.042,
+    "high": 0.042,
+    "transfer": 0.042,
+    "archive_receipt": 7.0,
+    "archive": 7.0,
+    "low": 7.0,
+    "default": float(DEFAULT_STATUS_MAX_AGE_DAYS),
+}
+
+
+def _risk_age_mapping() -> dict[str, float]:
+    """Карта risk→дни: defaults + опциональный JSON в ``MANDAT_STATUS_MAX_AGE_BY_RISK``."""
+    mapping = dict(DEFAULT_STATUS_MAX_AGE_BY_RISK)
+    raw = os.environ.get("MANDAT_STATUS_MAX_AGE_BY_RISK", "").strip()
+    if not raw:
+        return mapping
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"MANDAT_STATUS_MAX_AGE_BY_RISK: невалидный JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("MANDAT_STATUS_MAX_AGE_BY_RISK: нужен JSON-объект risk→дни")
+    for key, value in payload.items():
+        name = str(key).strip().lower()
+        try:
+            days = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"MANDAT_STATUS_MAX_AGE_BY_RISK[{key!r}]: нужно число дней") from exc
+        if not math.isfinite(days) or days < 0 or days > MAX_STATUS_MAX_AGE_DAYS:
+            raise ValueError(
+                f"MANDAT_STATUS_MAX_AGE_BY_RISK[{key!r}]={value!r}: дни в [0, {MAX_STATUS_MAX_AGE_DAYS:g}]"
+            )
+        mapping[name] = days
+    return mapping
+
+
+def status_max_age_for(operation_risk: str | None = None) -> float:
+    """Окно свежести списка под риск операции.
+
+    Карта ``operation_risk`` → дни (``DEFAULT_STATUS_MAX_AGE_BY_RISK`` /
+    ``MANDAT_STATUS_MAX_AGE_BY_RISK``). ``None``/пусто → ``default``.
+    Неизвестный risk → **самое строгое** окно (минимум по карте).
+
+    Если задан ``MANDAT_STATUS_MAX_AGE_DAYS`` — берём ``min(global, risk)`` (G1):
+    глобальный потолок не может ослабить payment до 7 дней.
+    """
+    mapping = _risk_age_mapping()
+    risk = (operation_risk or "default").strip().lower() or "default"
+    if risk in mapping:
+        risk_age = float(mapping[risk])
+    else:
+        risk_age = float(min(mapping.values()))
+    if os.environ.get("MANDAT_STATUS_MAX_AGE_DAYS", "").strip():
+        return min(status_max_age_days(), risk_age)
+    return risk_age
+
+
 def _lock_path(directory: Path) -> Path:
     return directory / ".registry.lock"
 
@@ -421,6 +481,8 @@ def check_status(
     *,
     seen: dict[str, int] | None = None,
     now: datetime | None = None,
+    operation_risk: str | None = None,
+    require_seen: bool | None = None,
 ) -> dict[str, bool | str]:
     """Статус удостоверения по спискам из каталога. Подпись каждого списка проверяется.
 
@@ -429,7 +491,12 @@ def check_status(
     подписанный список. Словарь обновляется на месте; хранит его проверяющий, не издатель.
 
     Свежесть по часам проверяется, только если передан ``now``: демо должно проверяться и через месяц.
+    ``operation_risk`` задаёт окно через ``status_max_age_for`` (M-13).
+    ``require_seen``: ``True`` — без ``seen`` fail-closed; ``None``/``False`` — watermark
+    необязателен (квитанция / демо). Для допуска в pilot/prod см. ``authorize_operation``.
     """
+    if require_seen and seen is None:
+        raise ValueError("нет high-watermark seen: в защищённом режиме обязателен для проверки свежести списка")
     result: dict[str, bool | str] = {}
     root = published_root(status_dir)
     issuer_state = root / "registry.json"
@@ -474,7 +541,7 @@ def check_status(
         return {"state": "без статуса"}
     issued_values = [datetime.fromisoformat(str(result[key])) for key in result if str(key).endswith("_issued")]
     future = now is not None and any(item > now + timedelta(minutes=5) for item in issued_values)
-    max_age = status_max_age_days()
+    max_age = status_max_age_for(operation_risk)
     stale = now is not None and any(now - item > timedelta(days=max_age) for item in issued_values)
     revoked = bool(result.get("revocation"))
     suspended = bool(result.get("suspension"))
