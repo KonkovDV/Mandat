@@ -1,5 +1,9 @@
 # Изменения
 
+## 2026-10-15 — M-10 journal/store two-phase write
+
+- `POST /v1/cases`: stage → журнал → commit; 200 только после commit; сверка после сбоя; `Idempotency-Key`; fencing по номеру попытки. Не exactly-once.
+
 ## 2026-10-15 — attest-verify print order + G-A risk JSON
 
 - Evidence/README/JURY: **1017** автотестов (line coverage 95,7 %).
