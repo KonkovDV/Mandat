@@ -169,9 +169,7 @@ def test_fresh_director_falls_back_to_egrul_ref_when_record_has_no_ref():
 
 def test_bankruptcy_skips_principal_without_inn_and_still_checks_representative():
     ctx = _bnk_ctx(B.NONE, B.PROPERTY_SALE)
-    ctx.case = dataclasses.replace(
-        ctx.case, organization=dataclasses.replace(ctx.case.organization, inn=None)
-    )
+    ctx.case = dataclasses.replace(ctx.case, organization=dataclasses.replace(ctx.case.organization, inn=None))
     (f,) = checks._bankruptcy(ctx)
     assert f.message.startswith("Представитель")
 
@@ -208,9 +206,7 @@ def test_run_rules_charter_max_chars_is_inclusive(monkeypatch):
         pytest.skip("нет устава в кейсе")
     limit = len(charter.text)
     spec = pack.get("R-CHR-002")
-    pack.rules["R-CHR-002"] = dataclasses.replace(
-        spec, params={**spec.params, "charter_max_chars": limit}
-    )
+    pack.rules["R-CHR-002"] = dataclasses.replace(spec, params={**spec.params, "charter_max_chars": limit})
     ctx.pack = pack
     calls: list[int] = []
 
@@ -223,9 +219,7 @@ def test_run_rules_charter_max_chars_is_inclusive(monkeypatch):
     assert calls == [limit]  # <= max: вызвали; мутант < max — не вызвал бы
 
     calls.clear()
-    pack.rules["R-CHR-002"] = dataclasses.replace(
-        spec, params={**spec.params, "charter_max_chars": limit - 1}
-    )
+    pack.rules["R-CHR-002"] = dataclasses.replace(spec, params={**spec.params, "charter_max_chars": limit - 1})
     ctx.pack = pack
     checks.run_rules(ctx)
     assert calls == []
