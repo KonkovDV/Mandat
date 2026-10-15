@@ -18,6 +18,7 @@ import base64
 import fcntl
 import gzip
 import json
+import math
 import os
 import secrets
 import zlib
@@ -48,11 +49,30 @@ class StaleRegistryError(RuntimeError):
     """Конкурирующая запись: локальный снимок устарел относительно диска."""
 
 
+# Верхняя граница окна свежести списка (дни). Больше — явная ошибка конфигурации.
+MAX_STATUS_MAX_AGE_DAYS = 3650.0
+
+
 def status_max_age_days() -> float:
+    """Окно свежести списка статусов в днях.
+
+    Пусто → ``DEFAULT_STATUS_MAX_AGE_DAYS`` (7). Иначе конечное число в ``[0, MAX]``.
+    ``nan``/``inf``/отрицательные/мусор → ``ValueError`` (в pilot/prod не молчим).
+    """
     raw = os.environ.get("MANDAT_STATUS_MAX_AGE_DAYS", "").strip()
     if not raw:
         return float(DEFAULT_STATUS_MAX_AGE_DAYS)
-    return float(raw)
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"MANDAT_STATUS_MAX_AGE_DAYS={raw!r}: нужно конечное число дней от 0 до {MAX_STATUS_MAX_AGE_DAYS:g}"
+        ) from exc
+    if not math.isfinite(value) or value < 0 or value > MAX_STATUS_MAX_AGE_DAYS:
+        raise ValueError(
+            f"MANDAT_STATUS_MAX_AGE_DAYS={raw!r}: нужно конечное число дней от 0 до {MAX_STATUS_MAX_AGE_DAYS:g}"
+        )
+    return value
 
 
 def _lock_path(directory: Path) -> Path:
@@ -174,6 +194,7 @@ class StatusRegistry:
         """Случайный свободный индекс из CSPRNG: по номеру не видно ни порядка выдачи, ни числа удостоверений.
 
         Так советует W3C Bitstring Status List (раздел о statusListIndex). Занятые индексы не выдаются повторно.
+        Между процессами используйте ``allocate_under_lock``, иначе возможен конфликт index/meta на save.
         """
         if len(self.entries) >= self.size:
             raise RuntimeError("в списке статусов не осталось свободных индексов: нужна новая эпоха")
@@ -186,6 +207,27 @@ class StatusRegistry:
             index = secrets.choice([i for i in range(self.size) if i not in taken])
         self.entries[str(index)] = dict(meta)
         return index
+
+    def allocate_under_lock(
+        self,
+        meta: dict[str, Any],
+        key: Ed25519PrivateKey | Signer,
+        *,
+        now: datetime | None = None,
+    ) -> int:
+        """Выдать индекс на свежем снимке и опубликовать под flock (без гонки двух issuer)."""
+        with _RegistryLock(self.directory):
+            root = published_root(self.directory)
+            if (root / "registry.json").exists():
+                disk = StatusRegistry.open(self.directory)
+                self.size = disk.size
+                self.epoch = disk.epoch
+                self.sequence = disk.sequence
+                self.lists = {p: bytearray(bits) for p, bits in disk.lists.items()}
+                self.entries = {k: dict(v) for k, v in disk.entries.items()}
+            index = self.allocate(meta)
+            self._save_unlocked(key, now=now, conflict="error")
+            return index
 
     def credential_status(self, index: int) -> list[dict[str, str]]:
         return [
@@ -228,33 +270,56 @@ class StatusRegistry:
             )
         )
 
+    @staticmethod
+    def _entry_identity(meta: dict[str, Any]) -> tuple[Any, ...]:
+        """Идентичность выдачи индекса: без history (её можно дополнять)."""
+        poa = meta.get("poa_numbers") or []
+        if isinstance(poa, (list, tuple)):
+            poa_key = tuple(sorted(str(x) for x in poa))
+        else:
+            poa_key = (str(poa),)
+        return (meta.get("org_inn"), meta.get("verdict"), poa_key)
+
     def _merge_from_disk(self, disk: StatusRegistry) -> None:
-        """Монотонное слияние: биты revocation/suspension — OR; entries объединяются."""
+        """Слияние при stale writer.
+
+        * revocation — монотонный OR (отзыв необратим);
+        * suspension — без OR: любое расхождение битов → ``StaleRegistryError``
+          (resume на устаревшем снимке не затирает и не «дотягивает» чужой бит);
+        * один index с разной identity meta → ``StaleRegistryError`` (не молчаливый merge).
+        """
         if disk.epoch and self.epoch and disk.epoch != self.epoch:
             raise ValueError(f"эпоха на диске {disk.epoch} не совпадает с {self.epoch}")
-        for purpose in PURPOSES:
-            ours = self.lists[purpose]
-            theirs = disk.lists[purpose]
-            if len(ours) != len(theirs):
-                raise ValueError("длина списков статусов при слиянии не совпадает")
-            for i, (a, b) in enumerate(zip(ours, theirs, strict=True)):
-                ours[i] = a | b
+        ours_rev, theirs_rev = self.lists["revocation"], disk.lists["revocation"]
+        ours_sus, theirs_sus = self.lists["suspension"], disk.lists["suspension"]
+        if len(ours_rev) != len(theirs_rev) or len(ours_sus) != len(theirs_sus):
+            raise ValueError("длина списков статусов при слиянии не совпадает")
+        for i, (a, b) in enumerate(zip(ours_rev, theirs_rev, strict=True)):
+            ours_rev[i] = a | b
+        if ours_sus != theirs_sus:
+            raise StaleRegistryError(
+                "конфликт suspension при слиянии: OR только для revocation; "
+                "resume/расхождение битов требует перечитать registry"
+            )
         for idx, meta in disk.entries.items():
             if idx not in self.entries:
                 self.entries[idx] = dict(meta)
-            else:
-                # История отзыва не должна теряться: объединяем history.
-                hist = list(self.entries[idx].get("history") or [])
-                seen = {(h.get("purpose"), h.get("reason")) for h in hist}
-                for item in meta.get("history") or []:
-                    key = (item.get("purpose"), item.get("reason"))
-                    if key not in seen:
-                        hist.append(item)
-                        seen.add(key)
-                merged = {**meta, **self.entries[idx]}
-                if hist:
-                    merged["history"] = hist
-                self.entries[idx] = merged
+                continue
+            local = self.entries[idx]
+            if self._entry_identity(local) != self._entry_identity(meta):
+                raise StaleRegistryError(
+                    f"конфликт индекса {idx}: разная identity meta на одном statusListIndex "
+                    f"(два issuer/allocate на одном снимке) — перечитайте registry"
+                )
+            hist = list(local.get("history") or [])
+            seen = {(h.get("purpose"), h.get("reason")) for h in hist}
+            for item in meta.get("history") or []:
+                key = (item.get("purpose"), item.get("reason"))
+                if key not in seen:
+                    hist.append(item)
+                    seen.add(key)
+            if hist:
+                self.entries[idx] = {**local, "history": hist}
         self.sequence = max(self.sequence, disk.sequence)
 
     def save(
@@ -267,47 +332,50 @@ class StatusRegistry:
         """Атомарная публикация registry + двух списков под межпроцессной блокировкой.
 
         ``conflict``:
-          * ``merge`` — OR-слияние битов отзыва/приостановки при stale writer (по умолчанию);
-          * ``error`` — ``StaleRegistryError``, диск не затирается.
+          * ``merge`` — OR для revocation; suspension/identity конфликты → ``StaleRegistryError``;
+          * ``error`` — ``StaleRegistryError`` при любом расхождении sequence.
 
-        Снимок пишется в ``snapshots/{sequence}/``, затем атомарно обновляется ``CURRENT``,
-        затем зеркалируется в плоские файлы для читателей. Crash до CURRENT оставляет
-        предыдущий согласованный указатель (M-02).
+        Снимок: ``snapshots/{sequence}/`` → ``CURRENT`` → плоское зеркало.
         """
+        with _RegistryLock(self.directory):
+            self._save_unlocked(key, now=now, conflict=conflict)
+
+    def _save_unlocked(
+        self,
+        key: Ed25519PrivateKey | Signer,
+        *,
+        now: datetime | None = None,
+        conflict: str = "merge",
+    ) -> None:
         if conflict not in {"merge", "error"}:
             raise ValueError("conflict: merge или error")
-        with _RegistryLock(self.directory):
-            root = published_root(self.directory)
-            state_path = root / "registry.json"
-            if state_path.exists():
-                disk = StatusRegistry.open(self.directory)
-                if disk.sequence != self.sequence:
-                    if conflict == "error":
-                        raise StaleRegistryError(
-                            f"устаревший снимок sequence={self.sequence}, на диске {disk.sequence}"
-                        )
-                    self._merge_from_disk(disk)
-            self.sequence += 1
-            state = {
-                "size": self.size,
-                "epoch": self.epoch,
-                "sequence": self.sequence,
-                "lists": {p: encode_bits(b) for p, b in self.lists.items()},
-                "entries": self.entries,
-            }
-            snap = self.directory / "snapshots" / str(self.sequence)
-            snap.mkdir(parents=True, exist_ok=True)
-            _atomic_write(snap / "registry.json", json.dumps(state, ensure_ascii=False, indent=2))
-            for purpose in PURPOSES:
-                cred = status_list_credential(
-                    purpose, self.lists[purpose], key, epoch=self.epoch, now=now, sequence=self.sequence
-                )
-                _atomic_write(snap / f"{purpose}.json", attestation.dump(cred))
-            # Указатель на полный снимок — только после записи всех трёх файлов.
-            _atomic_write(self.directory / "CURRENT", f"{self.sequence}\n")
-            # Плоское зеркало для check_status / внешних читателей.
-            for name in ("registry.json", *(f"{p}.json" for p in PURPOSES)):
-                _atomic_write(self.directory / name, (snap / name).read_text(encoding="utf-8"))
+        root = published_root(self.directory)
+        state_path = root / "registry.json"
+        if state_path.exists():
+            disk = StatusRegistry.open(self.directory)
+            if disk.sequence != self.sequence:
+                if conflict == "error":
+                    raise StaleRegistryError(f"устаревший снимок sequence={self.sequence}, на диске {disk.sequence}")
+                self._merge_from_disk(disk)
+        self.sequence += 1
+        state = {
+            "size": self.size,
+            "epoch": self.epoch,
+            "sequence": self.sequence,
+            "lists": {p: encode_bits(b) for p, b in self.lists.items()},
+            "entries": self.entries,
+        }
+        snap = self.directory / "snapshots" / str(self.sequence)
+        snap.mkdir(parents=True, exist_ok=True)
+        _atomic_write(snap / "registry.json", json.dumps(state, ensure_ascii=False, indent=2))
+        for purpose in PURPOSES:
+            cred = status_list_credential(
+                purpose, self.lists[purpose], key, epoch=self.epoch, now=now, sequence=self.sequence
+            )
+            _atomic_write(snap / f"{purpose}.json", attestation.dump(cred))
+        _atomic_write(self.directory / "CURRENT", f"{self.sequence}\n")
+        for name in ("registry.json", *(f"{p}.json" for p in PURPOSES)):
+            _atomic_write(self.directory / name, (snap / name).read_text(encoding="utf-8"))
 
 
 def status_list_credential(
