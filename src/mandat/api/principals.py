@@ -9,10 +9,14 @@
 Хеш и новый токен печатает ``mandat api-user --name ivanova --role operator --expires-in-days 90``.
 
 Жизненный цикл токена (M-12): ``expires_at`` (ISO 8601 с часовым поясом) — после этого момента токен
-не принимается; ``revoked: true`` — токен не принимается сразу. Оба поля действуют в любом режиме.
-В pilot/prod (и любом защищённом режиме) ``expires_at`` обязателен у каждого пользователя, иначе
-список не загружается и ``mandat serve`` не стартует. Если ``MANDAT_API_USERS`` — путь к файлу,
-каталог перечитывает его при смене файла (отзыв без рестарта); нечитаемый файл закрывает доступ
+не принимается; ``revoked: true`` — токен не принимается сразу. Проверка срока и отзыва действует в
+ЛЮБОМ режиме, если поля заданы. Обязательность ``expires_at`` (и потолок срока ``MAX_TOKEN_TTL_DAYS``
+от момента загрузки списка) — только в pilot/prod и любом защищённом режиме: иначе список не
+загружается и ``mandat serve`` не стартует. ``expires_at: null`` равно отсутствию поля. Отозванную запись
+потолок срока не проверяет (она всё равно не действует). Время берётся с часов сервера без допуска
+на расхождение: часы должны вести NTP. Если ``MANDAT_API_USERS`` — путь к файлу,
+каталог перечитывает его при смене файла (отзыв без рестарта); файл нужно обновлять только записью
+во временный файл и ``rename`` (атомарно), не правкой на месте; нечитаемый файл закрывает доступ
 всем (fail closed), а не оставляет последний удачный список. Общий ``MANDAT_API_TOKEN`` срока жизни
 не имеет — это режим стенда. Это не OIDC и не сессии: проверка идёт по хешу при каждом запросе.
 """
@@ -22,11 +26,13 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +63,10 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+MAX_TOKEN_TTL_DAYS = 366
+log = logging.getLogger(__name__)
+
+
 @dataclass(frozen=True)
 class UserEntry:
     principal: Principal
@@ -83,13 +93,14 @@ def _parse_expiry(name: str, value: Any) -> datetime:
     return moment.astimezone(UTC)
 
 
-def parse_users(raw: Any, *, require_expiry: bool | None = None) -> tuple[UserEntry, ...]:
+def parse_users(raw: Any, *, require_expiry: bool | None = None, now: datetime | None = None) -> tuple[UserEntry, ...]:
     if require_expiry is None:
         from mandat.services.env_policy import protected
 
         require_expiry = protected()
     if not isinstance(raw, list):
         raise ValueError("MANDAT_API_USERS: ожидался JSON-массив пользователей")
+    ceiling = (now or datetime.now(UTC)) + timedelta(days=MAX_TOKEN_TTL_DAYS)
     users: list[UserEntry] = []
     seen: set[str] = set()
     for item in raw:
@@ -117,6 +128,11 @@ def parse_users(raw: Any, *, require_expiry: bool | None = None) -> tuple[UserEn
             expires = _parse_expiry(name, item["expires_at"])
         elif require_expiry:
             raise ValueError(f"MANDAT_API_USERS: у {name} нет expires_at (обязателен в pilot/prod)")
+        if expires is not None and not revoked and expires > ceiling:
+            message = f"у {name} expires_at позже {MAX_TOKEN_TTL_DAYS} дн. от сегодня"
+            if require_expiry:
+                raise ValueError(f"MANDAT_API_USERS: {message} (потолок срока в pilot/prod)")
+            log.warning("MANDAT_API_USERS: %s", message)
         seen.add(name)
         users.append(UserEntry(Principal(name, role), digest.lower(), expires, revoked))
     return tuple(users)
@@ -153,32 +169,51 @@ class Directory:
         self.legacy_token = "" if self._had_users else legacy_token.strip()
         self._clock = clock or (lambda: datetime.now(UTC))
         self._reload_path = reload_path
-        self._stamp = self._file_stamp()
+        # Метка пуста: первый же запрос перечитает файл, так что правка между load_users и стартом не теряется.
+        self._digest: str | None = None
+        self._stamp: tuple[int, ...] | None = None
         self._lock = threading.Lock()
 
-    def _file_stamp(self) -> tuple[int, int] | None:
-        if self._reload_path is None:
-            return None
+    # Файл считается «свежим», пока его mtime моложе этого окна: грубая гранулярность mtime и правка на
+    # месте того же размера не должны оставить отозванный токен в силе, поэтому в окне сверяется хеш содержимого.
+    RECENT_SECONDS = 2.0
+
+    def _file_stamp(self) -> tuple[int, ...]:
+        assert self._reload_path is not None
         try:
             st = self._reload_path.stat()
         except OSError:
-            return (-1, -1)
-        return (st.st_mtime_ns, st.st_size)
+            return (-1,)
+        return (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_ctime_ns, st.st_size)
 
     def _refresh(self) -> None:
         if self._reload_path is None:
             return
         stamp = self._file_stamp()
-        if stamp == self._stamp:
+        if stamp == self._stamp and not self._recent(stamp):
             return
         with self._lock:
-            if stamp == self._stamp:
+            stamp = self._file_stamp()
+            if stamp == self._stamp and not self._recent(stamp):
                 return
             try:
-                self.users = parse_users(json.loads(self._reload_path.read_text(encoding="utf-8")))
+                raw = self._reload_path.read_bytes()
+            except OSError:
+                raw = None
+            digest = hashlib.sha256(raw).hexdigest() if raw is not None else None
+            if stamp == self._stamp and digest == self._digest:
+                return  # метка та же и содержимое то же
+            try:
+                if raw is None:
+                    raise OSError("нет файла")
+                self.users = parse_users(json.loads(raw.decode("utf-8")))
             except (ValueError, OSError):
                 self.users = ()  # fail closed: нечитаемый список не оставляет прежних токенов в силе
-            self._stamp = stamp
+            self._stamp, self._digest = stamp, digest
+
+    @staticmethod
+    def _recent(stamp: tuple[int, ...]) -> bool:
+        return len(stamp) > 2 and time.time() - stamp[2] / 1e9 < Directory.RECENT_SECONDS
 
     @property
     def configured(self) -> bool:

@@ -494,8 +494,12 @@ def cmd_api_user(args: argparse.Namespace) -> int:
     token = secrets.token_urlsafe(32)
     entry: dict[str, Any] = {"name": args.name, "role": args.role, "token_sha256": hash_token(token)}
     if args.expires_in_days is not None:
-        if args.expires_in_days <= 0:
-            print("--expires-in-days: нужно положительное число", file=sys.stderr)
+        import math
+
+        from mandat.api.principals import MAX_TOKEN_TTL_DAYS
+
+        if not math.isfinite(args.expires_in_days) or not 0 < args.expires_in_days <= MAX_TOKEN_TTL_DAYS:
+            print(f"--expires-in-days: число от 0 (не включая) до {MAX_TOKEN_TTL_DAYS}", file=sys.stderr)
             return 2
         entry["expires_at"] = (datetime.now(UTC) + timedelta(days=args.expires_in_days)).isoformat(timespec="seconds")
     elif protected():
