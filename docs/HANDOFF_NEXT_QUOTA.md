@@ -12,9 +12,14 @@
 | #24 | M-13 status freshness by risk + G1 `min(global, risk)` |
 | #25 | CLI print-order «подпись верна» **после** status checks; LIMITS `require_seen=False`; G-A (protected JSON override **только ужесточает**); G-D RESPONSE M-13→FIXED; evidence **1017** |
 
+## Закрыто в PR #28 (G-B + demo print; после merge — в main)
+
+- **G-B:** в pilot/prod `operation_risk` не указан → строжайшее окно (breaking для интеграторов, см. LIMITS/CHANGELOG).
+- **Demo print bug:** `attest-verify` проверяет статус до «подпись верна»; demo + `--status-dir` + revoked → exit 3 без success-вывода.
+
 ## Открытый follow-up (не вошёл в #25)
 
-- **Demo print bug:** `demo + --status-dir + revoked` на main всё ещё может печатать success, потом exit 3 (`cli.py` ~368–370). Отдельный мелкий PR (удобно вместе с G-B).
+- Нет открытых пунктов по G-B и demo print (закрыты в #28).
 
 ## NEXT чанки (порядок)
 
@@ -24,7 +29,7 @@
    - Overlay healthcheck → `/readyz`; CI: compose config + up --wait; persist across restart.  
    - README/LIMITS: `MANDAT_ENV=pilot` alone ≠ pilot.
 
-2. **G-B + demo print** | OPEN | `fix/gb-none-risk-strictest` (+ demo revoked print)  
+2. **G-B + demo print** | DONE в PR #28 (ожидает merge) | `fix/gb-none-risk-strictest`  
    - Protected: `operation_risk is None`/blank → **strictest** (`min(mapping)`), не default 7d.  
    - Demo может оставить default.  
    - В том же PR: убрать success-print на reject-path для demo+revoked.
