@@ -26,6 +26,10 @@
 
 ```powershell
 mandat monitor examples/events/poa_revoked.json --status-dir var/demo/status
+> **Отзыв (M-01/M-02):** в `pilot`/`prod` без `--status-dir` проверка **неуспешна** (fail-closed).
+> `--crypto-only` проверяет только подпись и **не** говорит «принимается»/«действует».
+> Запись списков статусов под `flock` + OR-merge: stale writer не стирает бит отзыва.
+
 mandat attest-verify var/demo/attestations/03_subdelegation_ok.json --public-key (Get-Content var/demo/public_key.txt) --status-dir var/demo/status
 ```
 

@@ -54,3 +54,17 @@ def key_problem() -> str | None:
     except PiiKeyMissing as exc:
         problems.append(f"MANDAT_ENV={mode()}: {exc}")
     return "; ".join(problems) or None
+
+
+def require_attestation_status() -> bool:
+    """Нужна ли обязательная проверка статуса удостоверения.
+
+    В pilot/prod (и любом защищённом режиме) — да. Переопределение:
+    ``MANDAT_REQUIRE_ATTESTATION_STATUS=1/0``.
+    """
+    raw = __import__("os").environ.get("MANDAT_REQUIRE_ATTESTATION_STATUS", "").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return protected()

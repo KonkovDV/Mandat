@@ -15,8 +15,11 @@ GZIP и кодируется multibase base64url без выравнивания
 from __future__ import annotations
 
 import base64
+import fcntl
 import gzip
 import json
+import math
+import os
 import secrets
 import zlib
 from collections.abc import Iterable
@@ -36,6 +39,85 @@ MIN_BITS = 131_072
 MAX_LIST_BYTES = 1 << 20
 PURPOSES = ("revocation", "suspension")
 BASE_URL = "https://mandat.example/status"
+
+# Максимальный возраст подписанного списка при проверке с ``now`` (дни). Банк задаёт
+# ``MANDAT_STATUS_MAX_AGE_DAYS`` под риск операции; 0 = любой возраст недопустим (кроме exact now).
+DEFAULT_STATUS_MAX_AGE_DAYS = 7
+
+
+class StaleRegistryError(RuntimeError):
+    """Конкурирующая запись: локальный снимок устарел относительно диска."""
+
+
+# Верхняя граница окна свежести списка (дни). Больше — явная ошибка конфигурации.
+MAX_STATUS_MAX_AGE_DAYS = 3650.0
+
+
+def status_max_age_days() -> float:
+    """Окно свежести списка статусов в днях.
+
+    Пусто → ``DEFAULT_STATUS_MAX_AGE_DAYS`` (7). Иначе конечное число в ``[0, MAX]``.
+    ``nan``/``inf``/отрицательные/мусор → ``ValueError`` (в pilot/prod не молчим).
+    """
+    raw = os.environ.get("MANDAT_STATUS_MAX_AGE_DAYS", "").strip()
+    if not raw:
+        return float(DEFAULT_STATUS_MAX_AGE_DAYS)
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"MANDAT_STATUS_MAX_AGE_DAYS={raw!r}: нужно конечное число дней от 0 до {MAX_STATUS_MAX_AGE_DAYS:g}"
+        ) from exc
+    if not math.isfinite(value) or value < 0 or value > MAX_STATUS_MAX_AGE_DAYS:
+        raise ValueError(
+            f"MANDAT_STATUS_MAX_AGE_DAYS={raw!r}: нужно конечное число дней от 0 до {MAX_STATUS_MAX_AGE_DAYS:g}"
+        )
+    return value
+
+
+def _lock_path(directory: Path) -> Path:
+    return directory / ".registry.lock"
+
+
+class _RegistryLock:
+    """Межпроцессная блокировка каталога статусов (fcntl Exclusive)."""
+
+    def __init__(self, directory: Path) -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+        self._path = _lock_path(directory)
+        self._fh: Any = None
+
+    def __enter__(self) -> _RegistryLock:
+        self._fh = open(self._path, "a+", encoding="utf-8")
+        fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        assert self._fh is not None
+        fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
+        self._fh.close()
+        self._fh = None
+
+
+def _atomic_write(path: Path, data: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(data)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+
+
+def published_root(directory: Path) -> Path:
+    """Каталог согласованного снимка: snapshots/{CURRENT} или плоский legacy."""
+    current = directory / "CURRENT"
+    if current.exists():
+        seq = current.read_text(encoding="utf-8").strip()
+        snap = directory / "snapshots" / seq
+        if (snap / "registry.json").exists():
+            return snap
+    return directory
 
 
 def encode_bits(bits: bytearray) -> str:
@@ -86,7 +168,8 @@ class StatusRegistry:
 
     @classmethod
     def open(cls, directory: Path) -> StatusRegistry:
-        state = directory / "registry.json"
+        root = published_root(directory)
+        state = root / "registry.json"
         if not state.exists():
             reg = cls(directory, epoch=secrets.token_hex(8))
             reg.lists = {p: bytearray(MIN_BITS // 8) for p in PURPOSES}
@@ -111,6 +194,7 @@ class StatusRegistry:
         """Случайный свободный индекс из CSPRNG: по номеру не видно ни порядка выдачи, ни числа удостоверений.
 
         Так советует W3C Bitstring Status List (раздел о statusListIndex). Занятые индексы не выдаются повторно.
+        Между процессами используйте ``allocate_under_lock``, иначе возможен конфликт index/meta на save.
         """
         if len(self.entries) >= self.size:
             raise RuntimeError("в списке статусов не осталось свободных индексов: нужна новая эпоха")
@@ -123,6 +207,27 @@ class StatusRegistry:
             index = secrets.choice([i for i in range(self.size) if i not in taken])
         self.entries[str(index)] = dict(meta)
         return index
+
+    def allocate_under_lock(
+        self,
+        meta: dict[str, Any],
+        key: Ed25519PrivateKey | Signer,
+        *,
+        now: datetime | None = None,
+    ) -> int:
+        """Выдать индекс на свежем снимке и опубликовать под flock (без гонки двух issuer)."""
+        with _RegistryLock(self.directory):
+            root = published_root(self.directory)
+            if (root / "registry.json").exists():
+                disk = StatusRegistry.open(self.directory)
+                self.size = disk.size
+                self.epoch = disk.epoch
+                self.sequence = disk.sequence
+                self.lists = {p: bytearray(bits) for p, bits in disk.lists.items()}
+                self.entries = {k: dict(v) for k, v in disk.entries.items()}
+            index = self.allocate(meta)
+            self._save_unlocked(key, now=now, conflict="error")
+            return index
 
     def credential_status(self, index: int) -> list[dict[str, str]]:
         return [
@@ -165,8 +270,93 @@ class StatusRegistry:
             )
         )
 
-    def save(self, key: Ed25519PrivateKey | Signer, *, now: datetime | None = None) -> None:
-        self.directory.mkdir(parents=True, exist_ok=True)
+    @staticmethod
+    def _entry_identity(meta: dict[str, Any]) -> tuple[Any, ...]:
+        """Идентичность выдачи индекса: без history (её можно дополнять)."""
+        poa = meta.get("poa_numbers") or []
+        if isinstance(poa, (list, tuple)):
+            poa_key = tuple(sorted(str(x) for x in poa))
+        else:
+            poa_key = (str(poa),)
+        return (meta.get("org_inn"), meta.get("verdict"), poa_key)
+
+    def _merge_from_disk(self, disk: StatusRegistry) -> None:
+        """Слияние при stale writer.
+
+        * revocation — монотонный OR (отзыв необратим);
+        * suspension — без OR: любое расхождение битов → ``StaleRegistryError``
+          (resume на устаревшем снимке не затирает и не «дотягивает» чужой бит);
+        * один index с разной identity meta → ``StaleRegistryError`` (не молчаливый merge).
+        """
+        if disk.epoch and self.epoch and disk.epoch != self.epoch:
+            raise ValueError(f"эпоха на диске {disk.epoch} не совпадает с {self.epoch}")
+        ours_rev, theirs_rev = self.lists["revocation"], disk.lists["revocation"]
+        ours_sus, theirs_sus = self.lists["suspension"], disk.lists["suspension"]
+        if len(ours_rev) != len(theirs_rev) or len(ours_sus) != len(theirs_sus):
+            raise ValueError("длина списков статусов при слиянии не совпадает")
+        for i, (a, b) in enumerate(zip(ours_rev, theirs_rev, strict=True)):
+            ours_rev[i] = a | b
+        if ours_sus != theirs_sus:
+            raise StaleRegistryError(
+                "конфликт suspension при слиянии: OR только для revocation; "
+                "resume/расхождение битов требует перечитать registry"
+            )
+        for idx, meta in disk.entries.items():
+            if idx not in self.entries:
+                self.entries[idx] = dict(meta)
+                continue
+            local = self.entries[idx]
+            if self._entry_identity(local) != self._entry_identity(meta):
+                raise StaleRegistryError(
+                    f"конфликт индекса {idx}: разная identity meta на одном statusListIndex "
+                    f"(два issuer/allocate на одном снимке) — перечитайте registry"
+                )
+            hist = list(local.get("history") or [])
+            seen = {(h.get("purpose"), h.get("reason")) for h in hist}
+            for item in meta.get("history") or []:
+                key = (item.get("purpose"), item.get("reason"))
+                if key not in seen:
+                    hist.append(item)
+                    seen.add(key)
+            if hist:
+                self.entries[idx] = {**local, "history": hist}
+        self.sequence = max(self.sequence, disk.sequence)
+
+    def save(
+        self,
+        key: Ed25519PrivateKey | Signer,
+        *,
+        now: datetime | None = None,
+        conflict: str = "merge",
+    ) -> None:
+        """Атомарная публикация registry + двух списков под межпроцессной блокировкой.
+
+        ``conflict``:
+          * ``merge`` — OR для revocation; suspension/identity конфликты → ``StaleRegistryError``;
+          * ``error`` — ``StaleRegistryError`` при любом расхождении sequence.
+
+        Снимок: ``snapshots/{sequence}/`` → ``CURRENT`` → плоское зеркало.
+        """
+        with _RegistryLock(self.directory):
+            self._save_unlocked(key, now=now, conflict=conflict)
+
+    def _save_unlocked(
+        self,
+        key: Ed25519PrivateKey | Signer,
+        *,
+        now: datetime | None = None,
+        conflict: str = "merge",
+    ) -> None:
+        if conflict not in {"merge", "error"}:
+            raise ValueError("conflict: merge или error")
+        root = published_root(self.directory)
+        state_path = root / "registry.json"
+        if state_path.exists():
+            disk = StatusRegistry.open(self.directory)
+            if disk.sequence != self.sequence:
+                if conflict == "error":
+                    raise StaleRegistryError(f"устаревший снимок sequence={self.sequence}, на диске {disk.sequence}")
+                self._merge_from_disk(disk)
         self.sequence += 1
         state = {
             "size": self.size,
@@ -175,12 +365,17 @@ class StatusRegistry:
             "lists": {p: encode_bits(b) for p, b in self.lists.items()},
             "entries": self.entries,
         }
-        (self.directory / "registry.json").write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        snap = self.directory / "snapshots" / str(self.sequence)
+        snap.mkdir(parents=True, exist_ok=True)
+        _atomic_write(snap / "registry.json", json.dumps(state, ensure_ascii=False, indent=2))
         for purpose in PURPOSES:
             cred = status_list_credential(
                 purpose, self.lists[purpose], key, epoch=self.epoch, now=now, sequence=self.sequence
             )
-            (self.directory / f"{purpose}.json").write_text(attestation.dump(cred), encoding="utf-8")
+            _atomic_write(snap / f"{purpose}.json", attestation.dump(cred))
+        _atomic_write(self.directory / "CURRENT", f"{self.sequence}\n")
+        for name in ("registry.json", *(f"{p}.json" for p in PURPOSES)):
+            _atomic_write(self.directory / name, (snap / name).read_text(encoding="utf-8"))
 
 
 def status_list_credential(
@@ -236,14 +431,15 @@ def check_status(
     Свежесть по часам проверяется, только если передан ``now``: демо должно проверяться и через месяц.
     """
     result: dict[str, bool | str] = {}
-    issuer_state = status_dir / "registry.json"
+    root = published_root(status_dir)
+    issuer_state = root / "registry.json"
     issuer_sequence = -1
     if issuer_state.exists():
         # Список старше состояния издателя в том же каталоге — подложен: подписан верно, но устарел.
         issuer_sequence = int(json.loads(issuer_state.read_text(encoding="utf-8")).get("sequence") or -1)
     for entry in credential.get("credentialStatus") or []:
         purpose = entry["statusPurpose"]
-        path = status_dir / f"{purpose}.json"
+        path = root / f"{purpose}.json"
         status_cred = json.loads(path.read_text(encoding="utf-8"))
         if status_cred.get("id") != entry["statusListCredential"]:
             raise ValueError(f"список {path} не тот, на который ссылается удостоверение")
@@ -278,7 +474,8 @@ def check_status(
         return {"state": "без статуса"}
     issued_values = [datetime.fromisoformat(str(result[key])) for key in result if str(key).endswith("_issued")]
     future = now is not None and any(item > now + timedelta(minutes=5) for item in issued_values)
-    stale = now is not None and any(now - item > timedelta(days=7) for item in issued_values)
+    max_age = status_max_age_days()
+    stale = now is not None and any(now - item > timedelta(days=max_age) for item in issued_values)
     revoked = bool(result.get("revocation"))
     suspended = bool(result.get("suspension"))
     if future:

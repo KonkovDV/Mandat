@@ -238,7 +238,9 @@ def test_cli_attest_verify_checks_list_freshness_in_pilot(tmp_path: Path, monkey
     args = ["attest-verify", str(path), "--public-key", public, "--status-dir", str(tmp_path / "status")]
     monkeypatch.setenv("MANDAT_ENV", "pilot")
     assert main(args) == 3
-    assert "список устарел" in capsys.readouterr().out
+    captured = capsys.readouterr()
+    combined = captured.out + captured.err
+    assert "список устарел" in combined, combined
     # На стенде демо-списки проверяются и через месяц: свежесть по часам не включается.
     monkeypatch.delenv("MANDAT_ENV")
     assert main(args) == 0

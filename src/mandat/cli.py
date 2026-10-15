@@ -261,23 +261,44 @@ def _attest_verify_keyring(args: argparse.Namespace, cred: dict[str, Any]) -> in
     from datetime import UTC, datetime
 
     from mandat.audit.signing import Keyring
-    from mandat.services.env_policy import protected
+    from mandat.services.env_policy import protected, require_attestation_status
 
     try:
         keyring = Keyring.load(Path(args.keyring))
     except (OSError, ValueError) as exc:
         print(f"ошибка: связка ключей не читается: {exc}", file=sys.stderr)
         return 2
+    if getattr(args, "crypto_only", False):
+        problems = attestation.verify_cryptographic(cred, keyring, now=datetime.now(UTC), allow_demo=not protected())
+        for problem in problems:
+            print(f"криптопроверка: {problem}", file=sys.stderr)
+        if problems:
+            return 4
+        print("подпись и поля удостоверения верны (только криптография, допуск операции не подтверждён)")
+        print(f"вердикт в удостоверении: {(cred.get('credentialSubject') or {}).get('verdict')}")
+        return 0
     status_dir = Path(args.status_dir) if args.status_dir else None
+    if require_attestation_status() and status_dir is None:
+        print("ошибка: в защищённом режиме нужен --status-dir (или --crypto-only для диагностики)", file=sys.stderr)
+        return 2
     problems = attestation.validate_attestation(
-        cred, keyring, now=datetime.now(UTC), status_dir=status_dir, allow_demo=not protected()
+        cred,
+        keyring,
+        now=datetime.now(UTC),
+        status_dir=status_dir,
+        allow_demo=not protected(),
+        require_status=require_attestation_status(),
     )
     for problem in problems:
         print(f"не принимается: {problem}", file=sys.stderr)
     if problems:
+        # 3 — статус не «действует» (отзыв/приостановка/устарел); 4 — прочие поля/крипто.
+        if any("статус удостоверения:" in p for p in problems):
+            return 3
         return 4
-    print("подпись верна, удостоверение принимается")
+    print("подпись верна, удостоверение подлинно")
     print(f"вердикт в удостоверении: {(cred.get('credentialSubject') or {}).get('verdict')}")
+    print("допуск операции: отдельно через authorize_operation / банковский контур")
     return 0
 
 
@@ -302,30 +323,57 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
         return 1
     from datetime import UTC, datetime
 
-    from mandat.services.env_policy import protected
+    from mandat.services.env_policy import protected, require_attestation_status
 
-    # Подпись верна — это ещё не «удостоверение принимается»: издатель, назначение, срок, профиль.
-    problems = attestation.validate_attestation(cred, [key], now=datetime.now(UTC), allow_demo=not protected())
+    if getattr(args, "crypto_only", False):
+        problems = attestation.verify_cryptographic(cred, [key], now=datetime.now(UTC), allow_demo=not protected())
+        for problem in problems:
+            print(f"криптопроверка: {problem}", file=sys.stderr)
+        if problems:
+            return 4
+        print("поля удостоверения верны (только криптография, допуск операции не подтверждён)")
+        print(f"вердикт в удостоверении: {(cred.get('credentialSubject') or {}).get('verdict')}")
+        return 0
+
+    status_dir = Path(args.status_dir) if args.status_dir else None
+    must_status = require_attestation_status()
+    if must_status and status_dir is None:
+        print("ошибка: в защищённом режиме нужен --status-dir (или --crypto-only для диагностики)", file=sys.stderr)
+        return 2
+
+    # В pilot/prod статус (в т.ч. свежесть списка) входит в validate. На стенде status_dir
+    # проверяется отдельно через check_status без now — демо-списки можно смотреть через месяц.
+    problems = attestation.validate_attestation(
+        cred,
+        [key],
+        now=datetime.now(UTC),
+        status_dir=status_dir if must_status else None,
+        allow_demo=not protected(),
+        require_status=must_status,
+    )
     for problem in problems:
         print(f"не принимается: {problem}", file=sys.stderr)
     if problems:
+        # 3 — статус не «действует» (отзыв/приостановка/устарел); 4 — прочие поля/крипто.
+        if any("статус удостоверения:" in p for p in problems):
+            return 3
         return 4
     # Действительное удостоверение бывает и у опровергнутого кейса: вердикт печатается всегда.
     verdict = (cred.get("credentialSubject") or {}).get("verdict")
     print(f"вердикт в удостоверении: {verdict}")
-    if cred.get("credentialStatus") and not args.status_dir:
+    print("удостоверение подлинно; допуск операции — отдельно (authorize_operation)")
+    if status_dir is None and cred.get("credentialStatus"):
         print("предупреждение: статус не проверялся, передайте --status-dir", file=sys.stderr)
-    if args.status_dir:
+    if status_dir is not None:
         seen_path = Path(args.seen_file) if args.seen_file else None
         seen = json.loads(seen_path.read_text(encoding="utf-8")) if seen_path and seen_path.exists() else {}
         try:
-            # В защищённой среде список проверяется и на свежесть; демо-список можно проверить и через месяц.
             status = check_status(
                 cred,
-                Path(args.status_dir),
+                status_dir,
                 key,
                 seen=seen if seen_path else None,
-                now=datetime.now(UTC) if protected() else None,
+                now=datetime.now(UTC) if must_status else None,
             )
         except (OSError, ValueError, KeyError) as exc:
             print(f"статус не проверен: {exc}", file=sys.stderr)
@@ -487,6 +535,11 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--keyring", help="связка ключей издателя (JSON keys[kid,status,retired_at]), см. docs/KEYS.md")
     a.add_argument("--seen-file", help="состояние проверяющего: наибольший виденный sequence каждого списка")
     a.add_argument("--status-dir", help="каталог списков статусов W3C Bitstring Status List")
+    a.add_argument(
+        "--crypto-only",
+        action="store_true",
+        help="только подпись и поля: без статуса и без формулировки принятия/допуска",
+    )
     a.set_defaults(func=cmd_attest_verify)
 
     x = sub.add_parser("examples", help="пересобрать демо-кейсы")
