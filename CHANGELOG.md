@@ -1,5 +1,11 @@
 # Изменения
 
+## 2026-10-15 — M-06 LLM HTTPS in protected
+
+- В pilot/prod `OpenAICompatClient` требует `https`; loopback `127.0.0.1`/`localhost`/`::1` только при `MANDAT_LLM_ALLOW_INSECURE_LOOPBACK=1`.
+- SECURITY / `.env.example`; тесты `tests/test_m06_llm_tls.py`.
+- Evidence/README/JURY/колода: **1000** автотестов (line coverage 95,8 %).
+
 ## 2026-10-15 — M-01/M-02 attestation lifecycle (#18)
 
 - Fail-closed статус удостоверения в pilot/prod: без каталога статусов / при отзыве / приостановке / устаревшем списке — отказ; CLI `--crypto-only` не говорит «принимается».
