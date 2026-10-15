@@ -117,19 +117,22 @@ def _risk_age_mapping() -> dict[str, float]:
 def status_max_age_for(operation_risk: str | None = None) -> float:
     """Окно свежести списка под риск операции.
 
-    Если задан ``MANDAT_STATUS_MAX_AGE_DAYS`` — он перекрывает карту рисков (ops override).
-    Иначе: ``operation_risk`` из ``DEFAULT_STATUS_MAX_AGE_BY_RISK`` /
-    ``MANDAT_STATUS_MAX_AGE_BY_RISK``. ``None``/пусто → ``default``.
-    Неизвестный risk → **самое строгое** окно (минимум по карте), не default.
+    Карта ``operation_risk`` → дни (``DEFAULT_STATUS_MAX_AGE_BY_RISK`` /
+    ``MANDAT_STATUS_MAX_AGE_BY_RISK``). ``None``/пусто → ``default``.
+    Неизвестный risk → **самое строгое** окно (минимум по карте).
+
+    Если задан ``MANDAT_STATUS_MAX_AGE_DAYS`` — берём ``min(global, risk)`` (G1):
+    глобальный потолок не может ослабить payment до 7 дней.
     """
-    if os.environ.get("MANDAT_STATUS_MAX_AGE_DAYS", "").strip():
-        return status_max_age_days()
     mapping = _risk_age_mapping()
     risk = (operation_risk or "default").strip().lower() or "default"
     if risk in mapping:
-        return float(mapping[risk])
-    # Unknown risk: fail toward fresher lists (strictest = min days in map).
-    return float(min(mapping.values()))
+        risk_age = float(mapping[risk])
+    else:
+        risk_age = float(min(mapping.values()))
+    if os.environ.get("MANDAT_STATUS_MAX_AGE_DAYS", "").strip():
+        return min(status_max_age_days(), risk_age)
+    return risk_age
 
 
 def _lock_path(directory: Path) -> Path:
