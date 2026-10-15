@@ -355,9 +355,7 @@ def authorize_operation(
     problems: list[str] = []
     require_seen = bool(protected())
     if require_seen and seen is None:
-        problems.append(
-            "нет high-watermark seen: в защищённом режиме обязателен для допуска операции"
-        )
+        problems.append("нет high-watermark seen: в защищённом режиме обязателен для допуска операции")
     problems.extend(
         validate_attestation(
             credential,

@@ -491,9 +491,7 @@ def check_status(
     необязателен (квитанция / демо). Для допуска в pilot/prod см. ``authorize_operation``.
     """
     if require_seen and seen is None:
-        raise ValueError(
-            "нет high-watermark seen: в защищённом режиме обязателен для проверки свежести списка"
-        )
+        raise ValueError("нет high-watermark seen: в защищённом режиме обязателен для проверки свежести списка")
     result: dict[str, bool | str] = {}
     root = published_root(status_dir)
     issuer_state = root / "registry.json"

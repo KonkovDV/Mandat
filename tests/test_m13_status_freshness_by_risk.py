@@ -88,9 +88,7 @@ def test_check_status_require_seen_without_seen_raises(tmp_path, monkeypatch: py
 def test_authorize_prod_without_seen_rejects(tmp_path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("MANDAT_ENV", "prod")
     key, cred, sd = _issued(tmp_path)
-    problems = attestation.authorize_operation(
-        cred, [key.public_key()], now=NOW + timedelta(minutes=1), status_dir=sd
-    )
+    problems = attestation.authorize_operation(cred, [key.public_key()], now=NOW + timedelta(minutes=1), status_dir=sd)
     assert any("seen" in p for p in problems)
 
 
