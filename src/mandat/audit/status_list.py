@@ -133,14 +133,20 @@ def status_max_age_for(operation_risk: str | None = None) -> float:
     """Окно свежести списка под риск операции.
 
     Карта ``operation_risk`` → дни (``DEFAULT_STATUS_MAX_AGE_BY_RISK`` /
-    ``MANDAT_STATUS_MAX_AGE_BY_RISK``). ``None``/пусто → ``default``.
+    ``MANDAT_STATUS_MAX_AGE_BY_RISK``). В демо-режиме ``None``/пусто → ``default``.
+    В protected (pilot/prod и любой неизвестный режим) ``None``/пусто — это «риск не указан» и он
+    трактуется как **самый строгий** (G-B), а не как 7 дней; явный ``default`` по-прежнему ``default``.
     Неизвестный risk → **самое строгое** окно (минимум по карте).
 
     Если задан ``MANDAT_STATUS_MAX_AGE_DAYS`` — берём ``min(global, risk)`` (G1):
     глобальный потолок не может ослабить payment до 7 дней.
     """
     mapping = _risk_age_mapping()
-    risk = (operation_risk or "default").strip().lower() or "default"
+    risk = (operation_risk or "").strip().lower()
+    if not risk:
+        from mandat.services.env_policy import protected
+
+        risk = "" if protected() else "default"
     if risk in mapping:
         risk_age = float(mapping[risk])
     else:
