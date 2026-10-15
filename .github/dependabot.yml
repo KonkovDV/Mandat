@@ -17,3 +17,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  # Сборка презентации (pptxgenjs, sharp): в образ и пакет не входит, но запускается на машине команды.
+  - package-ecosystem: npm
+    directory: /submission/deck
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3

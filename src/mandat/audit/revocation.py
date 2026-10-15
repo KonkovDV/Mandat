@@ -31,12 +31,23 @@ from typing import Any
 log = logging.getLogger("mandat.anchor.revocation")
 TimedOpener = Callable[[urllib.request.Request, float], Any]
 MAX_RESPONSE = 4 * 1024 * 1024
+MAX_URLS = 3  # адресов OCSP и CRL на сертификат: длинный список не превращается в серию таймаутов
 MODES = ("off", "soft", "hard")
 COMPROMISE = {"key_compromise", "ca_compromise", "aa_compromise", "unspecified"}
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Перенаправления не выполняются: адрес из сертификата не уводит запрос на другой хост или схему (ftp)."""
+
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> None:
+        raise OSError(f"перенаправление {code} не поддержано: {newurl}")
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
 def _urlopen(request: urllib.request.Request, timeout: float) -> Any:
-    return urllib.request.urlopen(request, timeout=timeout)  # noqa: S310 - адрес из сертификата, схема проверена
+    return _OPENER.open(request, timeout=timeout)  # адрес из проверенного сертификата, без редиректов
 
 
 @dataclass(frozen=True)
@@ -73,7 +84,7 @@ def _urls(cert: Any, kind: str) -> list[str]:
     for name in names:
         if isinstance(name, x509.UniformResourceIdentifier) and name.value.startswith(("http://", "https://")):
             out.append(name.value)
-    return out
+    return list(dict.fromkeys(out))[:MAX_URLS]
 
 
 def _verify_signature(public_key: Any, signature: bytes, data: bytes, algorithm: Any) -> None:
@@ -225,7 +236,9 @@ class RevocationChecker:
         from cryptography import x509
         from cryptography.hazmat.primitives import hashes
 
-        crl = self._cached(("crl", url))
+        # Ключ кеша — адрес и издатель: один адрес CRL у листа и у CA не подменяет список чужого издателя.
+        key = ("crl", url, issuer.fingerprint(hashes.SHA256()))
+        crl = self._cached(key)
         if crl is None:
             raw = self._fetch(url)
             crl = x509.load_pem_x509_crl(raw) if raw.lstrip().startswith(b"-----") else x509.load_der_x509_crl(raw)
@@ -233,7 +246,7 @@ class RevocationChecker:
                 raise ValueError("CRL выпущен не издателем сертификата")
             if not self._fresh(crl.last_update_utc, crl.next_update_utc):
                 raise ValueError("CRL устарел")
-            self._store(("crl", url), crl, crl.next_update_utc)
+            self._store(key, crl, crl.next_update_utc)
         entry = crl.get_revoked_certificate_by_serial_number(cert.serial_number)
         if entry is None:
             return Status("good", "crl")
