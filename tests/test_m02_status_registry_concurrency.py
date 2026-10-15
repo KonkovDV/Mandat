@@ -175,43 +175,10 @@ def test_stale_writer_cannot_erase_revocation(tmp_path):
 def test_multiprocess_revoke_allocate(tmp_path):
     import subprocess
 
-    key, sd, idx, cred = _bootstrap(tmp_path)
-    script = tmp_path / "worker.py"
-    script.write_text(
-        f"""
-import sys
-from datetime import datetime, UTC
-from pathlib import Path
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives import serialization
-from mandat.audit.status_list import StatusRegistry
-
-pem = bytes.fromhex({
-            key.private_bytes(
-                encoding=__import__("cryptography").hazmat.primitives.serialization.Encoding.Raw,
-                format=__import__("cryptography").hazmat.primitives.serialization.PrivateFormat.Raw,
-                encryption_algorithm=__import__("cryptography").hazmat.primitives.serialization.NoEncryption(),
-            ).hex()!r
-        })
-key = Ed25519PrivateKey.from_private_bytes(pem)
-sd = Path({str(sd)!r})
-idx = {idx}
-mode = sys.argv[1]
-now = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
-reg = StatusRegistry.open(sd)
-if mode == "revoke":
-    reg.mark(idx, "revocation", "mp")
-    reg.save(key, now=now)
-else:
-    reg.allocate({{"org_inn": "mp", "verdict": "confirmed", "poa_numbers": ["mp"]}})
-    reg.save(key, now=now)
-""",
-        encoding="utf-8",
-    )
-    # simpler inline without raw key issues - use file pem
-    pem_path = tmp_path / "k.pem"
     from cryptography.hazmat.primitives import serialization
 
+    key, sd, idx, cred = _bootstrap(tmp_path)
+    pem_path = tmp_path / "k.pem"
     pem_path.write_bytes(
         key.private_bytes(
             encoding=serialization.Encoding.PEM,
@@ -219,30 +186,35 @@ else:
             encryption_algorithm=serialization.NoEncryption(),
         )
     )
+    script = tmp_path / "worker.py"
+    # Без вложенных f-string/dict: на 3.11 иначе SyntaxError при rewrite pytest.
     script.write_text(
-        f"""
-import sys
-from datetime import datetime, UTC
-from pathlib import Path
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
-from mandat.audit.status_list import StatusRegistry
-key = load_pem_private_key(Path({str(pem_path)!r}).read_bytes(), password=None)
-sd = Path({str(sd)!r})
-idx = {idx}
-now = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
-reg = StatusRegistry.open(sd)
-if sys.argv[1] == "revoke":
-    reg.mark(idx, "revocation", "mp")
-else:
-    reg.allocate({{"org_inn": "mp", "verdict": "confirmed", "poa_numbers": ["mp"]}})
-reg.save(key, now=now)
-""",
+        "\n".join(
+            [
+                "import sys",
+                "from datetime import UTC, datetime",
+                "from pathlib import Path",
+                "from cryptography.hazmat.primitives.serialization import load_pem_private_key",
+                "from mandat.audit.status_list import StatusRegistry",
+                f"key = load_pem_private_key(Path({str(pem_path)!r}).read_bytes(), password=None)",
+                f"sd = Path({str(sd)!r})",
+                f"idx = {idx}",
+                "now = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)",
+                "reg = StatusRegistry.open(sd)",
+                'if sys.argv[1] == "revoke":',
+                '    reg.mark(idx, "revocation", "mp")',
+                "else:",
+                '    reg.allocate({"org_inn": "mp", "verdict": "confirmed", "poa_numbers": ["mp"]})',
+                "reg.save(key, now=now)",
+                "",
+            ]
+        ),
         encoding="utf-8",
     )
     procs = [
         subprocess.Popen([sys.executable, str(script), "revoke"]),
         subprocess.Popen([sys.executable, str(script), "alloc"]),
     ]
-    for p in procs:
-        assert p.wait(timeout=30) == 0
+    for proc in procs:
+        assert proc.wait(timeout=30) == 0
     assert check_status(cred, sd, key.public_key(), now=NOW)["revocation"] is True
