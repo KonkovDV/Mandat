@@ -65,6 +65,9 @@ class Store(Protocol):
     def release(self, key: str) -> None:
         """Снять ключ ``first_seen`` раньше срока: заявка на создание кейса завершена."""
 
+    def ping(self) -> None:
+        """Проверка живости хранилища для /readyz; исключение значит «не готово»."""
+
     # --- Двухфазная запись отчёта (M-10): stage → журнал → commit. GET видит только закоммиченное. ---
     def stage(
         self,
@@ -98,6 +101,9 @@ class Store(Protocol):
 
 class MemoryStore:
     name = "memory"
+
+    def ping(self) -> None:
+        return None
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -243,6 +249,9 @@ class SQLiteStore:
             );
             """
         )
+
+    def ping(self) -> None:
+        self._db().execute("SELECT 1 FROM reports LIMIT 1").fetchall()
 
     def _db(self) -> sqlite3.Connection:
         db = getattr(self._local, "db", None)
@@ -505,6 +514,9 @@ class RedisStore:
 
     def release(self, key: str) -> None:
         self.r.delete(f"{self.prefix}seen:{key}")
+
+    def ping(self) -> None:
+        self.r.ping()
 
     def stage(
         self,

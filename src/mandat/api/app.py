@@ -7,7 +7,7 @@
 * пользователи: ``MANDAT_API_USERS`` (см. ``api/principals.py``), у каждого роль, ``case_id`` выдаёт сервер,
   а кейс видит только тот, кто его создал, плюс аудитор и администратор.
 
-Без токенов API отвечает только на /health: закрыто по умолчанию.
+Без токенов API отвечает только на /health и /readyz: закрыто по умолчанию.
 Swagger на /docs включается флагом ``MANDAT_API_DOCS=1``. Частота запросов ограничена
 ``MANDAT_API_RATE_PER_MIN`` (по умолчанию 120 в минуту на адрес клиента, 0 выключает). Адрес берётся
 из соединения, ``X-Forwarded-For`` не читается: за прокси лимит надо ставить на самом прокси.
@@ -46,7 +46,7 @@ from mandat.services.monitoring import evaluate, parse_events
 from mandat.services.verify import verify_case
 
 MAX_BODY = 8 * 1024 * 1024
-OPEN_PATHS = {"/health"}
+OPEN_PATHS = {"/health", "/readyz"}
 # Глубина вложенности JSON. Глубокий массив в 2 КБ вызывал RecursionError при разборе ошибки валидации (500).
 MAX_JSON_DEPTH = 64
 # OWASP Secure Headers Project и ASVS 5.0 V3.4: ответы с ПДн не кэшируются, не встраиваются во фреймы,
@@ -216,6 +216,35 @@ CREATE_CLAIM_SECONDS = 30.0
 IDEMPOTENCY_KEY = re.compile(r"[A-Za-z0-9._~-]{1,128}")
 
 
+def readiness(store: Store, journal_path: Path | None) -> dict[str, str]:
+    """Проверки для /readyz. Значения: ok | fail | not_configured (последнее только вне pilot/prod)."""
+    from mandat.services.env_policy import key_problem
+
+    checks: dict[str, str] = {}
+    try:
+        store.ping()
+        checks["store"] = "ok"
+    except Exception:
+        checks["store"] = "fail"
+    if protected() and store.name == "memory":
+        checks["store"] = "fail"  # pilot/prod: память процесса не переживает рестарт
+    if journal_path is None:
+        checks["journal"] = "fail" if protected() else "not_configured"
+    else:
+        try:
+            parent = journal_path.parent
+            parent.mkdir(parents=True, exist_ok=True)
+            ok = os.access(parent, os.W_OK) and (not journal_path.exists() or os.access(journal_path, os.W_OK))
+            checks["journal"] = "ok" if ok else "fail"
+        except OSError:
+            checks["journal"] = "fail"
+    try:
+        checks["keys"] = "fail" if key_problem() else "ok"
+    except Exception:
+        checks["keys"] = "fail"
+    return checks
+
+
 def create_app(
     token: str | None = None,
     *,
@@ -291,6 +320,18 @@ def create_app(
             "mode": "users" if directory.multi_user else "single-token",
             "store": shared.name,
         }
+
+    @app.get("/readyz")
+    def readyz() -> JSONResponse:
+        """Готовность (не живость): журнал, хранилище, ключи. 200 только если все проверки прошли.
+
+        В теле только имена проверок и ok/fail, без путей и текстов исключений. Это проверка конфигурации и
+        доступности на момент запроса, а не гарантия сохранности данных.
+        """
+        checks = readiness(shared, audit_log)
+        ready = all(v in ("ok", "not_configured") for v in checks.values())
+        body = {"status": "ready" if ready else "not_ready", "checks": checks}
+        return JSONResponse(body, status_code=200 if ready else 503)
 
     def journal_has(pend: Pending) -> bool:
         """В журнале есть запись именно этой попытки. Ошибка чтения журнала — исключение, а не «нет»."""
