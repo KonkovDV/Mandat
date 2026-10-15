@@ -9,7 +9,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from mandat.audit import attestation
-from mandat.audit.status_list import StatusRegistry, check_status, status_max_age_for
+from mandat.audit.status_list import StatusRegistry, _risk_age_mapping, check_status, status_max_age_for
 
 NOW = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
 
@@ -64,6 +64,27 @@ def test_global_env_is_min_with_risk_map(monkeypatch: pytest.MonkeyPatch):
     assert payment < 1  # still ~1h, not 7d
     monkeypatch.setenv("MANDAT_STATUS_MAX_AGE_DAYS", "0.01")
     assert status_max_age_for("archive_receipt") == 0.01  # global tighter than archive
+
+
+def test_ga_protected_blocks_loosening_risk_json(monkeypatch: pytest.MonkeyPatch):
+    """G-A: in pilot/prod JSON overrides may only tighten vs defaults."""
+    monkeypatch.setenv("MANDAT_ENV", "prod")
+    monkeypatch.setenv("MANDAT_STATUS_MAX_AGE_BY_RISK", '{"payment":3650}')
+    with pytest.raises(ValueError, match="нельзя ослабить"):
+        _risk_age_mapping()
+
+
+def test_ga_protected_allows_tightening_risk_json(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("MANDAT_ENV", "prod")
+    monkeypatch.setenv("MANDAT_STATUS_MAX_AGE_BY_RISK", '{"payment":0.01}')
+    assert _risk_age_mapping()["payment"] == 0.01
+    assert status_max_age_for("payment") == 0.01
+
+
+def test_ga_demo_allows_loosening_risk_json(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("MANDAT_ENV", "demo")
+    monkeypatch.setenv("MANDAT_STATUS_MAX_AGE_BY_RISK", '{"payment":3650}')
+    assert _risk_age_mapping()["payment"] == 3650.0
 
 
 def test_payment_fresh_30m(tmp_path, monkeypatch: pytest.MonkeyPatch):

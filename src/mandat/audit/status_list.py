@@ -75,8 +75,9 @@ def status_max_age_days() -> float:
     return value
 
 
-# M-13: окно свежести по риску операции (дни). Глобальный ``MANDAT_STATUS_MAX_AGE_DAYS``
-# перекрывает карту. ``payment`` ≈ 1 час; архивная квитанция — до 7 дней.
+# M-13: окно свежести по риску операции (дни). Итог = min(global, risk-tier) (G1).
+# В protected JSON ``MANDAT_STATUS_MAX_AGE_BY_RISK`` может только ужесточить default (G-A).
+# ``payment`` ≈ 1 час; архивная квитанция — до 7 дней.
 DEFAULT_STATUS_MAX_AGE_BY_RISK: dict[str, float] = {
     "payment": 0.042,
     "high": 0.042,
@@ -89,7 +90,12 @@ DEFAULT_STATUS_MAX_AGE_BY_RISK: dict[str, float] = {
 
 
 def _risk_age_mapping() -> dict[str, float]:
-    """Карта risk→дни: defaults + опциональный JSON в ``MANDAT_STATUS_MAX_AGE_BY_RISK``."""
+    """Карта risk→дни: defaults + опциональный JSON в ``MANDAT_STATUS_MAX_AGE_BY_RISK``.
+
+    G-A: в protected (pilot/prod) override известного risk может только **ужесточить**
+    окно относительно ``DEFAULT_STATUS_MAX_AGE_BY_RISK`` (например ``{"payment":3650}`` → ValueError).
+    В demo/dev/test ослабление через JSON допускается.
+    """
     mapping = dict(DEFAULT_STATUS_MAX_AGE_BY_RISK)
     raw = os.environ.get("MANDAT_STATUS_MAX_AGE_BY_RISK", "").strip()
     if not raw:
@@ -100,6 +106,9 @@ def _risk_age_mapping() -> dict[str, float]:
         raise ValueError(f"MANDAT_STATUS_MAX_AGE_BY_RISK: невалидный JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise ValueError("MANDAT_STATUS_MAX_AGE_BY_RISK: нужен JSON-объект risk→дни")
+    from mandat.services.env_policy import protected
+
+    enforce_tighten = protected()
     for key, value in payload.items():
         name = str(key).strip().lower()
         try:
@@ -109,6 +118,12 @@ def _risk_age_mapping() -> dict[str, float]:
         if not math.isfinite(days) or days < 0 or days > MAX_STATUS_MAX_AGE_DAYS:
             raise ValueError(
                 f"MANDAT_STATUS_MAX_AGE_BY_RISK[{key!r}]={value!r}: дни в [0, {MAX_STATUS_MAX_AGE_DAYS:g}]"
+            )
+        default = DEFAULT_STATUS_MAX_AGE_BY_RISK.get(name)
+        if enforce_tighten and default is not None and days > float(default):
+            raise ValueError(
+                f"MANDAT_STATUS_MAX_AGE_BY_RISK[{key!r}]={value!r}: в protected нельзя ослабить "
+                f"окно (default={default:g} дн., G-A)"
             )
         mapping[name] = days
     return mapping
