@@ -1,5 +1,13 @@
 # Изменения
 
+## 2026-10-15 — M-01/M-02 attestation lifecycle (#18)
+
+- Fail-closed статус удостоверения в pilot/prod: без каталога статусов / при отзыве / приостановке / устаревшем списке — отказ; CLI `--crypto-only` не говорит «принимается».
+- `StatusRegistry`: `fcntl.flock`, CAS sequence, OR только для revocation; suspension/конфликт idx → `StaleRegistryError`; snapshots + `CURRENT`.
+- Автотесты / **line coverage**: **993** / **95,8 %** (поля `tests.passed` / `tests.coverage_percent` в `evidence.json`).
+- Docs: DEMO/ARCHITECTURE — OR только revocation.
+
+
 ## 2026-10-15 — R6 docs
 
 - Полный фактчек документации + 10 находок Вани: даты EVALUATION/CLAIMS, MUTATION (878 и fuzz≠mutmut), LEGAL_TRACEABILITY/strict, REGULATORY (315-ФЗ, R-SUB, R-BNK-001, сноска приказа № 1001), LEGAL-BASIS R-SIG, ECONOMICS/M-09, покрытие 96,0 %.
