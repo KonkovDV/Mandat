@@ -449,7 +449,10 @@ def test_cli_attest_verify_with_keyring(tmp_path, monkeypatch, capsys):
     ring = tmp_path / "keyring.json"
     ring.write_text(json.dumps({"keys": [{"kid": signer.key_id, "status": "active"}]}), encoding="utf-8")
     assert cli.main(["attest-verify", str(cred_path), "--keyring", str(ring)]) == 0
-    assert "принимается" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "подлинно" in out
+    assert "authorize_operation" in out
+    assert "принимается" not in out
     other = tmp_path / "other.json"
     other_kid = signing.key_id(Ed25519PrivateKey.generate().public_key())
     other.write_text(json.dumps({"keys": [{"kid": other_kid}]}), encoding="utf-8")

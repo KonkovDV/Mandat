@@ -336,18 +336,20 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
         return 0
 
     status_dir = Path(args.status_dir) if args.status_dir else None
-    if require_attestation_status() and status_dir is None:
+    must_status = require_attestation_status()
+    if must_status and status_dir is None:
         print("ошибка: в защищённом режиме нужен --status-dir (или --crypto-only для диагностики)", file=sys.stderr)
         return 2
 
-    # Подпись верна — это ещё не допуск: издатель, назначение, срок, профиль, статус.
+    # В pilot/prod статус (в т.ч. свежесть списка) входит в validate. На стенде status_dir
+    # проверяется отдельно через check_status без now — демо-списки можно смотреть через месяц.
     problems = attestation.validate_attestation(
         cred,
         [key],
         now=datetime.now(UTC),
-        status_dir=status_dir,
+        status_dir=status_dir if must_status else None,
         allow_demo=not protected(),
-        require_status=require_attestation_status() or status_dir is not None,
+        require_status=must_status,
     )
     for problem in problems:
         print(f"не принимается: {problem}", file=sys.stderr)
@@ -371,7 +373,7 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
                 status_dir,
                 key,
                 seen=seen if seen_path else None,
-                now=datetime.now(UTC) if protected() or require_attestation_status() else None,
+                now=datetime.now(UTC) if must_status else None,
             )
         except (OSError, ValueError, KeyError) as exc:
             print(f"статус не проверен: {exc}", file=sys.stderr)
