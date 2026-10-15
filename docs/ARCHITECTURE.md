@@ -44,4 +44,4 @@
 
 ## Статусы удостоверений (single-node)
 
-`StatusRegistry.save` берёт межпроцессный `fcntl.flock`, при конфликте sequence делает OR-merge битов revocation/suspension, публикует `snapshots/{n}/` и атомарный `CURRENT`. Это закрывает lost update на одной машине (M-02). Несколько реплик-писателей нуждаются в общем lock или БД-CAS — текущий file backend на это не рассчитан.
+`StatusRegistry.save` берёт межпроцессный `fcntl.flock`; при конфликте sequence делает **OR только для битов revocation**; расхождение suspension или конфликт индекса → `StaleRegistryError`. Публикует `snapshots/{n}/` и атомарный `CURRENT`. Это закрывает lost update на одной машине (M-02). Несколько реплик-писателей нуждаются в общем lock или БД-CAS — текущий file backend на это не рассчитан.
