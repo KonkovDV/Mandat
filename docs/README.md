@@ -23,8 +23,8 @@
 | Почему модель не выносит вердикт | [ADR-001](adr/ADR-001-verdict-ownership.md) |
 | Почему Cedar, а не OpenFGA | [мировой уровень](SOTA.md) |
 | Насколько проект готов | [ступени готовности](audit/READINESS_GATES.md) |
-| Что говорят открытые источники и чего не хватает | [OSINT](research/OSINT-2026-10-14.md), [SOTA](research/SOTA-2026-10-14.md), [матрица требований](research/REQUIREMENTS_MATRIX.md), [Murder Board](audit/MURDER_BOARD-2026-10-14.md) |
-| Что нашёл аудит | [аудит октября 2026](audit/AUDIT.md), [аудит R3](audit/AUDIT-2026-10-14-R3.md); история: [первый аудит](AUDIT_2026-10.md), [закрытие аудита 12.10](AUDIT_CLOSURE.md), [расхождения презентации и кода](SUBMISSION_DRIFT.md) |
+| Что говорят открытые источники и чего не хватает | [OSINT](research/OSINT-2026-10-14.md), [SOTA](research/SOTA-2026-10-14.md), [матрица требований](research/REQUIREMENTS_MATRIX.md), [Murder Board](audit/MURDER_BOARD-2026-10-14.md), [SOTA 15.10](research/SOTA-2026-10-15.md), [идеи из репозиториев](research/PORTFOLIO-IDEAS-2026-10-15.md), [контракт API](api/openapi.json) |
+| Что нашёл аудит | [аудит октября 2026](audit/AUDIT.md), [аудит R3](audit/AUDIT-2026-10-14-R3.md), [аудит R4](audit/AUDIT-2026-10-15-R4.md); история: [первый аудит](AUDIT_2026-10.md), [закрытие аудита 12.10](AUDIT_CLOSURE.md), [расхождения презентации и кода](SUBMISSION_DRIFT.md) |
 | Что и когда сдаём | [сдача](../submission/README.md) |
 | Откуда источники | [источники](SOURCES.md), [реестр источников](audit/SOURCE_LEDGER.md), [литература](LITERATURE.md) |
 | Как говорить с пользователями | [discovery](discovery/) |
