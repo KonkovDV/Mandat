@@ -56,3 +56,13 @@ def test_evidence_reports_holdout_separately():
     assert holdout["seed"] == run.HOLDOUT_SEED != evidence["synthetic_corpus"]["seed"]
     assert holdout["cases"] == evidence["synthetic_corpus"]["cases"]
     assert "by_defect_type" in " ".join(evidence["synthetic_corpus"])
+
+
+def test_documented_zero_failure_bounds():
+    """Числа в EVALUATION «Как считаются границы»: Клоппер — Пирсон, Уилсон, односторонняя и правило трёх."""
+    expected = {48: (7.40, 7.41, 6.05, 6.25), 288: (1.27, 1.32, 1.03, 1.04)}
+    for n, (cp2, wilson, cp1, rule3) in expected.items():
+        assert round(100 * (1 - 0.025 ** (1 / n)), 2) == cp2
+        assert round(100 * wilson_interval(0, n)[1], 2) == wilson
+        assert round(100 * (1 - 0.05 ** (1 / n)), 2) == cp1
+        assert round(100 * 3 / n, 2) == rule3
