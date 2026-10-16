@@ -12,13 +12,17 @@
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev,api,cedar,redis]"
+python -m pip install --require-hashes -r requirements/pip.lock
+python -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
+python -m pip install --no-deps --no-build-isolation -e .
 python -m ruff check src tests scripts tools
 python -m ruff format --check src tests scripts tools
 python -m mypy
 python -m pytest
 python scripts/lint_claims.py
 ```
+
+Так же ставит зависимости CI: только lock-файлы с хешами, без незакреплённых extras. Подробности — в [AGENTS.md](AGENTS.md).
 
 Числа в документах сверяются `lint_claims.py` с [CLAIMS_REGISTRY.md](CLAIMS_REGISTRY.md); формулировки из [BANNED_CLAIMS.txt](BANNED_CLAIMS.txt) не используются.
 
