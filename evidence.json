@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-10-16T05:40:56+00:00",
+  "generated_at": "2026-10-16T06:04:56+00:00",
   "engine": "mandat/0.3.0",
   "source": {
-    "base_commit": "fd76f1c5d69ce77a7d02f1f8de3e3590ba846363",
+    "base_commit": "b7faa9c2f3614a404be9a47e4e8024eeb009942f",
     "sources": [
       "src",
       "tests",
       "scripts",
       "examples"
     ],
-    "sha256": "077abbe091c0ebf67a3e9e331274a0a230666b93ca50ceba33d42349458c9ea9",
+    "sha256": "35495b67c044b2d9d2d764776405b0dec5a926a76068fa1ad5496a04efc56ad9",
     "check": "python scripts/build_evidence.py --verify-source"
   },
   "python": "3.13.5",
@@ -89,6 +89,7 @@
   "synthetic_corpus": {
     "command": "mandat eval --per-defect 6",
     "profile": "demo",
+    "seed": 7,
     "cases": 294,
     "defect_types": 49,
     "agreement": 1.0,
@@ -98,6 +99,9 @@
     ],
     "false_confirmed": 0,
     "false_confirmed_rate_upper95": 0.013162827640106806,
+    "negative_defect_types": 48,
+    "false_confirmed_defect_types": [],
+    "false_confirmed_rate_upper95_by_defect_type": 0.07410012966611748,
     "refute_recall": 1.0,
     "refute_recall_wilson95": [
       0.9656526402534428,
@@ -124,6 +128,19 @@
     "abstention_rate": 1.0,
     "boundary": "строгий профиль не подтверждает по черновикам правил и по снимку ЕГРЮЛ из пакета кейса; без СКЗИ подпись не проверена. Доля покрытия — в этом файле, не в старых слайдах"
   },
+  "synthetic_corpus_holdout": {
+    "command": "mandat eval --per-defect 6 --seed 20261016",
+    "seed": 20261016,
+    "cases": 294,
+    "agreement": 1.0,
+    "false_confirmed": 0,
+    "false_confirmed_rate_upper95": 0.013162827640106806,
+    "false_confirmed_defect_types": [],
+    "false_confirmed_rate_upper95_by_defect_type": 0.07410012966611748,
+    "coverage": 0.3877551020408163,
+    "mismatches": 0,
+    "boundary": "отложенный seed: те же шаблоны с другими значениями; подгонку под генератор не исключает"
+  },
   "subdelegation_property": {
     "command": "python -m pytest tests/test_properties.py tests/test_cedar.py",
     "chains": 384,
@@ -140,16 +157,16 @@
   "latency": {
     "command": "python scripts/bench.py --rounds 20",
     "cases": 280,
-    "median_ms": 1.87,
-    "p95_ms": 2.71,
+    "median_ms": 1.89,
+    "p95_ms": 2.67,
     "machine": "x86_64, Python 3.13.5",
     "scope": "разбор XML и JSON, 39 правил, свёртка, отчёт; без сети и без модели"
   },
   "tests": {
     "command": "python -m pytest -q",
     "returncode": 0,
-    "summary": "1412 passed in 106.95s (0:01:46)",
-    "passed": 1412,
+    "summary": "1416 passed in 112.14s (0:01:52)",
+    "passed": 1416,
     "coverage_percent": 96.1
   }
 }
