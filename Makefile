@@ -49,6 +49,7 @@ deck:
 	cd submission/deck && npm ci && node build_deck.js ../../evidence.json ../slides/Mandat_VTB.pptx
 	$(PY) submission/deck/finish_deck.py submission/slides/Mandat_VTB.pptx
 	soffice --headless --convert-to pdf --outdir submission/slides submission/slides/Mandat_VTB.pptx
+	$(PY) submission/deck/finish_deck.py --pdf submission/slides/Mandat_VTB.pdf
 
 clean:
 	rm -rf var build dist .pytest_cache .ruff_cache src/*.egg-info

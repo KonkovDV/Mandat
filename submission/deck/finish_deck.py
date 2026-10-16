@@ -1,13 +1,15 @@
 """Доводит презентацию после build_deck.js: цвета темы, alt-текст, метаданные, проверки.
 
     python finish_deck.py ../slides/Mandat_VTB.pptx
+    python finish_deck.py --pdf ../slides/Mandat_VTB.pdf   # после экспорта в PDF
 
 pptxgenjs записывает в тему стандартную палитру Office и подставляет имя файла
 картинки в alt-текст, если он не задан. Здесь палитра заменяется цветами из
 theme.json, у декоративных значков alt-текст очищается и ставится признак
 «декоративный», автор и последний редактор — команда. В конце файл проверяется:
 нет путей в alt-тексте, нет цветов не в шестнадцатеричном виде, нет запрещённых
-формулировок из BANNED_CLAIMS.txt.
+формулировок из BANNED_CLAIMS.txt. Имя программы-генератора в docProps/app.xml и в метаданных PDF
+(Creator, Producer, XMP) заменяется названием проекта.
 """
 
 from __future__ import annotations
@@ -40,6 +42,9 @@ DECORATIVE = (
     '<adec:decorative xmlns:adec="http://schemas.microsoft.com/office/drawing/2017/decorative" val="1"/>'
     "</a:ext></a:extLst>"
 )
+APPLICATION = "Мандат"
+# Следы программ-генераторов в метаданных: их быть не должно ни в pptx, ни в PDF.
+GENERATOR_TRACES = re.compile(r"Microsoft Office|PowerPoint|LibreOffice|OpenOffice|Impress|pptxgen", re.IGNORECASE)
 PATH_LIKE = re.compile(r"[/\\]|\.(png|jpe?g|gif|svg)$", re.IGNORECASE)
 
 
@@ -76,6 +81,43 @@ def _core(xml: str) -> str:
     return xml
 
 
+def _app(xml: str) -> str:
+    xml = re.sub(r"<Application>.*?</Application>", f"<Application>{APPLICATION}</Application>", xml, flags=re.DOTALL)
+    return re.sub(r"<AppVersion>.*?</AppVersion>", "", xml, flags=re.DOTALL)
+
+
+def _pdf_hex(text: str, width: int) -> bytes:
+    # Пробелы внутри шестнадцатеричной строки PDF игнорируются: длина и смещения xref не меняются.
+    value = ("FEFF" + text.encode("utf-16-be").hex().upper()).encode("ascii")
+    if len(value) > width:
+        raise ValueError(f"значение {text!r} длиннее исходного поля PDF")
+    return value + b" " * (width - len(value))
+
+
+def scrub_pdf(path: Path) -> list[str]:
+    """Заменить Creator и Producer в PDF и убрать имена генератора из XMP, не меняя длину файла."""
+    data = path.read_bytes()
+
+    def info(match: re.Match[bytes]) -> bytes:
+        key, body = match.group(1), match.group(2)
+        return b"/" + key + b"<" + _pdf_hex(APPLICATION, len(body)) + b">"
+
+    data = re.sub(rb"/(Creator|Producer)<([0-9A-Fa-f\s]*)>", info, data)
+    data = re.sub(
+        rb"/(Creator|Producer)\(([^)]*)\)", lambda m: b"/" + m.group(1) + b"(" + b" " * len(m.group(2)) + b")", data
+    )
+    data = re.sub(
+        rb"<(pdf:Producer|xmp:CreatorTool)>[^<]*</\1>",
+        lambda m: b" " * len(m.group(0)),
+        data,
+    )
+    path.write_bytes(data)
+    traces = sorted(
+        {m.group(0).decode("latin-1") for m in re.finditer(GENERATOR_TRACES.pattern.encode(), data, re.IGNORECASE)}
+    )
+    return [f"{path.name}: след генератора в метаданных: {t}" for t in traces]
+
+
 def _check(parts: dict[str, bytes]) -> list[str]:
     problems: list[str] = []
     banned = (
@@ -108,6 +150,9 @@ def _check(parts: dict[str, bytes]) -> list[str]:
         re.IGNORECASE,
     )
     problems += [f"посторонний след в файле: {t}" for t in sorted(set(traces))]
+    for name in ("docProps/core.xml", "docProps/app.xml"):
+        found = GENERATOR_TRACES.findall(parts.get(name, b"").decode("utf-8", "ignore"))
+        problems += [f"{name}: след генератора: {t}" for t in sorted(set(found))]
     return problems
 
 
@@ -118,6 +163,8 @@ def main(deck: Path) -> int:
         parts = {info.filename: archive.read(info.filename) for info in infos}
     parts["ppt/theme/theme1.xml"] = _theme(parts["ppt/theme/theme1.xml"].decode("utf-8"), theme).encode("utf-8")
     parts["docProps/core.xml"] = _core(parts["docProps/core.xml"].decode("utf-8")).encode("utf-8")
+    if "docProps/app.xml" in parts:
+        parts["docProps/app.xml"] = _app(parts["docProps/app.xml"].decode("utf-8")).encode("utf-8")
     for name in list(parts):
         if re.match(r"ppt/(slides|slideLayouts|slideMasters)/\w+\d+\.xml$", name):
             parts[name] = _alt_text(parts[name].decode("utf-8")).encode("utf-8")
@@ -134,7 +181,18 @@ def main(deck: Path) -> int:
     return 0
 
 
+def main_pdf(pdf: Path) -> int:
+    problems = scrub_pdf(pdf)
+    if problems:
+        sys.stderr.write("PDF не прошёл проверку:\n" + "\n".join(problems) + "\n")
+        return 1
+    print(f"готово: {pdf} — метаданные приведены")
+    return 0
+
+
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--pdf":
+        raise SystemExit(main_pdf(Path(sys.argv[2])))
     if len(sys.argv) != 2:
-        raise SystemExit("использование: python finish_deck.py путь/к/презентации.pptx")
+        raise SystemExit("использование: python finish_deck.py путь/к/презентации.pptx | --pdf путь/к/презентации.pdf")
     raise SystemExit(main(Path(sys.argv[1])))
