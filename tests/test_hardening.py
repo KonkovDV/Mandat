@@ -315,14 +315,14 @@ def test_llm_and_webhook_llm_does_not_follow_redirect(local_server, monkeypatch)
     _Handler.mode = "redirect"
     client = llm.OpenAICompatClient(f"http://127.0.0.1:{local_server.server_port}", "m", timeout=5)
     with pytest.raises(Exception, match="переадресация запрещена"):
-        client.complete([{"role": "user", "content": "x"}])
+        client.complete(llm.case_charter_messages(load_case_inline(synth.build("ok", 1).inline_manifest())))
 
 
 def test_llm_and_webhook_llm_response_is_bounded(local_server):
     _Handler.mode = "big"
     client = llm.OpenAICompatClient(f"http://127.0.0.1:{local_server.server_port}", "m", timeout=5)
     with pytest.raises(ValueError, match="больше"):
-        client.complete([{"role": "user", "content": "x"}])
+        client.complete(llm.case_charter_messages(load_case_inline(synth.build("ok", 1).inline_manifest())))
 
 
 def test_llm_and_webhook_short_legacy_secret(monkeypatch):
