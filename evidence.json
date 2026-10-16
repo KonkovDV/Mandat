@@ -2,14 +2,14 @@
   "generated_at": "2026-10-16T07:54:40+00:00",
   "engine": "mandat/0.3.0",
   "source": {
-    "base_commit": "1057ce367bd4a42b2576a4b2c346054e5431d9cc",
+    "base_commit": "83cdc4b73cb997d5bc29ffc5d3e34aa001246f94",
     "sources": [
       "src",
       "tests",
       "scripts",
       "examples"
     ],
-    "sha256": "f7a6fb7ccf65095fc2a3501d71704f17344e5741a0e94ec07f2182e5da351969",
+    "sha256": "1eb6be92c155f2a88ea9e74c0686c586fd43906ee50c9cd8cc791ffb73369899",
     "check": "python scripts/build_evidence.py --verify-source"
   },
   "python": "3.13.5",
@@ -17,7 +17,7 @@
     "pack_id": "mandat-rules-ru",
     "version": "2026.10.2",
     "status": "draft",
-    "sha256": "b324a219a796d7ba22305599026ef1896f629a984dcb4f7fb07ff346de4335f7",
+    "sha256": "566cffc1df57a6a5d03f11c024a045af956fb9d30022a0ab38fdc080d7e399ee",
     "rules": 39
   },
   "operations_catalog": {
@@ -30,59 +30,59 @@
     "results": {
       "01_ok": {
         "verdict": "needs_review",
-        "reproducibility_hash": "8e371ae8172d2cccb58820822892cbb9f3a3bca0de87cedccf8d8cacf85590e9"
+        "reproducibility_hash": "ebb7b02662dc491105738e768f96763992b916e3ebf3c6c0e08fd0bceae8ec9b"
       },
       "02_director_without_poa": {
         "verdict": "needs_review",
-        "reproducibility_hash": "af52a3d0595343179c822e50ccf65fc44cf2f261e2eac2ebe5159b3ed6208fcd"
+        "reproducibility_hash": "bde4f172bc1b7e9c9d944cbfd2ea833ae9088171fddcb63f1e1d41760db9871d"
       },
       "03_subdelegation_ok": {
         "verdict": "needs_review",
-        "reproducibility_hash": "69bc390a899d53edfbe1094c7c41a4d7c44072fe3834161021a5e16df5ac42f9"
+        "reproducibility_hash": "fa4ad61a36211851d359e766941faa4a16420870ea4bbcd77d830cc505164b3b"
       },
       "04_subdelegation_forbidden": {
         "verdict": "refuted",
-        "reproducibility_hash": "a9cd5349861747df66c9100ebf6700c953e37aaa92454a5213b166529e11398d"
+        "reproducibility_hash": "af975ca0865fbfda222c05ad2eb3ac7397714e1f838d20a352637546725aa3b8"
       },
       "05_director_changed": {
         "verdict": "needs_review",
-        "reproducibility_hash": "6afd9810f735ecd2e157b16fad25325ef676e5544d1fa81bd13e856809f45b38"
+        "reproducibility_hash": "9b17e50b84c9237f64b0afbc99c185156b03ca8a32cdb667de837478f87fd06f"
       },
       "06_text_authority": {
         "verdict": "needs_review",
-        "reproducibility_hash": "31ad71ad5484c4d9f99e8364a3aea58c465cbf479e6ec3dfb585e5dbfd6a5451"
+        "reproducibility_hash": "c8921b949af7f191e2cb0c7d64b922f7212cb65d711c979f0965c3630a17ae26"
       },
       "07_revoked": {
         "verdict": "refuted",
-        "reproducibility_hash": "5a9d849556717a9b989bb314a94a89fe7963d844564c32c6f161cd344c99a5e3"
+        "reproducibility_hash": "36d94fc388298bc73766a28ac525bc6c32d1d89985a94256e21a92743217b98b"
       },
       "08_registry_unavailable": {
         "verdict": "insufficient_data",
-        "reproducibility_hash": "c151aa543bb147215b6109b7cc8f5451ca02333eeca80f33bd49bf67c0e73aa4"
+        "reproducibility_hash": "bb2bf56d644d7f8071cfc2f1cad5909a40214ea30ade690e1805e79f12dc7c81"
       },
       "09_charter_limit": {
         "verdict": "needs_review",
-        "reproducibility_hash": "d3d2a0afc8358898a2fc75d55049f7964fd76889599fe2efff4d7809fe957204"
+        "reproducibility_hash": "b3e86368261fbf655292a544f9366e32cddccfa2e49eb10ece9d8c2bdb852f66"
       },
       "10_old_director_poa": {
         "verdict": "needs_review",
-        "reproducibility_hash": "31abc76547b5288da0a5fa473ef233db5df62c00b839fbf4a58855af60009275"
+        "reproducibility_hash": "be3fb49b1fe61a50a8177495b6840ba4159da689f7db228451618330f43f45ab"
       },
       "11_parent_revoked": {
         "verdict": "refuted",
-        "reproducibility_hash": "48c6e2f32b66585194ed31bc137b91367ed628bf57d4a02644ed1478962d4cfe"
+        "reproducibility_hash": "97d65695287b8daef05993ec746d3b9419b1d7acf751790ed979a7e5cf82829d"
       },
       "12_no_term": {
         "verdict": "needs_review",
-        "reproducibility_hash": "1c303f144721d462923f983b434e7e5da6019bcf50f1ed49c5d87a5af6d8935d"
+        "reproducibility_hash": "9a8c9b529c6810495f65e48b5df52cfebb97206799d9b15a5e6ee7a7b63a358e"
       },
       "13_bankruptcy": {
         "verdict": "refuted",
-        "reproducibility_hash": "7ff2c502ebc1d79827b44125ce2896c7781eb9b32186dedf764276adbb926767"
+        "reproducibility_hash": "fbc9f50292a04d03f31b63400c141898c90719b128ea189b78f709b73266f972"
       },
       "14_old_director_charter_cleared": {
         "verdict": "confirmed",
-        "reproducibility_hash": "60e6a3a82ff76c6d8c8de5bcf45c8a3e68df2f95ffbdbf18a0e6956c71429e56"
+        "reproducibility_hash": "e55e56b06ef53aed635e2acfaa6d43e1ded6569c9d194209490f38444c6618e8"
       }
     }
   },
