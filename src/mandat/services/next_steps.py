@@ -45,6 +45,12 @@ def sla_hours(priority: str) -> float:
     return table[priority]
 
 
+def check_sla() -> None:
+    """Проверить MANDAT_REVIEW_SLA_HOURS при старте: неверное значение — ValueError, а не 500 на запросах."""
+    for priority in SLA_HOURS:
+        sla_hours(priority)
+
+
 # Справки, которые сотрудник должен увидеть сразу: они не меняют вердикт, но требуют внимания.
 SIGNAL_RULES = frozenset({"R-EIO-002", "R-SUB-008"})
 

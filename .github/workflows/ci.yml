@@ -106,7 +106,7 @@ jobs:
       - run: python -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
       - run: python -m pip install --no-deps --no-build-isolation -e .
       - name: store tests against real Redis
-        run: python -m pytest tests/test_storage.py tests/test_m09b_review_store.py --junitxml=var/junit-redis.xml
+        run: python -m pytest tests/test_storage.py tests/test_m09b_review_store.py tests/test_m09c_review_api.py --junitxml=var/junit-redis.xml
       - name: no skipped tests
         run: python scripts/check_no_skips.py var/junit-redis.xml
 

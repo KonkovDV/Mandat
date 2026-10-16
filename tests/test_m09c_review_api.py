@@ -12,10 +12,10 @@ from fastapi.testclient import TestClient
 from mandat.api import app as app_module
 from mandat.api.app import create_app
 from mandat.api.principals import hash_token
-from mandat.api.storage import MemoryStore, RedisStore, SQLiteStore, Store
+from mandat.api.storage import MemoryStore, SQLiteStore, Store
 from mandat.audit import journal
 from mandat.eval import synth
-from mandat.services.next_steps import SLA_ENV, sla_hours
+from mandat.services.next_steps import SLA_ENV, check_sla, sla_hours
 
 USERS = {
     "op": ("operator", None),
@@ -57,10 +57,7 @@ def store(request, tmp_path) -> Store:
         return MemoryStore()
     if request.param == "sqlite":
         return SQLiteStore(tmp_path / "api.db")
-    import fakeredis
-    import lupa  # noqa: F401  # без зависимости тест падает, а не пропускается
-
-    return RedisStore(fakeredis.FakeRedis())
+    return request.getfixturevalue("redis_store")  # настоящий Redis в CI job redis, иначе fakeredis
 
 
 def _client(store: Store, tmp_path: Path) -> TestClient:
@@ -249,7 +246,7 @@ def test_review_list_all_backends(store):
     assert store.review_list() == [("a", {"state": "in_review"}, 2), ("b", {"state": "queued"}, 1)]
 
 
-def test_missing_review_record_is_created_on_first_action(tmp_path, monkeypatch):
+def test_missing_review_record_is_created_on_first_action(tmp_path, monkeypatch, caplog):
     # Сбой записи разбора при создании кейса не отменяет кейс: разбор создаётся первым действием с версии 0.
     store = MemoryStore()
     client = _client(store, tmp_path)
@@ -259,9 +256,33 @@ def test_missing_review_record_is_created_on_first_action(tmp_path, monkeypatch)
         raise OSError("store down")
 
     monkeypatch.setattr(store, "review_put", failing_put)
-    case_id = _case(client)
+    with caplog.at_level("WARNING", logger="mandat.api"):
+        case_id = _case(client)
     monkeypatch.setattr(store, "review_put", real_put)
+    assert f"review_seed_failed case_id={case_id} error=OSError" in caplog.text
     review = client.get(f"/v1/cases/{case_id}/review", headers=_h("rv")).json()
     assert review["state"] == "queued" and review["version"] == 0
     assert client.get("/v1/review/queue", headers=_h("rv")).json()["items"] == []
     assert _act(client, case_id, "open", "rv", 0).json()["version"] == 1
+
+
+@pytest.mark.parametrize("bad", ["[", '{"P1": 0}', '{"P9": 1}'])
+def test_bad_sla_config_fails_startup(monkeypatch, bad):
+    monkeypatch.setenv(SLA_ENV, bad)
+    with pytest.raises(ValueError, match=SLA_ENV):
+        check_sla()
+    with pytest.raises(ValueError, match=SLA_ENV):
+        create_app(users=_users(), rate_per_min=0, store=MemoryStore())
+
+
+def test_replace_keeps_review_without_warning(tmp_path, caplog):
+    # Повторная запись разбора при replace=true — ожидаемый конфликт версии, а не сбой.
+    store = MemoryStore()
+    client = TestClient(create_app("t", rate_per_min=0, store=store, journal_path=tmp_path / "j.jsonl"))
+    manifest = synth.build("ok", 1).inline_manifest()
+    headers = {"Authorization": "Bearer t"}
+    assert client.post("/v1/cases", json=manifest, headers=headers).status_code == 200
+    with caplog.at_level("WARNING", logger="mandat.api"):
+        again = client.post("/v1/cases?replace=true", json=manifest, headers=headers)
+    assert again.status_code == 200 and "review_seed_failed" not in caplog.text
+    assert store.review_get(again.json()["case_id"])[1] == 1

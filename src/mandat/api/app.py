@@ -53,6 +53,7 @@ from mandat.review.state_machine import (
 )
 from mandat.services.env_policy import PROFILES, ProfileNotAllowed, protected, resolve_profile
 from mandat.services.monitoring import evaluate, parse_events
+from mandat.services.next_steps import check_sla
 from mandat.services.verify import verify_case
 
 MAX_BODY = 8 * 1024 * 1024
@@ -284,6 +285,7 @@ def create_app(
         openapi_url="/openapi.json" if show_docs else None,
         redoc_url=None,
     )
+    check_sla()  # неверный MANDAT_REVIEW_SLA_HOURS не даёт стартовать
     shared = store if store is not None else open_store()
     env_journal = os.environ.get("MANDAT_API_JOURNAL", "").strip()
     audit_log = journal_path if journal_path is not None else (Path(env_journal) if env_journal else None)
@@ -528,9 +530,14 @@ def create_app(
         if not committed:
             raise HTTPException(409, "запись вытеснена другой попыткой: повторите запрос")
         # Кейс без автоматического решения сразу встаёт в очередь разбора. Разбор уже есть (replace) — не трогаем;
-        # сбой записи не отменяет кейс: разбор создастся при первом действии, но до того кейса нет в очереди.
-        with contextlib.suppress(Exception):
+        # сбой записи не отменяет кейс: разбор создастся при первом действии, но до того кейса нет в очереди,
+        # поэтому сбой пишется в журнал сервера.
+        try:
             shared.review_put(case_id, review_api.initial(case_id, report, principal.name), 0)
+        except ReviewVersionConflict:
+            pass
+        except Exception as exc:
+            log.warning("review_seed_failed case_id=%s error=%s", case_id, type(exc).__name__)
         return report
 
     @app.get("/v1/cases/{case_id}")
