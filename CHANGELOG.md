@@ -1,5 +1,12 @@
 # Изменения
 
+## 2026-10-16 — M-04 привязка удостоверения к запросу
+
+- `attestation.issue` подписывает сумму операции, а при передаче — получателя (`audience`) и одноразовый `nonce` (не короче 16 символов).
+- `authorize_operation(request=OperationRequest(...))` сверяет операцию, сумму (не больше проверенной), представителя по HMAC-псевдониму, получателя и nonce; в pilot/prod без запроса или хранилища nonce — отказ. Nonce расходуется только когда остальные проверки пройдены.
+- Сумма в запросе обязательна, если удостоверение выпущено на сумму; дробная, логическая или отрицательная сумма — отказ. Nonce запроса короче 16 символов или пустой `audience` — отказ. Ошибка хранилища nonce — отказ, а не допуск.
+- LIMITS: хранилище nonce ведёт интегратор; ломающее изменение `authorize_operation` в pilot/prod.
+
 ## 2026-10-16 — число автотестов в презентации
 
 - `lint_claims.py`: в презентации число автотестов может быть меньше фактического, но не больше и не 0; колоду не пересобирают в каждом PR ([README колоды](submission/deck/README.md)). README, JURY и остальные тексты по-прежнему сверяются точно.
@@ -87,7 +94,6 @@
 - `StatusRegistry`: `fcntl.flock`, CAS sequence, OR только для revocation; suspension/конфликт idx → `StaleRegistryError`; snapshots + `CURRENT`.
 - Автотесты / **line coverage**: **993** / **95,8 %** (поля `tests.passed` / `tests.coverage_percent` в `evidence.json`).
 - Docs: DEMO/ARCHITECTURE — OR только revocation.
-
 
 ## 2026-10-15 — R6 docs
 

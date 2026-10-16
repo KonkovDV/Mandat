@@ -31,7 +31,8 @@ import hmac
 import json
 import os
 import secrets
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -162,8 +163,15 @@ def issue(
     status: list[dict[str, str]] | None = None,
     pseudonym_key: bytes | None = None,
     valid_for: timedelta = VALID_FOR,
+    audience: str | None = None,
+    nonce: str | None = None,
 ) -> dict[str, Any]:
-    """Удостоверение по отчёту. Без ``pseudonym_key`` представитель в удостоверение не попадает."""
+    """Удостоверение по отчёту. Без ``pseudonym_key`` представитель в удостоверение не попадает.
+
+    ``audience`` — система банка, для которой выпущено удостоверение; ``nonce`` — одноразовый номер запроса
+    операции. Вместе с суммой и токеном представителя они привязывают удостоверение к одному запросу
+    (``authorize_operation`` с ``OperationRequest``, M-04).
+    """
     moment = now or datetime.now(UTC)
     created = moment.isoformat(timespec="seconds")
     rep_inn = (report.get("requester") or {}).get("inn") or ""
@@ -177,7 +185,14 @@ def issue(
         "reportSha256": report.get("reproducibility_hash"),
         "authorityChain": list((report.get("chain") or {}).get("poa_numbers") or []),
         "inputs": [row.get("sha256") for row in report.get("inputs") or []],
+        "amountRub": (report.get("operation") or {}).get("amount_rub"),
     }
+    if audience:
+        subject["audience"] = audience
+    if nonce:
+        if len(nonce) < NONCE_MIN_CHARS:
+            raise ValueError(f"nonce короче {NONCE_MIN_CHARS} символов")
+        subject["nonce"] = nonce
     if pseudonym_key and rep_inn:
         subject["representativeToken"] = representative_token(rep_inn, pseudonym_key)
     credential: dict[str, Any] = {
@@ -335,6 +350,75 @@ def validate_attestation(
     return problems
 
 
+NONCE_MIN_CHARS = 16
+
+
+@dataclass(frozen=True)
+class OperationRequest:
+    """Запрос операции, к которому должно быть привязано удостоверение (M-04)."""
+
+    operation: str
+    amount_rub: int | None
+    representative_inn: str
+    audience: str
+    nonce: str
+
+
+def check_request(
+    subject: dict[str, Any],
+    request: OperationRequest,
+    *,
+    pseudonym_key: bytes | None,
+    consume_nonce: Callable[[str], bool] | None,
+) -> list[str]:
+    """Сверить удостоверение с запросом: операция, сумма, представитель, получатель, одноразовый nonce."""
+    problems: list[str] = []
+    if subject.get("operation") != request.operation:
+        problems.append(f"операция {request.operation!r} не та, на которую выпущено удостоверение")
+    bound = subject.get("amountRub")
+    amount = request.amount_rub
+    if amount is not None and (isinstance(amount, bool) or not isinstance(amount, int)):
+        problems.append("сумма операции должна быть целым числом рублей")
+    elif amount is not None and amount < 0:
+        problems.append("сумма операции отрицательная")
+    elif bound is not None:
+        if isinstance(bound, bool) or not isinstance(bound, int):
+            problems.append("сумма в удостоверении повреждена")
+        elif amount is None:
+            problems.append("в запросе нет суммы, а удостоверение выпущено на сумму")
+        elif amount > bound:
+            problems.append(f"сумма {amount} больше проверенной {bound}")
+    elif amount is not None:
+        problems.append("в удостоверении нет суммы: операцию с суммой по нему не допустить")
+    token = subject.get("representativeToken")
+    if not token or not pseudonym_key:
+        problems.append("представителя не сверить: нет токена в удостоверении или ключа HMAC")
+    elif not hmac.compare_digest(str(token), representative_token(request.representative_inn, pseudonym_key)):
+        problems.append("представитель в запросе не тот, для кого выпущено удостоверение")
+    audience = subject.get("audience")
+    if not isinstance(request.audience, str) or not request.audience:
+        problems.append("в запросе не указан получатель (audience)")
+    elif not audience or audience != request.audience:
+        problems.append(f"удостоверение выпущено не для {request.audience!r}")
+    nonce = subject.get("nonce")
+    if not isinstance(request.nonce, str) or len(request.nonce) < NONCE_MIN_CHARS:
+        problems.append(f"nonce запроса короче {NONCE_MIN_CHARS} символов")
+    elif not nonce or not hmac.compare_digest(str(nonce), request.nonce):
+        problems.append("nonce запроса не совпадает с удостоверением")
+    elif consume_nonce is None:
+        problems.append("нет хранилища nonce: повтор запроса не обнаружить")
+    elif not problems:
+        # nonce расходуется, только если всё остальное сошлось: чужой запрос не «сжигает» удостоверение.
+        try:
+            fresh = consume_nonce(str(nonce)) is True
+        except Exception:  # noqa: BLE001 — недоступное хранилище nonce означает отказ
+            problems.append("хранилище nonce недоступно: допуск невозможен")
+        else:
+            if not fresh:
+                problems.append("nonce уже использован: повтор запроса")
+    return problems
+
+
 def authorize_operation(
     credential: dict[str, Any],
     trusted_keys: Iterable[Ed25519PublicKey] | Keyring,
@@ -344,11 +428,17 @@ def authorize_operation(
     allow_demo: bool = False,
     seen: dict[str, int] | None = None,
     operation_risk: str | None = None,
+    request: OperationRequest | None = None,
+    pseudonym_key: bytes | None = None,
+    consume_nonce: Callable[[str], bool] | None = None,
 ) -> list[str]:
-    """Допуск операции по удостоверению: подлинность + статус + вердикт confirmed.
+    """Допуск операции по удостоверению: подлинность + статус + вердикт confirmed + привязка к запросу.
 
     Успех ``validate_attestation`` при вердикте refuted/needs_review недостаточен для операции.
     В pilot/prod обязателен ``seen`` (high-watermark списков) и учитывается ``operation_risk`` (M-13).
+    В pilot/prod обязателен и ``request``: операция, сумма, представитель, ``audience`` и одноразовый ``nonce``
+    сверяются с удостоверением (M-04); ``consume_nonce(nonce)`` возвращает True только при первом использовании.
+    На стенде без ``request`` привязка не проверяется.
     """
     from mandat.services.env_policy import protected
 
@@ -371,10 +461,17 @@ def authorize_operation(
             require_seen=require_seen and seen is not None,
         )
     )
-    verdict = (credential.get("credentialSubject") or {}).get("verdict")
+    subject = credential.get("credentialSubject") or {}
+    verdict = subject.get("verdict")
     if verdict != "confirmed":
         problems.append(f"вердикт {verdict!r} не разрешает операцию: нужен confirmed")
-    return problems
+    if request is None:
+        if protected():
+            problems.append("нет запроса операции: в защищённом режиме удостоверение привязывается к запросу (M-04)")
+        return problems
+    if problems:
+        return problems  # nonce не расходуется на удостоверении, которое и так не проходит
+    return check_request(subject, request, pseudonym_key=pseudonym_key, consume_nonce=consume_nonce)
 
 
 def verify(credential: dict[str, Any], public_key: Ed25519PublicKey) -> bool:

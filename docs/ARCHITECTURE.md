@@ -53,7 +53,8 @@
 (`payment` ≈ 1 ч, `archive_receipt` = 7 дней) или JSON
 `MANDAT_STATUS_MAX_AGE_BY_RISK`. Неизвестный risk → самое строгое окно (min по карте).
 Для допуска операции в pilot/prod `authorize_operation` требует high-watermark `seen`
-(fail-closed без него). CLI: `attest-verify --operation-risk payment`.
+(fail-closed без него) и запрос операции `OperationRequest`: операция, сумма не больше
+проверенной, представитель, получатель и одноразовый nonce (M-04). CLI: `attest-verify --operation-risk payment`.
 
 **Авария / outage:** без свежего списка или без `seen` в protected — отказ, не «продолжить по кэшу».
 После отзыва кэш со state «действует» ловится watermark/`seen`. Глобальный `MANDAT_STATUS_MAX_AGE_DAYS` может только ужесточить окно,
