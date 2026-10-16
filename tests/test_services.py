@@ -262,11 +262,19 @@ def test_explainer_keeps_only_grounded_statements():
     assert facts_of(run("revoked").as_dict())[0].id == "verdict"
 
 
+def _redacted():
+    from mandat.advisory.llm import case_charter_messages
+    from mandat.eval import synth
+    from mandat.intake.case_loader import load_case_inline
+
+    return case_charter_messages(load_case_inline(synth.build("ok", 1).inline_manifest()))
+
+
 def test_llm_client_is_closed_by_default(monkeypatch: pytest.MonkeyPatch):
     with pytest.raises(ValueError):
         OpenAICompatClient("https://api.external.example/v1", "m")
     client = OpenAICompatClient("http://127.0.0.1:8000/v1", "local")
-    assert client.body([])["temperature"] == 0
+    assert client.body(_redacted())["temperature"] == 0
     msgs = charter_messages("ИНН 7712345678 СНИЛС 112-233-445 95")
     assert "112-233-445 95" not in msgs[1]["content"]
     assert parse_facts('мусор {"facts":[{"kind":"joint_signature","quote":"q"}]} ') == [

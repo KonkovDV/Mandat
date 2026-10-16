@@ -55,6 +55,47 @@ def allowed_hosts() -> set[str]:
     return {h.strip().lower() for h in raw.split(",") if h.strip()}
 
 
+_SEAL = object()
+
+
+class RedactedMessages:
+    """Сообщения для модели, прошедшие минимизацию и замену ПДн. Строит только ``case_charter_messages``.
+
+    Клиент модели принимает только этот тип: сырой текст или список словарей отправить нельзя. Конструктор
+    закрыт печатью модуля, копирование и сериализация запрещены, чтобы объект нельзя было собрать в обход.
+    """
+
+    __slots__ = ("_messages",)
+    _messages: tuple[dict[str, str], ...]
+
+    def __init__(self, messages: list[dict[str, str]], *, _seal: object = None) -> None:
+        if _seal is not _SEAL:
+            raise TypeError("RedactedMessages строит только llm.case_charter_messages")
+        object.__setattr__(self, "_messages", tuple(dict(m) for m in messages))
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("RedactedMessages не меняется")
+
+    def __reduce__(self) -> Any:
+        raise TypeError("RedactedMessages не сериализуется")
+
+    def __copy__(self) -> RedactedMessages:
+        return self
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> RedactedMessages:
+        return self
+
+    @property
+    def messages(self) -> list[dict[str, str]]:
+        return [dict(m) for m in self._messages]
+
+
+def _require_redacted(messages: object) -> RedactedMessages:
+    if type(messages) is not RedactedMessages:
+        raise TypeError("модель принимает только RedactedMessages из llm.case_charter_messages")
+    return messages
+
+
 @dataclass(frozen=True)
 class OpenAICompatClient:
     base_url: str
@@ -90,10 +131,12 @@ class OpenAICompatClient:
             raise LlmDisabled("модель выключена: MANDAT_LLM_BASE_URL не задан")
         return cls(base, os.environ.get("MANDAT_LLM_MODEL", "local-model"), os.environ.get("MANDAT_LLM_API_KEY"))
 
-    def body(self, messages: list[dict[str, str]]) -> dict[str, Any]:
-        return {"model": self.model, "temperature": 0, "seed": 7, "messages": messages}
+    def body(self, messages: RedactedMessages) -> dict[str, Any]:
+        sealed = _require_redacted(messages)
+        return {"model": self.model, "temperature": 0, "seed": 7, "messages": sealed.messages}
 
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(self, messages: RedactedMessages) -> str:
+        _require_redacted(messages)
         payload = json.dumps(self.body(messages), ensure_ascii=False).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self.api_key:
@@ -155,11 +198,15 @@ def charter_messages(text: str, people: Iterable[KnownPerson] = ()) -> list[dict
     ]
 
 
-def case_charter_messages(case: Case) -> list[dict[str, str]]:
-    """Запрос к модели по уставу кейса; ФИО берутся из МЧД, ЕГРЮЛ и заявки этого кейса."""
+def case_charter_messages(case: Case) -> RedactedMessages:
+    """Запрос к модели по уставу кейса; ФИО берутся из МЧД, ЕГРЮЛ и заявки этого кейса.
+
+    Единственный способ получить ``RedactedMessages``: ``charter_messages`` возвращает просмотр того же текста,
+    но клиент модели его не примет.
+    """
     if case.charter is None:
         raise ValueError("в кейсе нет устава")
-    return charter_messages(case.charter.text, known_people(case))
+    return RedactedMessages(charter_messages(case.charter.text, known_people(case)), _seal=_SEAL)
 
 
 def parse_facts(raw: str) -> list[dict[str, Any]]:
