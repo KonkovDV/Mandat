@@ -47,6 +47,16 @@ WINDOW_SECONDS = 60.0
 MAX_CLIENTS = 10_000
 
 
+class ReviewVersionConflict(RuntimeError):
+    """Состояние разбора уже записано с другой версией (M-09): запрос основан на устаревшем снимке."""
+
+    def __init__(self, case_id: str, expected: int, current: int) -> None:
+        super().__init__(f"разбор {case_id}: ожидалась версия {expected}, сейчас {current}")
+        self.case_id = case_id
+        self.expected = expected
+        self.current = current
+
+
 class Store(Protocol):
     name: str
 
@@ -98,6 +108,16 @@ class Store(Protocol):
     def idem_get(self, owner: str, key: str) -> tuple[str, str] | None:
         """(case_id, отпечаток запроса) завершённого запроса с этим Idempotency-Key или None."""
 
+    # --- Состояние разбора (M-09): запись только по ожидаемой версии (CAS). ---
+    def review_get(self, case_id: str) -> tuple[dict[str, Any], int] | None:
+        """(состояние разбора, версия) или None, если разбора нет."""
+
+    def review_put(self, case_id: str, state: dict[str, Any], expected_version: int) -> int:
+        """Записать состояние, если текущая версия равна ``expected_version`` (0 — разбора ещё нет).
+
+        Возвращает новую версию (``expected_version + 1``); иначе ``ReviewVersionConflict``.
+        """
+
 
 class MemoryStore:
     name = "memory"
@@ -112,6 +132,7 @@ class MemoryStore:
         self._seen: dict[str, float] = {}
         self._pending: dict[str, Pending] = {}
         self._idem: dict[tuple[str, str], tuple[str, str, float]] = {}
+        self._reviews: dict[str, tuple[dict[str, Any], int]] = {}
 
     def allow(self, client: str, limit: int, now: float | None = None) -> bool:
         now = time.time() if now is None else now
@@ -212,6 +233,20 @@ class MemoryStore:
                 return None
             return found[0], found[1]
 
+    def review_get(self, case_id: str) -> tuple[dict[str, Any], int] | None:
+        with self._lock:
+            found = self._reviews.get(case_id)
+            return (json.loads(json.dumps(found[0])), found[1]) if found else None
+
+    def review_put(self, case_id: str, state: dict[str, Any], expected_version: int) -> int:
+        body = json.loads(json.dumps(state, ensure_ascii=False))
+        with self._lock:
+            current = self._reviews.get(case_id, ({}, 0))[1]
+            if current != expected_version:
+                raise ReviewVersionConflict(case_id, expected_version, current)
+            self._reviews[case_id] = (body, current + 1)
+            return current + 1
+
 
 class SQLiteStore:
     """Одна БД на машину. ``BEGIN IMMEDIATE`` делает проверку и запись лимита атомарными между процессами."""
@@ -246,6 +281,9 @@ class SQLiteStore:
             CREATE TABLE IF NOT EXISTS idem (
                 owner TEXT NOT NULL, key TEXT NOT NULL, case_id TEXT NOT NULL, fp TEXT NOT NULL, at REAL NOT NULL,
                 PRIMARY KEY (owner, key)
+            );
+            CREATE TABLE IF NOT EXISTS reviews (
+                case_id TEXT PRIMARY KEY, version INTEGER NOT NULL, body TEXT NOT NULL
             );
             """
         )
@@ -410,6 +448,25 @@ class SQLiteStore:
         )
         return (row[0], row[1]) if row else None
 
+    # Состояние разбора: проверка версии и запись под одной ``BEGIN IMMEDIATE``.
+    def review_get(self, case_id: str) -> tuple[dict[str, Any], int] | None:
+        row = self._db().execute("SELECT body, version FROM reviews WHERE case_id = ?", (case_id,)).fetchone()
+        return (json.loads(row[0]), int(row[1])) if row else None
+
+    def review_put(self, case_id: str, state: dict[str, Any], expected_version: int) -> int:
+        body = json.dumps(state, ensure_ascii=False)
+        with self._tx() as db:
+            row = db.execute("SELECT version FROM reviews WHERE case_id = ?", (case_id,)).fetchone()
+            current = int(row[0]) if row else 0
+            if current != expected_version:
+                raise ReviewVersionConflict(case_id, expected_version, current)
+            db.execute(
+                "INSERT INTO reviews (case_id, version, body) VALUES (?, ?, ?) "
+                "ON CONFLICT(case_id) DO UPDATE SET version = excluded.version, body = excluded.body",
+                (case_id, current + 1, body),
+            )
+            return current + 1
+
 
 class RedisStore:
     """Окно лимита — сортированное множество на клиента, отчёты — строки JSON, порядок — ещё одно множество."""
@@ -484,6 +541,15 @@ class RedisStore:
     return 1
     """
 
+    # CAS по версии разбора: сравнение и запись в одном скрипте. -1 — версия не совпала.
+    _REVIEW_PUT = """
+    local k = KEYS[1]
+    local cur = tonumber(redis.call('HGET', k, 'version') or '0')
+    if cur ~= tonumber(ARGV[1]) then return {-1, cur} end
+    redis.call('HSET', k, 'version', cur + 1, 'body', ARGV[2])
+    return {cur + 1, cur}
+    """
+
     def __init__(self, client: Any, prefix: str = "mandat:") -> None:
         self.r = client
         self.prefix = prefix
@@ -491,6 +557,7 @@ class RedisStore:
         self._put = client.register_script(self._PUT)
         self._commit = client.register_script(self._COMMIT)
         self._discard = client.register_script(self._DISCARD)
+        self._review_put = client.register_script(self._REVIEW_PUT)
 
     def allow(self, client: str, limit: int, now: float | None = None) -> bool:
         now = time.time() if now is None else now
@@ -579,6 +646,19 @@ class RedisStore:
             return None
         packed = json.loads(raw)
         return packed["case_id"], packed["fp"]
+
+    def review_get(self, case_id: str) -> tuple[dict[str, Any], int] | None:
+        found = self.r.hmget(f"{self.prefix}review:{case_id}", "body", "version")
+        if found[0] is None:
+            return None
+        return json.loads(found[0]), int(found[1])
+
+    def review_put(self, case_id: str, state: dict[str, Any], expected_version: int) -> int:
+        body = json.dumps(state, ensure_ascii=False)
+        new, current = self._review_put(keys=[f"{self.prefix}review:{case_id}"], args=[expected_version, body])
+        if int(new) < 0:
+            raise ReviewVersionConflict(case_id, expected_version, int(current))
+        return int(new)
 
 
 def open_store(spec: str | None = None) -> Store:
