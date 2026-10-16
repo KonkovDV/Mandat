@@ -81,19 +81,19 @@
 | R-EIO-005 | Заявитель — действующий руководитель (без доверенности) | `test_r_eio_005_director_acts_without_poa` |
 | R-COV-001 | Полномочие покрывает запрошенную операцию | `test_r_cov_001_not_covered_refutes`, `test_r_cov_001_text_only_needs_review` |
 | R-COV-002 | Код полномочия действует в классификаторе | `test_r_cov_002_revoked_code_needs_review` |
-| R-JNT-001 | Полномочия совместные | `test_r_jnt_001_joint_powers_needs_review` |
+| R-JNT-001 | Полномочия совместные; нет признака — не «индивидуально» | `test_r_jnt_001_joint_powers_needs_review`, `test_missing_joint_flag_on_one_representative_is_not_confirmed` |
 | R-SUB-001 | Родительская МЧД разрешает передоверие | `test_r_sub_001_forbidden_refutes` |
 | R-SUB-002 | Передоверенные полномочия не шире исходных | `test_r_sub_002_wider_refutes` |
 | R-SUB-003 | Срок передоверия не дольше срока исходной МЧД | `test_r_sub_003_longer_term_refutes` |
 | R-SUB-004 | Цепочка передоверия предоставлена целиком | `test_r_sub_004_missing_parent_is_insufficient` |
 | R-SUB-005 | Во всей цепочке один доверитель | `test_r_sub_005_principal_mismatch_refutes` |
-| R-SUB-006 | Передоверие прекращается вместе с основной доверенностью | `test_r_sub_006_parent_revoked_cascades` |
+| R-SUB-006 | Передоверие прекращается вместе с основной доверенностью | `test_r_sub_006_parent_revoked_cascades`, `test_later_parent_revocation_without_event_date_does_not_cascade` |
 | R-SUB-007 | Передоверитель не утратил полномочия | `test_r_sub_007_lost_on_subdelegation_refutes`, `test_r_sub_007_foreign_child_needs_review` |
 | R-SUB-008 | Длинная цепочка передоверия подтверждена реестром | `test_r_sub_008_long_chain_needs_review`, `test_r_sub_008_long_chain_in_registry_is_info` |
-| R-SUB-009 | Каждое ребро передоверия подтверждено на дату выдачи | `test_r_sub_009_child_signer_must_match_parent_representative` |
+| R-SUB-009 | Каждое ребро передоверия подтверждено на дату выдачи | `test_r_sub_009_child_signer_must_match_parent_representative`, `test_same_day_sibling_transfers_need_review` |
 | R-SUB-010 | Передоверие нотариально удостоверено или подпадает под исключение | `test_subdelegation_without_form_evidence_goes_to_review`, `test_notarized_mark_is_accepted_only_in_demo`, `test_subdelegator_kind_is_not_taken_from_the_client`, `test_subdelegator_kind_comes_from_the_parent_poa`, `test_notarization_is_read_from_the_child_poa`, `test_notarization_without_details_is_not_accepted`, `test_subdelegator_kind_conflicting_with_the_parent_is_unknown` |
 | R-CHR-001 | Устав ограничивает полномочия руководителя | `test_r_chr_001_limit_needs_review` |
-| R-CHR-002 | Ограничения устава шаблонами не найдены или не разобраны | `test_r_chr_002_clean_charter_is_info`, `test_missing_charter_blocks_confirmation` |
+| R-CHR-002 | Ограничения устава шаблонами не найдены или не разобраны | `test_r_chr_002_clean_charter_is_info`, `test_missing_charter_blocks_confirmation`, `test_partial_required_charter_blocks_confirmation` |
 | R-TXT-001 | В МЧД есть текстовые полномочия | `test_r_cov_001_text_only_needs_review` |
 | R-PAP-001 | Предоставлена бумажная доверенность | `test_r_pap_001_paper_poa_needs_review` |
 | R-SIG-001 | Квалифицированная подпись МЧД проверена | `test_r_sig_001_strict_profile_is_insufficient` |
