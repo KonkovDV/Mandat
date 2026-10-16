@@ -49,6 +49,8 @@ ROLES = {
 class Principal:
     name: str
     role: str
+    # Только у reviewer: lawyer | compliance | security | client_service (docs/REVIEW.md).
+    specialization: str | None = None
 
     @property
     def can_write(self) -> bool:
@@ -120,6 +122,14 @@ def parse_users(raw: Any, *, require_expiry: bool | None = None, now: datetime |
         if digest.lower() in {entry.token_sha256 for entry in users}:
             # Один токен у двух имён: запросы и записи журнала достались бы не тому пользователю.
             raise ValueError(f"MANDAT_API_USERS: токен {name} совпадает с токеном другого пользователя")
+        specialization = item.get("specialization")
+        if specialization is not None:
+            from mandat.review.state_machine import SPECIALIZATIONS
+
+            if role != "reviewer":
+                raise ValueError(f"MANDAT_API_USERS: specialization есть только у роли reviewer, у {name} роль {role}")
+            if specialization not in SPECIALIZATIONS:
+                raise ValueError(f"MANDAT_API_USERS: у {name} specialization не из {list(SPECIALIZATIONS)}")
         revoked = item.get("revoked", False)
         if not isinstance(revoked, bool):
             raise ValueError(f"MANDAT_API_USERS: у {name} revoked должен быть true или false")
@@ -134,7 +144,7 @@ def parse_users(raw: Any, *, require_expiry: bool | None = None, now: datetime |
                 raise ValueError(f"MANDAT_API_USERS: {message} (потолок срока в pilot/prod)")
             log.warning("MANDAT_API_USERS: %s", message)
         seen.add(name)
-        users.append(UserEntry(Principal(name, role), digest.lower(), expires, revoked))
+        users.append(UserEntry(Principal(name, role, specialization), digest.lower(), expires, revoked))
     return tuple(users)
 
 

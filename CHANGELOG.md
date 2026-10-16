@@ -1,5 +1,9 @@
 # Изменения
 
+## 2026-10-16 — M-09a роли разбора
+
+- Роли разбора: `operator`, `reviewer` со специализацией, `auditor`, `admin` ([REVIEW](docs/REVIEW.md)). `operator` больше не решает кейсы и подаёт жалобу от имени клиента; `auditor` и `admin` кейсы не двигают; решать нельзя автору кейса, подавшему жалобу и автору обжалуемого решения.
+
 ## 2026-10-15 — M-03 pilot compose + /readyz
 
 - `deploy/compose.pilot.yml`: постоянный том `/app/var`, `MANDAT_ENV=pilot`, SQLite-хранилище, журнал, healthcheck по `/readyz`.
