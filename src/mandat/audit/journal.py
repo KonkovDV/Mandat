@@ -270,22 +270,106 @@ def _write_witness(path: Path, records: int, head: str, key: str | None = None) 
 LOCK_WAIT_SECONDS = 5.0
 
 
+def _lock_owner_pid(lock: Path) -> int | None:
+    try:
+        text = lock.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError):
+        return None
+    if not text.isdigit():
+        return None
+    pid = int(text)
+    return pid if pid > 0 else None
+
+
+def _pid_alive(pid: int) -> bool | None:
+    """``True`` — процесс жив, ``False`` — точно мёртв, ``None`` — неизвестно, lock не снимать."""
+    if os.name == "nt":
+        return _pid_alive_windows(pid)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return None
+    return True
+
+
+def _pid_alive_windows(pid: int) -> bool | None:
+    import ctypes
+
+    # WinDLL есть в типах ctypes только на Windows. На Linux функция не вызывается (os.name != "nt"),
+    # но mypy проверяет тело везде, поэтому имена берутся через getattr.
+    windll = getattr(ctypes, "WinDLL", None)
+    last_error = getattr(ctypes, "get_last_error", None)
+    if windll is None or last_error is None:
+        return None
+    kernel32 = windll("kernel32", use_last_error=True)
+    open_process = kernel32.OpenProcess
+    open_process.argtypes = (ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32)
+    open_process.restype = ctypes.c_void_p
+    get_exit = kernel32.GetExitCodeProcess
+    get_exit.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32))
+    get_exit.restype = ctypes.c_int
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (ctypes.c_void_p,)
+    close_handle.restype = ctypes.c_int
+    handle = open_process(0x1000, 0, pid)
+    if not handle:
+        err = last_error()
+        if err == 87:  # ERROR_INVALID_PARAMETER: такого процесса нет
+            return False
+        if err == 5:  # ERROR_ACCESS_DENIED: процесс есть, спросить код выхода нельзя
+            return True
+        return None
+    code = ctypes.c_uint32()
+    ok = get_exit(handle, ctypes.byref(code))
+    close_handle(handle)
+    if not ok:
+        return None
+    if code.value == 259:  # STILL_ACTIVE
+        return True
+    return False
+
+
+def _reclaim_dead_lock(lock: Path) -> bool:
+    """Снять lock, только если записанный pid точно мёртв. По возрасту файла — нет."""
+    pid = _lock_owner_pid(lock)
+    if pid is None or _pid_alive(pid) is not False:
+        return False
+    if _lock_owner_pid(lock) != pid:
+        return False
+    try:
+        lock.unlink()
+    except FileNotFoundError:
+        return True
+    return True
+
+
 def _acquire_lock(path: Path) -> tuple[int, Path]:
     """Эксклюзивная блокировка с ожиданием до ``LOCK_WAIT_SECONDS``.
 
-    Чужой lock не снимается по возрасту: это не доказательство, что писатель умер.
+    В файл lock пишется pid писателя. Чужой lock снимается, только если этот процесс
+    точно мёртв. По возрасту файла lock не снимается: живой писатель мог держать его долго.
+    Пустой файл и pid, который нельзя проверить, не снимаются.
     """
     lock = path.with_name(path.name + ".lock")
     deadline = time.monotonic() + LOCK_WAIT_SECONDS
     delay = 0.001
     while True:
         try:
-            return os.open(lock, os.O_CREAT | os.O_EXCL | os.O_RDWR), lock
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_RDWR)
         except FileExistsError:
+            if _reclaim_dead_lock(lock):
+                continue
             if time.monotonic() >= deadline:
                 raise ValueError("журнал занят другой записью") from None
             time.sleep(delay)
             delay = min(delay * 2, 0.05)
+            continue
+        os.write(fd, f"{os.getpid()}\n".encode("ascii"))
+        return fd, lock
 
 
 def append(

@@ -511,7 +511,10 @@ def check_status(
     старше уже виденного отвергается: так ловится подложенный после отзыва старый, но правильно
     подписанный список. Словарь обновляется на месте; хранит его проверяющий, не издатель.
 
-    Свежесть по часам проверяется, только если передан ``now``: демо должно проверяться и через месяц.
+    Свежесть по часам проверяется, только если передан ``now``. На стенде (demo, dev, test) без ``now``
+    список без отзыва считается действующим: демо можно смотреть и через месяц. В pilot, prod и любом
+    защищённом режиме без ``now`` состояние — «свежесть не проверена», не «действует». Известные отзыв
+    и приостановка сообщаются и без ``now``.
     ``operation_risk`` задаёт окно через ``status_max_age_for`` (M-13).
     ``require_seen``: ``True`` — без ``seen`` fail-closed; ``None``/``False`` — watermark
     необязателен (квитанция / демо). Для допуска в pilot/prod см. ``authorize_operation``.
@@ -576,6 +579,14 @@ def check_status(
         state = "отозвано"
     elif suspended:
         state = "приостановлено"
+    elif now is None and _protected():
+        state = "свежесть не проверена"
     else:
         state = "действует"
     return {**result, "state": state}
+
+
+def _protected() -> bool:
+    from mandat.services.env_policy import protected
+
+    return protected()

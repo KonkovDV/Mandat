@@ -1630,6 +1630,36 @@ def sub_edge(ctx: RuleContext) -> list[Finding]:
                     [child.ref("signer.inn"), parent.ref("representative.1")],
                 )
             )
+    out.extend(_same_day_transfers(ctx))
+    return out
+
+
+def _same_day_transfers(ctx: RuleContext) -> list[Finding]:
+    """Два разных передоверия от одной МЧД в один день: какое действует, норма не задаёт.
+
+    Одинаковый документ (тот же sha256) — повтор, не конфликт. Разный текст в один день
+    не выбирается молча и не гасит оба: это «на разбор», не опровержение.
+    """
+    groups: dict[tuple[str, date], list[Any]] = {}
+    for poa in ctx.case.poas:
+        if poa.parent_number and poa.issue_date is not None and poa.number:
+            groups.setdefault((poa.parent_number, poa.issue_date), []).append(poa)
+    out = []
+    for (parent_number, day), group in groups.items():
+        if len({poa.sha256 for poa in group}) < 2:
+            continue
+        numbers = ", ".join(sorted({poa.number for poa in group}))
+        out.append(
+            ctx.emit(
+                "R-SUB-009",
+                E.NEEDS_REVIEW,
+                (
+                    f"От МЧД {parent_number} {day:%d.%m.%Y} выданы разные передоверия ({numbers}): "
+                    "какое из них действует, правило не задаёт"
+                ),
+                [group[0].ref("number")],
+            )
+        )
     return out
 
 
@@ -1767,7 +1797,10 @@ def _charter_info(ctx: RuleContext, *, cleared: bool) -> list[Finding]:
             )
         ]
     kinds = ", ".join(sorted({f.kind for f in ctx.charter_facts}))
-    if op and op.high_risk and not cleared:
+    # Найденный фрагмент не доказывает, что остальной устав прочитан. Для обязательного устава
+    # и для высокого риска это «на разбор», а не справка. Отметка demo «ограничений нет» (cleared)
+    # по-прежнему справка: у неё нет согласующего вне стенда.
+    if (required or (op and op.high_risk)) and not cleared:
         return [
             ctx.emit(
                 "R-CHR-002",
