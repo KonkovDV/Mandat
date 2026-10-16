@@ -15,10 +15,7 @@ def store(request, tmp_path):
         return MemoryStore()
     if request.param == "sqlite":
         return SQLiteStore(tmp_path / "api.db")
-    import fakeredis
-    import lupa  # noqa: F401  # защитный тест не пропускается без зависимости
-
-    return RedisStore(fakeredis.FakeRedis())
+    return request.getfixturevalue("redis_store")
 
 
 def test_sliding_window(store):
@@ -132,3 +129,26 @@ def test_serve_refuses_workers_without_shared_store(monkeypatch, capsys):
 
     assert cli.main(["serve", "--workers", "2"]) == 2
     assert "MANDAT_API_STORE" in capsys.readouterr().err
+
+
+def test_redis_backend_matches_env(redis_store):
+    """В job ``redis`` тесты идут в настоящий сервер по MANDAT_TEST_REDIS_URL, иначе — fakeredis."""
+    import os
+
+    import fakeredis
+
+    url = os.environ.get("MANDAT_TEST_REDIS_URL")
+    if not url:
+        assert isinstance(redis_store.r, fakeredis.FakeRedis)
+        return
+    from urllib.parse import urlparse
+
+    assert not isinstance(redis_store.r, fakeredis.FakeRedis)
+    conn = redis_store.r.connection_pool.connection_kwargs
+    parsed = urlparse(url)
+    assert (conn["host"], conn["port"]) == (parsed.hostname, parsed.port or 6379)
+    info = redis_store.r.info("server")
+    assert str(info["redis_version"]).startswith("7.")
+    marker = f"{redis_store.prefix}marker"
+    redis_store.r.set(marker, "1")
+    assert redis_store.r.get(marker) == b"1"
