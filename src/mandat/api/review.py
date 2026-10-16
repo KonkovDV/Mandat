@@ -16,6 +16,8 @@ from mandat.services.next_steps import sla_hours
 OPEN_STATES = {ReviewState.QUEUED, ReviewState.IN_REVIEW, ReviewState.DOCS_REQUESTED}
 # Приоритет обжалованного автоматического решения: у самого отчёта приоритета нет (docs/REVIEW.md).
 APPEAL_PRIORITY = "P2"
+# Эскалация по сроку (M-09): просроченный кейс поднимается на ступень, за каждый следующий срок — ещё на одну.
+ESCALATION = ("P3", "P2", "P1")
 
 
 def now_iso() -> str:
@@ -37,6 +39,42 @@ def initial(case_id: str, report: dict[str, Any], owner: str) -> dict[str, Any]:
     return body
 
 
+def reset(fresh: dict[str, Any], previous: dict[str, Any], version: int) -> dict[str, Any]:
+    """Разбор по новому отчёту (replace=true): прежний разбор — в ``superseded`` вместе с историей.
+
+    Автор кейса и требование специализации сохраняются: создавший кейс по-прежнему не решает его, а заданную
+    специализацию нельзя снять перезаписью отчёта."""
+    superseded = list(previous.get("superseded") or [])
+    superseded.append(
+        {
+            "report_hash": previous.get("report_hash"),
+            "state": previous.get("state"),
+            "version": version,
+            "history": previous.get("history") or [],
+        }
+    )
+    body = dict(fresh)
+    body["superseded"] = superseded
+    body["created_by"] = previous.get("created_by") or fresh.get("created_by")
+    body["required_specialization"] = previous.get("required_specialization")
+    return body
+
+
+def escalation(priority: str | None, due_at: str | None, now: datetime | None = None) -> dict[str, Any]:
+    """Просрочка и поднятый приоритет. Считается при чтении: уведомлений и фоновой задачи нет."""
+    if not priority or not due_at:
+        return {"overdue": False, "escalation_level": 0, "effective_priority": priority}
+    now = now or datetime.now(UTC)
+    due = datetime.fromisoformat(due_at)
+    if now <= due:
+        return {"overdue": False, "escalation_level": 0, "effective_priority": priority}
+    hours = sla_hours(priority)
+    level = 1 + int((now - due) / timedelta(hours=hours))
+    rank = ESCALATION.index(priority) if priority in ESCALATION else len(ESCALATION) - 1
+    effective = ESCALATION[min(len(ESCALATION) - 1, rank + level)]
+    return {"overdue": True, "escalation_level": level, "effective_priority": effective}
+
+
 def load(body: dict[str, Any], version: int) -> ReviewCase:
     case = ReviewCase.from_dict(body)
     case.version = version
@@ -48,6 +86,8 @@ def dump(case: ReviewCase, previous: dict[str, Any]) -> dict[str, Any]:
     body = case.to_dict()
     body["priority"] = previous.get("priority")
     body["queued_at"] = previous.get("queued_at")
+    if previous.get("superseded"):
+        body["superseded"] = previous["superseded"]
     if case.state is ReviewState.QUEUED and previous.get("state") != ReviewState.QUEUED.value:
         body["queued_at"] = now_iso()
         body["priority"] = body["priority"] or APPEAL_PRIORITY
@@ -69,6 +109,8 @@ def view(case_id: str, body: dict[str, Any], version: int) -> dict[str, Any]:
         "sla_hours": hours,
         "queued_at": body.get("queued_at"),
         "due_at": due,
+        **escalation(priority, due),
         "required_specialization": body.get("required_specialization"),
         "history": body.get("history") or [],
+        "superseded": body.get("superseded") or [],
     }

@@ -108,6 +108,8 @@ class ReviewAction(BaseModel):
 
     expected_version: int = Field(ge=0)
     reason: str = Field(default="", max_length=4000)
+    # Только для действия require: специализация, без которой кейс не решить (M-09).
+    specialization: str | None = Field(default=None, max_length=64)
 
 
 class ApiProblem(Exception):
@@ -529,16 +531,43 @@ def create_app(
             ) from exc
         if not committed:
             raise HTTPException(409, "запись вытеснена другой попыткой: повторите запрос")
-        # Кейс без автоматического решения сразу встаёт в очередь разбора. Разбор уже есть (replace) — не трогаем;
-        # сбой записи не отменяет кейс: разбор создастся при первом действии, но до того кейса нет в очереди,
+        # Кейс без автоматического решения сразу встаёт в очередь разбора. При replace=true разбор начинается
+        # заново по новому отчёту (M-09): прежний разбор уходит в «superseded» и в журнал (review_reset).
+        # Сбой записи не отменяет кейс: разбор создастся при первом действии, но до того кейса нет в очереди,
         # поэтому сбой пишется в журнал сервера.
         try:
-            shared.review_put(case_id, review_api.initial(case_id, report, principal.name), 0)
-        except ReviewVersionConflict:
-            pass
+            seed_review(case_id, report, principal)
         except Exception as exc:
             log.warning("review_seed_failed case_id=%s error=%s", case_id, type(exc).__name__)
         return report
+
+    def seed_review(case_id: str, report: dict[str, Any], principal: Principal) -> None:
+        fresh = review_api.initial(case_id, report, principal.name)
+        stored = shared.review_get(case_id)
+        if stored is None:
+            with contextlib.suppress(ReviewVersionConflict):
+                shared.review_put(case_id, fresh, 0)
+            return
+        previous, version = stored
+        if previous.get("report_hash") == fresh["report_hash"]:
+            return  # тот же отчёт: разбор продолжается
+        fresh = review_api.reset(fresh, previous, version)
+        if audit_log is not None:
+            journal.append(
+                audit_log,
+                action="review_reset",
+                actor=principal.name,
+                role=principal.role,
+                case_id=case_id,
+                payload_hash=fresh["report_hash"],
+                reason="replace=true: новый отчёт, разбор начат заново",
+                details={
+                    "version": version,
+                    "previous_state": previous.get("state"),
+                    "previous_report_hash": previous.get("report_hash"),
+                },
+            )
+        shared.review_put(case_id, fresh, version)
 
     @app.get("/v1/cases/{case_id}")
     def get_case(case_id: str, principal: Principal = Depends(auth)) -> dict[str, Any]:
@@ -578,7 +607,7 @@ def create_app(
     def review_action(
         case_id: str, action: str, payload: ReviewAction, principal: Principal = Depends(writer)
     ) -> dict[str, Any]:
-        """Действие разбора: appeal, open, accept, reject, request_docs, close (docs/REVIEW.md).
+        """Действие разбора: appeal, open, accept, reject, request_docs, close, require (docs/REVIEW.md).
 
         403 — роль, специализация или независимость решения; 409 — переход недопустим или версия устарела;
         422 — нет основания; 503 — журнал не настроен в pilot/prod или хранилище недоступно.
@@ -601,6 +630,7 @@ def create_app(
                 journal_path=audit_log,
                 expected_version=version,
                 specialization=principal.specialization,
+                required_specialization=payload.specialization,
             )
         except ReviewForbidden as exc:
             raise HTTPException(403, str(exc)) from exc
@@ -639,8 +669,12 @@ def create_app(
                 continue
             item = review_api.view(case_id, body, version)
             item.pop("history")
+            item.pop("superseded")
             items.append(item)
-        items.sort(key=lambda i: (i["due_at"] or "9999", i["case_id"]))
+        # Просроченные выше, внутри — по поднятому приоритету, затем по сроку.
+        items.sort(
+            key=lambda i: (not i["overdue"], i["effective_priority"] or "P9", i["due_at"] or "9999", i["case_id"])
+        )
         return {"items": items, "states": sorted(open_states), "auto_decided": ReviewState.AUTO_DECIDED.value}
 
     @app.post("/v1/events", dependencies=[Depends(writer)])

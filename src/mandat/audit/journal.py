@@ -44,6 +44,8 @@ ACTIONS = (
     "review_request_docs",
     "review_close",
     "review_appeal",
+    "review_require",
+    "review_reset",
     "event",
     "reverify",
     "status_change",

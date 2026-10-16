@@ -8,6 +8,10 @@
 подаёт оператор от имени клиента, кейс уходит человеку. Так реализовано право на пересмотр решения
 человеком из Кодекса этики в сфере ИИ на финансовом рынке (Банк России, 2025).
 
+Решение сотрудника (``accept``/``reject``, в том числе после ``close``) тоже можно обжаловать: кейс снова
+уходит в очередь, а решавшие его сотрудники и подавший жалобу решать его уже не могут («своё не решать»).
+``require`` задаёт специализацию, без которой кейс не решить; снять или заменить её нельзя.
+
 Роли и правила переходов (M-09) описаны в docs/REVIEW.md.
 """
 
@@ -41,8 +45,16 @@ TRANSITIONS: dict[tuple[ReviewState, str], ReviewState] = {
     (ReviewState.IN_REVIEW, "reject"): ReviewState.REJECTED,
     (ReviewState.ACCEPTED, "close"): ReviewState.CLOSED,
     (ReviewState.REJECTED, "close"): ReviewState.CLOSED,
+    # Жалоба на решение человека (M-09).
+    (ReviewState.ACCEPTED, "appeal"): ReviewState.QUEUED,
+    (ReviewState.REJECTED, "appeal"): ReviewState.QUEUED,
+    (ReviewState.CLOSED, "appeal"): ReviewState.QUEUED,
+    # Требование специализации: состояние не меняется, версия растёт, запись в журнале.
+    (ReviewState.QUEUED, "require"): ReviewState.QUEUED,
+    (ReviewState.IN_REVIEW, "require"): ReviewState.IN_REVIEW,
+    (ReviewState.DOCS_REQUESTED, "require"): ReviewState.DOCS_REQUESTED,
 }
-NEEDS_REASON = {"accept", "reject", "request_docs", "appeal"}
+NEEDS_REASON = {"accept", "reject", "request_docs", "appeal", "require"}
 JOURNAL_ACTION = {
     "appeal": "review_appeal",
     "open": "review_open",
@@ -50,6 +62,7 @@ JOURNAL_ACTION = {
     "reject": "review_reject",
     "request_docs": "review_request_docs",
     "close": "review_close",
+    "require": "review_require",
 }
 REVIEW_ACTIONS = set(JOURNAL_ACTION.values())
 # Специализации роли reviewer. Прежние имена ролей разбора — это они же (совместимость вызовов).
@@ -69,9 +82,12 @@ ALLOWED_ROLES: dict[str, frozenset[str]] = {
     "accept": frozenset({"reviewer"}),
     "reject": frozenset({"reviewer"}),
     "close": frozenset({"operator", "reviewer"}),
+    "require": frozenset({"operator", "reviewer"}),
 }
 # Действия-решения: к ним применяется запрет решать «свой» кейс и требование специализации.
 DECISIONS = {"request_docs", "accept", "reject"}
+# Состояния после решения человека: жалоба из них — жалоба на решение сотрудника.
+MANUAL_OUTCOMES = {ReviewState.ACCEPTED.value, ReviewState.REJECTED.value, ReviewState.CLOSED.value}
 ON_BEHALF_OF = "client"
 
 
@@ -149,9 +165,15 @@ class ReviewCase:
         )
 
     def conflicted_actors(self) -> set[str]:
-        """Кто не может решать кейс: автор, подавшие appeal, автор обжалуемого решения. open не в счёт."""
+        """Кто не может решать кейс: автор, подавшие appeal, автор обжалуемого решения. open не в счёт.
+
+        После жалобы на решение человека решать не могут и все, кто уже принимал решение по кейсу
+        (``accept``/``reject``/``request_docs``): жалобу разбирает другой сотрудник.
+        """
         actors = {a for a in (self.created_by, self.appealed_decision_by) if a}
         actors |= {h["actor"] for h in self.history if h.get("action") == "appeal"}
+        if any(h.get("action") == "appeal" and h.get("from") in MANUAL_OUTCOMES for h in self.history):
+            actors |= {h["actor"] for h in self.history if h.get("action") in DECISIONS}
         return actors
 
     def apply(
@@ -164,8 +186,18 @@ class ReviewCase:
         journal_path: Path | None = None,
         expected_version: int | None = None,
         specialization: str | None = None,
+        required_specialization: str | None = None,
     ) -> ReviewState:
         role, specialization = resolve_role(role, specialization)
+        if action == "require":
+            if required_specialization not in SPECIALIZATIONS:
+                raise ReviewInvalid(f"нужна специализация из {list(SPECIALIZATIONS)}")
+            if self.required_specialization not in (None, required_specialization):
+                raise ReviewConflict(
+                    f"специализация уже задана: {self.required_specialization!r}; снять или заменить её нельзя"
+                )
+        elif required_specialization is not None:
+            raise ReviewInvalid("специализация задаётся только действием require")
         if action in ALLOWED_ROLES and role not in ALLOWED_ROLES[action]:
             raise ReviewForbidden(f"действие {action!r} не для роли {role!r}")
         if action in DECISIONS:
@@ -200,6 +232,8 @@ class ReviewCase:
             "version": self.version,
             "engine_report_hash": self.report_hash,
         }
+        if action == "require":
+            decision["required_specialization"] = required_specialization
         if journal_path is not None:
             self._journal(
                 journal_path,
@@ -209,7 +243,14 @@ class ReviewCase:
                 reason=reason,
                 target=target,
                 specialization=specialization,
+                required_specialization=required_specialization,
             )
+        if action == "appeal" and self.state.value in MANUAL_OUTCOMES:
+            # Автор обжалуемого решения — последний принявший accept/reject.
+            last = next((h for h in reversed(self.history) if h.get("action") in {"accept", "reject"}), None)
+            self.appealed_decision_by = last["actor"] if last else self.appealed_decision_by
+        if action == "require":
+            self.required_specialization = required_specialization
         self.history.append(decision)
         self.state = target
         self.version += 1
@@ -225,6 +266,7 @@ class ReviewCase:
         reason: str,
         target: ReviewState,
         specialization: str | None = None,
+        required_specialization: str | None = None,
     ) -> None:
         """Проверка «по версии ещё нет решения» и запись делаются под одной блокировкой журнала."""
         version = self.version
@@ -251,15 +293,24 @@ class ReviewCase:
                 case_id=self.case_id,
                 payload_hash=report_hash,
                 reason=reason,
-                details=_details(target, version, actor, action, specialization),
+                details=_details(target, version, actor, action, specialization, required_specialization),
                 precondition=no_other_decision,
             )
         except journal.JournalError as exc:
             raise ReviewError(f"журнал не цел, решение не принято: {exc}") from exc
 
 
-def _details(target: ReviewState, version: int, actor: str, action: str, specialization: str | None) -> dict[str, Any]:
+def _details(
+    target: ReviewState,
+    version: int,
+    actor: str,
+    action: str,
+    specialization: str | None,
+    required_specialization: str | None = None,
+) -> dict[str, Any]:
     details: dict[str, Any] = {"state": target.value, "version": version, "actor": actor}
+    if required_specialization:
+        details["required_specialization"] = required_specialization
     if specialization:
         details["specialization"] = specialization
     if action == "appeal":
