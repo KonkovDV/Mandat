@@ -299,7 +299,13 @@ def _pid_alive(pid: int) -> bool | None:
 def _pid_alive_windows(pid: int) -> bool | None:
     import ctypes
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    # WinDLL есть в типах ctypes только на Windows. На Linux функция не вызывается (os.name != "nt"),
+    # но mypy проверяет тело везде, поэтому имена берутся через getattr.
+    windll = getattr(ctypes, "WinDLL", None)
+    last_error = getattr(ctypes, "get_last_error", None)
+    if windll is None or last_error is None:
+        return None
+    kernel32 = windll("kernel32", use_last_error=True)
     open_process = kernel32.OpenProcess
     open_process.argtypes = (ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32)
     open_process.restype = ctypes.c_void_p
@@ -311,7 +317,7 @@ def _pid_alive_windows(pid: int) -> bool | None:
     close_handle.restype = ctypes.c_int
     handle = open_process(0x1000, 0, pid)
     if not handle:
-        err = ctypes.get_last_error()
+        err = last_error()
         if err == 87:  # ERROR_INVALID_PARAMETER: такого процесса нет
             return False
         if err == 5:  # ERROR_ACCESS_DENIED: процесс есть, спросить код выхода нельзя
