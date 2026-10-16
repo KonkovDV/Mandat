@@ -154,7 +154,7 @@ def test_known_people_come_from_case_data():
 )
 def test_model_payload_has_no_known_name_in_any_form(form, marker):
     text = f"Сделки свыше 1 000 000 руб. подписывает {form} по одобрению совета директоров."
-    content = llm.case_charter_messages(_case_with_charter(text))[1]["content"]
+    content = llm.case_charter_messages(_case_with_charter(text)).messages[1]["content"]
     assert form.lower() not in content.lower()
     for stem in ("петров", "лебедев"):
         assert stem not in content.lower()
