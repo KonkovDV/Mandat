@@ -13,7 +13,7 @@
 | **M-04** | P2 | **PARTIAL** | Разделены crypto receipt vs `authorize_operation`; полного bind (amount, representative, nonce, audience) нет. | #18 |
 | **M-05** | P2 | **STILL_OPEN** | Pseudonym ≠ de-ID; DOB/address / LLM minimization не закрыты. | — |
 | **M-06** | P2 | **FIXED** | В pilot/prod LLM только HTTPS; loopback HTTP лишь при `MANDAT_LLM_ALLOW_INSECURE_LOOPBACK=1`. | PR #21; `tests/test_m06_llm_tls.py` |
-| **M-07** | P2 | **STILL_OPEN** (legal) | Приказ №74: реквизиты ≠ применимость к банку; нужен caveat + counsel. | — |
+| **M-07** | P2 | **PARTIAL** (legal) | Оговорка добавлена: реквизиты приказа № 74 сверены, применимость к банку не подтверждена (LEGAL-BASIS, LIMITS). **Остаётся:** заключение юриста банка (LEGAL_REVIEW п. 11). | `docs/LEGAL_REVIEW.md` |
 | **M-08** | P2 | **STILL_OPEN** (eval) | Synth stats ≠ bank risk; нужны честные bounds / holdout. | — |
 | **M-09** | P2 | **STILL_OPEN** | HITL library ≠ client API (appeal/queue/decide). | — |
 | **M-10** | P2 | **FIXED** (residual: не exactly-once) | `POST /v1/cases`: stage → журнал → commit, 200 только после commit; сверка после сбоя; `Idempotency-Key`; fencing по номеру попытки. **Residual:** журнал и хранилище остаются двумя системами; вытесненная по сроку заявки попытка может оставить запись журнала без отчёта; другие маршруты записи журнала схемой не охвачены (`LIMITS.md`). | PR [#30](https://github.com/KonkovDV/Mandat/pull/30); `tests/test_m10_journal_store_atomicity.py` |
