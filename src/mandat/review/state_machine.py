@@ -78,23 +78,35 @@ ON_BEHALF_OF = "client"
 def resolve_role(role: str, specialization: str | None = None) -> tuple[str, str | None]:
     """Роль и специализация. ``lawyer`` и другие прежние имена — reviewer с этой специализацией."""
     if role in NON_ACTING_ROLES:
-        raise ReviewError(f"роль {role!r} не двигает кейсы: {NON_ACTING_ROLES[role]}")
+        raise ReviewForbidden(f"роль {role!r} не двигает кейсы: {NON_ACTING_ROLES[role]}")
     if role in SPECIALIZATIONS:
         if specialization not in (None, role):
-            raise ReviewError(f"роль {role!r} и специализация {specialization!r} не совпадают")
+            raise ReviewForbidden(f"роль {role!r} и специализация {specialization!r} не совпадают")
         return "reviewer", role
     if role not in ACTING_ROLES:
-        raise ReviewError(f"роль {role!r} не может разбирать кейсы")
+        raise ReviewForbidden(f"роль {role!r} не может разбирать кейсы")
     if specialization is not None:
         if role != "reviewer":
-            raise ReviewError("специализация есть только у роли reviewer")
+            raise ReviewForbidden("специализация есть только у роли reviewer")
         if specialization not in SPECIALIZATIONS:
-            raise ReviewError(f"специализация {specialization!r} не из {list(SPECIALIZATIONS)}")
+            raise ReviewForbidden(f"специализация {specialization!r} не из {list(SPECIALIZATIONS)}")
     return role, specialization
 
 
 class ReviewError(ValueError):
-    pass
+    """Отказ в действии разбора. Подклассы различают причину для ответа API."""
+
+
+class ReviewForbidden(ReviewError):
+    """Роль, специализация или независимость решения не позволяют действие (403)."""
+
+
+class ReviewConflict(ReviewError):
+    """Действие недопустимо из текущего состояния или версия устарела (409)."""
+
+
+class ReviewInvalid(ReviewError):
+    """Неполный запрос: нет основания, версии или журнала (422)."""
 
 
 @dataclass
@@ -109,6 +121,32 @@ class ReviewCase:
     appealed_decision_by: str | None = None
     # Специализация, без которой кейс не решить (например, lawyer для правового вопроса).
     required_specialization: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Состояние для хранилища (``Store.review_put``)."""
+        return {
+            "case_id": self.case_id,
+            "report_hash": self.report_hash,
+            "state": self.state.value,
+            "history": list(self.history),
+            "version": self.version,
+            "created_by": self.created_by,
+            "appealed_decision_by": self.appealed_decision_by,
+            "required_specialization": self.required_specialization,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ReviewCase:
+        return cls(
+            case_id=str(data["case_id"]),
+            report_hash=str(data["report_hash"]),
+            state=ReviewState(data["state"]),
+            history=list(data.get("history") or []),
+            version=int(data.get("version") or 0),
+            created_by=data.get("created_by"),
+            appealed_decision_by=data.get("appealed_decision_by"),
+            required_specialization=data.get("required_specialization"),
+        )
 
     def conflicted_actors(self) -> set[str]:
         """Кто не может решать кейс: автор, подавшие appeal, автор обжалуемого решения. open не в счёт."""
@@ -129,25 +167,27 @@ class ReviewCase:
     ) -> ReviewState:
         role, specialization = resolve_role(role, specialization)
         if action in ALLOWED_ROLES and role not in ALLOWED_ROLES[action]:
-            raise ReviewError(f"действие {action!r} не для роли {role!r}")
+            raise ReviewForbidden(f"действие {action!r} не для роли {role!r}")
         if action in DECISIONS:
             if actor in self.conflicted_actors():
-                raise ReviewError("решать кейс нельзя: вы создали его, подали жалобу или приняли обжалуемое решение")
+                raise ReviewForbidden(
+                    "решать кейс нельзя: вы создали его, подали жалобу или приняли обжалуемое решение"
+                )
             if self.required_specialization and specialization != self.required_specialization:
-                raise ReviewError(f"для решения нужна специализация {self.required_specialization!r}")
+                raise ReviewForbidden(f"для решения нужна специализация {self.required_specialization!r}")
         if protected():
             # В защищённом режиме решение без версии и без журнала не принимается: гонка и потеря аудита.
             if expected_version is None:
-                raise ReviewError("в защищённом режиме нужна версия кейса (expected_version)")
+                raise ReviewInvalid("в защищённом режиме нужна версия кейса (expected_version)")
             if journal_path is None:
-                raise ReviewError("в защищённом режиме решение пишется в журнал: передайте journal_path")
+                raise ReviewInvalid("в защищённом режиме решение пишется в журнал: передайте journal_path")
         if expected_version is not None and expected_version != self.version:
-            raise ReviewError(f"версия {expected_version} устарела, сейчас {self.version}")
+            raise ReviewConflict(f"версия {expected_version} устарела, сейчас {self.version}")
         target = TRANSITIONS.get((self.state, action))
         if target is None:
-            raise ReviewError(f"переход {action!r} из состояния {self.state.value!r} недопустим")
+            raise ReviewConflict(f"переход {action!r} из состояния {self.state.value!r} недопустим")
         if action in NEEDS_REASON and not reason.strip():
-            raise ReviewError(f"для действия {action!r} нужно основание")
+            raise ReviewInvalid(f"для действия {action!r} нужно основание")
         decision = {
             "from": self.state.value,
             "to": target.value,
@@ -195,11 +235,11 @@ class ReviewCase:
             if existing is None:
                 return None
             if existing.get("action") != JOURNAL_ACTION[action]:
-                raise ReviewError(f"конфликт: версия {version} уже записана с решением {existing.get('action')}")
+                raise ReviewConflict(f"конфликт: версия {version} уже записана с решением {existing.get('action')}")
             if existing.get("payload_hash") != report_hash or existing.get("reason") != reason:
-                raise ReviewError("конфликт: эта версия уже записана с другим решением")
+                raise ReviewConflict("конфликт: эта версия уже записана с другим решением")
             if (existing.get("details") or {}).get("actor") not in {None, actor}:
-                raise ReviewError("конфликт: эту версию записал другой сотрудник")
+                raise ReviewConflict("конфликт: эту версию записал другой сотрудник")
             return existing  # повтор того же решения: новой записи нет
 
         try:

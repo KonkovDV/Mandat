@@ -1,5 +1,12 @@
 # Изменения
 
+## 2026-10-16 — M-09c API разбора
+
+- `GET /v1/cases/{id}/review`, `POST /v1/cases/{id}/review/{action}` (`appeal`, `open`, `accept`, `reject`, `request_docs`, `close`) с `expected_version`: устаревшая версия — 409; `GET /v1/review/queue` ([REVIEW](docs/REVIEW.md#api-часть-c)).
+- В pilot/prod действие разбора без журнала — 503.
+- SLA настраивается в `MANDAT_REVIEW_SLA_HOURS`; по умолчанию 4/24/72 ч, не из норм.
+- `ReviewError` получил подклассы `ReviewForbidden`, `ReviewConflict`, `ReviewInvalid`; прежний `except ReviewError` работает.
+
 ## 2026-10-16 — M-09b хранение разбора
 
 - `Store.review_get` / `review_put(expected_version)` в памяти, SQLite и Redis: устаревшая версия — `ReviewVersionConflict` ([REVIEW](docs/REVIEW.md#хранение-состояния-часть-b)).

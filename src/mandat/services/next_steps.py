@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 from typing import Any
 
 from mandat.domain.model import Finding
@@ -19,7 +21,30 @@ _DRIVER = {
     Verdict.INSUFFICIENT_DATA: LegalEffect.NOT_VERIFIED,
 }
 _GENERIC = frozenset({"R-CHR-002"})
-SLA_HOURS = {"P1": 4, "P2": 24, "P3": 72}
+# Сроки разбора по умолчанию. Не из норм: реальные значения задаёт банк в MANDAT_REVIEW_SLA_HOURS
+# (JSON, например {"P1": 2, "P2": 8}); не заданные приоритеты берут значения отсюда. docs/REVIEW.md.
+SLA_HOURS: dict[str, float] = {"P1": 4, "P2": 24, "P3": 72}
+SLA_ENV = "MANDAT_REVIEW_SLA_HOURS"
+
+
+def sla_hours(priority: str) -> float:
+    """Срок разбора в часах для приоритета: значение из MANDAT_REVIEW_SLA_HOURS или по умолчанию."""
+    raw = os.environ.get(SLA_ENV, "").strip()
+    table = dict(SLA_HOURS)
+    if raw:
+        try:
+            override = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{SLA_ENV}: не JSON") from exc
+        if not isinstance(override, dict) or not set(override) <= set(SLA_HOURS):
+            raise ValueError(f"{SLA_ENV}: ожидался объект с ключами из {sorted(SLA_HOURS)}")
+        for key, value in override.items():
+            if isinstance(value, bool) or not isinstance(value, int | float) or not 0 < value <= 24 * 365:
+                raise ValueError(f"{SLA_ENV}: {key} — число часов больше 0 и не больше года")
+            table[key] = value
+    return table[priority]
+
+
 # Справки, которые сотрудник должен увидеть сразу: они не меняют вердикт, но требуют внимания.
 SIGNAL_RULES = frozenset({"R-EIO-002", "R-SUB-008"})
 
@@ -84,4 +109,4 @@ def route(verdict: Verdict, findings: list[Finding], *, high_risk: bool) -> dict
     risky = high_risk or any(f.rule_id in {"R-EIO-002", "R-EIO-003", "R-SUB-001"} for f in findings)
     priority = "P1" if risky else ("P2" if verdict is Verdict.NEEDS_REVIEW else "P3")
     units = sorted({f.unit for f in findings if f.unit and f.effect in _ORDER})
-    return {"queue": "exceptions", "priority": priority, "sla_hours": SLA_HOURS[priority], "units": units}
+    return {"queue": "exceptions", "priority": priority, "sla_hours": sla_hours(priority), "units": units}

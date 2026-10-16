@@ -14,6 +14,27 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "ReviewAction": {
+        "description": "Действие разбора. ``expected_version`` — поле ``version`` из GET /v1/cases/{id}/review.",
+        "properties": {
+          "expected_version": {
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "ReviewAction",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -294,6 +315,129 @@
         "summary": "Get Case Html"
       }
     },
+    "/v1/cases/{case_id}/review": {
+      "get": {
+        "description": "Состояние разбора и версия, которую надо передать в ``expected_version``.",
+        "operationId": "get_review_v1_cases__case_id__review_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Review V1 Cases  Case Id  Review Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Review"
+      }
+    },
+    "/v1/cases/{case_id}/review/{action}": {
+      "post": {
+        "description": "Действие разбора: appeal, open, accept, reject, request_docs, close (docs/REVIEW.md).\n\n403 — роль, специализация или независимость решения; 409 — переход недопустим или версия устарела;\n422 — нет основания; 503 — журнал не настроен в pilot/prod или хранилище недоступно.",
+        "operationId": "review_action_v1_cases__case_id__review__action__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "title": "Action",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Review Action V1 Cases  Case Id  Review  Action  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Action"
+      }
+    },
     "/v1/events": {
       "post": {
         "description": "Только оценка событий. Статусы удостоверений этот метод не меняет: их пишет CLI monitor.",
@@ -357,6 +501,49 @@
           }
         },
         "summary": "Post Events"
+      }
+    },
+    "/v1/review/queue": {
+      "get": {
+        "description": "Кейсы, ждущие человека, по сроку (раньше — выше). operator видит только свои.",
+        "operationId": "review_queue_v1_review_queue_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Review Queue V1 Review Queue Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Queue"
       }
     }
   }
