@@ -303,6 +303,33 @@ def test_registry_revoked_without_event_date_still_refutes():
     assert verdict(m) == "refuted"
 
 
+def test_later_revocation_snapshot_without_event_date_goes_to_review():
+    m = base()
+    later = (OP_DAY + timedelta(days=2)).isoformat()
+    _observe(m, _root_number(m), status="revoked", observed_at=f"{later}T12:00:00+03:00")
+    r = report(m)
+    assert {f.effect.value for f in _reg(r)} == {"needs_review"}
+    assert any("дате операции снимок не показывает" in f.message for f in _reg(r))
+    assert r.verdict.value == "needs_review"
+
+
+def test_same_day_revocation_snapshot_without_event_date_still_refutes():
+    m = base()
+    _observe(m, _root_number(m), status="revoked", observed_at=f"{OP_DAY.isoformat()}T18:00:00+03:00")
+    assert verdict(m) == "refuted"
+
+
+def test_later_parent_revocation_without_event_date_does_not_cascade():
+    m = base("ok_subdelegation")
+    parent = _root_number(m)
+    later = (OP_DAY + timedelta(days=2)).isoformat()
+    _observe(m, parent, status="revoked", observed_at=f"{later}T12:00:00+03:00")
+    r = report(m)
+    assert "refutes" not in {f.effect.value for f in r.findings if f.rule_id == "R-SUB-006"}
+    assert r.verdict.value != "refuted"
+    assert r.verdict.value != "confirmed"
+
+
 def test_registry_event_after_observation_is_not_trusted():
     m = base()
     _observe(
