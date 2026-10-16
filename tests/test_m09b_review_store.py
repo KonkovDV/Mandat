@@ -19,10 +19,8 @@ def store(request: pytest.FixtureRequest, tmp_path: Path) -> Store:
         return MemoryStore()
     if request.param == "sqlite":
         return SQLiteStore(tmp_path / "api.db")
-    import fakeredis
-    import lupa  # noqa: F401  # защитный тест не пропускается без зависимости
-
-    return RedisStore(fakeredis.FakeRedis())
+    store: RedisStore = request.getfixturevalue("redis_store")
+    return store
 
 
 def test_review_absent(store: Store) -> None:

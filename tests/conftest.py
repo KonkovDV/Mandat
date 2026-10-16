@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import sys
-from collections.abc import Callable
+import uuid
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -9,6 +11,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from mandat.api.storage import RedisStore  # noqa: E402
 from mandat.eval.synth import Scenario, build  # noqa: E402
 from mandat.intake.case_loader import load_case_inline  # noqa: E402
 from mandat.services.verify import CaseReport, verify_case  # noqa: E402
@@ -107,3 +110,29 @@ def chain_scenario(parent: frozenset[str], child: frozenset[str], flag: str, lon
 
 def verify_scenario(sc: Scenario, profile: str = "demo") -> CaseReport:
     return verify_case(load_case_inline(sc.inline_manifest()), profile=profile)
+
+
+# --- Redis для тестов хранилищ: настоящий сервер по MANDAT_TEST_REDIS_URL, иначе fakeredis ---------------
+
+REDIS_URL_ENV = "MANDAT_TEST_REDIS_URL"
+
+
+@pytest.fixture
+def redis_store() -> Iterator[RedisStore]:
+    """RedisStore на настоящем сервере (CI job ``redis``) или на fakeredis. У каждого теста свой префикс ключей."""
+    url = os.environ.get(REDIS_URL_ENV)
+    if not url:
+        import fakeredis
+        import lupa  # noqa: F401  # защитный тест не пропускается без зависимости
+
+        yield RedisStore(fakeredis.FakeRedis())
+        return
+    import redis
+
+    client = redis.Redis.from_url(url)
+    client.ping()
+    prefix = f"mandat-test:{uuid.uuid4().hex}:"
+    yield RedisStore(client, prefix=prefix)
+    for key in client.scan_iter(match=f"{prefix}*"):
+        client.delete(key)
+    client.close()

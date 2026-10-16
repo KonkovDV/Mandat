@@ -34,15 +34,26 @@ from typing import Any
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel, Field
 
 from mandat import ENGINE, __version__
+from mandat.api import review as review_api
 from mandat.api.principals import Directory, Principal, load_users
-from mandat.api.storage import Idem, Pending, Store, open_store
+from mandat.api.storage import Idem, Pending, ReviewVersionConflict, Store, open_store
 from mandat.audit import journal
 from mandat.intake.case_loader import CaseError, load_case_inline
 from mandat.report.html import render
+from mandat.review.state_machine import (
+    JOURNAL_ACTION,
+    ReviewConflict,
+    ReviewError,
+    ReviewForbidden,
+    ReviewInvalid,
+    ReviewState,
+)
 from mandat.services.env_policy import PROFILES, ProfileNotAllowed, protected, resolve_profile
 from mandat.services.monitoring import evaluate, parse_events
+from mandat.services.next_steps import check_sla
 from mandat.services.verify import verify_case
 
 MAX_BODY = 8 * 1024 * 1024
@@ -90,6 +101,13 @@ def problem(request: Request, status: int, detail: str, cause: str) -> JSONRespo
     headers = {k.decode(): v.decode() for k, v in [*SECURITY_HEADERS, DEFAULT_CSP]}
     headers[REQUEST_ID_HEADER.decode()] = rid
     return JSONResponse({"detail": detail, "request_id": rid}, status_code=status, headers=headers)
+
+
+class ReviewAction(BaseModel):
+    """Действие разбора. ``expected_version`` — поле ``version`` из GET /v1/cases/{id}/review."""
+
+    expected_version: int = Field(ge=0)
+    reason: str = Field(default="", max_length=4000)
 
 
 class ApiProblem(Exception):
@@ -267,6 +285,7 @@ def create_app(
         openapi_url="/openapi.json" if show_docs else None,
         redoc_url=None,
     )
+    check_sla()  # неверный MANDAT_REVIEW_SLA_HOURS не даёт стартовать
     shared = store if store is not None else open_store()
     env_journal = os.environ.get("MANDAT_API_JOURNAL", "").strip()
     audit_log = journal_path if journal_path is not None else (Path(env_journal) if env_journal else None)
@@ -510,6 +529,15 @@ def create_app(
             ) from exc
         if not committed:
             raise HTTPException(409, "запись вытеснена другой попыткой: повторите запрос")
+        # Кейс без автоматического решения сразу встаёт в очередь разбора. Разбор уже есть (replace) — не трогаем;
+        # сбой записи не отменяет кейс: разбор создастся при первом действии, но до того кейса нет в очереди,
+        # поэтому сбой пишется в журнал сервера.
+        try:
+            shared.review_put(case_id, review_api.initial(case_id, report, principal.name), 0)
+        except ReviewVersionConflict:
+            pass
+        except Exception as exc:
+            log.warning("review_seed_failed case_id=%s error=%s", case_id, type(exc).__name__)
         return report
 
     @app.get("/v1/cases/{case_id}")
@@ -524,6 +552,96 @@ def create_app(
                 "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"
             },
         )
+
+    def review_target(case_id: str, principal: Principal) -> tuple[dict[str, Any], str]:
+        # reviewer разбирает любые кейсы, остальные видят свои; auditor и admin — все (только чтение разбора).
+        found = shared.get(case_id)
+        if found is None or not (principal.sees_all or principal.role == "reviewer" or found[1] == principal.name):
+            raise HTTPException(404, "кейс не найден")
+        return found
+
+    def review_state(case_id: str, report: dict[str, Any], owner: str) -> tuple[dict[str, Any], int]:
+        try:
+            stored = shared.review_get(case_id)
+        except Exception as exc:
+            raise ApiProblem(503, "хранилище недоступно", f"store: {type(exc).__name__}") from exc
+        return stored if stored is not None else (review_api.initial(case_id, report, owner), 0)
+
+    @app.get("/v1/cases/{case_id}/review")
+    def get_review(case_id: str, principal: Principal = Depends(auth)) -> dict[str, Any]:
+        """Состояние разбора и версия, которую надо передать в ``expected_version``."""
+        report, owner = review_target(case_id, principal)
+        body, version = review_state(case_id, report, owner)
+        return review_api.view(case_id, body, version)
+
+    @app.post("/v1/cases/{case_id}/review/{action}")
+    def review_action(
+        case_id: str, action: str, payload: ReviewAction, principal: Principal = Depends(writer)
+    ) -> dict[str, Any]:
+        """Действие разбора: appeal, open, accept, reject, request_docs, close (docs/REVIEW.md).
+
+        403 — роль, специализация или независимость решения; 409 — переход недопустим или версия устарела;
+        422 — нет основания; 503 — журнал не настроен в pilot/prod или хранилище недоступно.
+        """
+        if action not in JOURNAL_ACTION:
+            raise HTTPException(404, f"действие разбора: {', '.join(JOURNAL_ACTION)}")
+        if audit_log is None and protected():
+            raise HTTPException(503, "журнал аудита не настроен: задайте MANDAT_API_JOURNAL")
+        report, owner = review_target(case_id, principal)
+        body, version = review_state(case_id, report, owner)
+        if payload.expected_version != version:
+            raise HTTPException(409, f"версия {payload.expected_version} устарела, сейчас {version}")
+        case = review_api.load(body, version)
+        try:
+            case.apply(
+                action,
+                actor=principal.name,
+                role=principal.role,
+                reason=payload.reason,
+                journal_path=audit_log,
+                expected_version=version,
+                specialization=principal.specialization,
+            )
+        except ReviewForbidden as exc:
+            raise HTTPException(403, str(exc)) from exc
+        except ReviewConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ReviewInvalid as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except ReviewError as exc:
+            raise ApiProblem(503, "журнал аудита недоступен, решение не принято", f"journal: {exc}") from exc
+        except (ValueError, OSError, journal.JournalKeyMissing) as exc:
+            raise ApiProblem(503, "журнал аудита недоступен, решение не принято", f"journal: {exc}") from exc
+        new_body = review_api.dump(case, body)
+        try:
+            new_version = shared.review_put(case_id, new_body, version)
+        except ReviewVersionConflict as exc:
+            raise HTTPException(409, f"версия {exc.expected} устарела, сейчас {exc.current}") from exc
+        except Exception as exc:
+            raise ApiProblem(503, "хранилище недоступно, решение не сохранено", f"store: {type(exc).__name__}") from exc
+        return review_api.view(case_id, new_body, new_version)
+
+    @app.get("/v1/review/queue")
+    def review_queue(principal: Principal = Depends(auth)) -> dict[str, Any]:
+        """Кейсы, ждущие человека, по сроку (раньше — выше). operator видит только свои."""
+        try:
+            rows = shared.review_list()
+        except Exception as exc:
+            raise ApiProblem(503, "хранилище недоступно", f"store: {type(exc).__name__}") from exc
+        open_states = {s.value for s in review_api.OPEN_STATES}
+        items = []
+        for case_id, body, version in rows:
+            if body.get("state") not in open_states:
+                continue
+            if not (principal.sees_all or principal.role == "reviewer" or body.get("created_by") == principal.name):
+                continue
+            if shared.get(case_id) is None:  # отчёт вытеснен из хранилища
+                continue
+            item = review_api.view(case_id, body, version)
+            item.pop("history")
+            items.append(item)
+        items.sort(key=lambda i: (i["due_at"] or "9999", i["case_id"]))
+        return {"items": items, "states": sorted(open_states), "auto_decided": ReviewState.AUTO_DECIDED.value}
 
     @app.post("/v1/events", dependencies=[Depends(writer)])
     def post_events(payload: dict[str, Any], window_hours: int = 72) -> dict[str, Any]:

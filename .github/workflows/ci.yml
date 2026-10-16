@@ -78,6 +78,38 @@ jobs:
       - run: mandat monitor examples/events/poa_revoked.json --status-dir var/demo/status
       - run: mandat journal-proof var/demo/journal.jsonl --seq 1
 
+  # Тесты хранилищ и CAS разбора (M-09b) на настоящем Redis, а не на fakeredis. Образ закреплён по digest.
+  redis:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      redis:
+        image: redis:7@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      MANDAT_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --require-hashes -r requirements/pip.lock
+      - run: python -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
+      - run: python -m pip install --no-deps --no-build-isolation -e .
+      - name: store tests against real Redis
+        run: python -m pytest tests/test_storage.py tests/test_m09b_review_store.py tests/test_m09c_review_api.py --junitxml=var/junit-redis.xml
+      - name: no skipped tests
+        run: python scripts/check_no_skips.py var/junit-redis.xml
+
   docker:
     runs-on: ubuntu-latest
     permissions:
