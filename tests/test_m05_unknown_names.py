@@ -83,9 +83,25 @@ def test_charter_terms_stay(text):
     assert mask_unknown_names(text) == text
 
 
-def test_known_gap_bare_foreign_surname():
-    """Одиночная фамилия без имени, отчества, инициалов и русского суффикса не ловится (LIMITS)."""
-    assert mask_unknown_names("Решение принято по заявлению Шор.") == "Решение принято по заявлению Шор."
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Решение принято по заявлению Шор.",
+        "Гражданина Шор вызвали в банк.",
+        "Подпись: г-н Шор.",
+        "по заявлению Доля.",
+    ],
+)
+def test_person_cue_masks_the_following_word(text):
+    """Подсказка о человеке маскирует следующее слово, даже без словаря и русского суффикса."""
+    assert MARKER in mask_unknown_names(text)
+    assert "Шор" not in mask_unknown_names(text)
+    assert "Доля" not in mask_unknown_names(text)
+
+
+def test_known_gap_bare_foreign_surname_without_cue():
+    """Без подсказки одиночная фамилия вне словаря и без русского суффикса не ловится (LIMITS)."""
+    assert mask_unknown_names("В протоколе назван Шор.") == "В протоколе назван Шор."
 
 
 def test_adjacent_words_become_one_marker():
