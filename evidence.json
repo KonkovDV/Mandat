@@ -2,14 +2,14 @@
   "generated_at": "2026-10-16T07:54:40+00:00",
   "engine": "mandat/0.3.0",
   "source": {
-    "base_commit": "91ecfcb751e6476e9d23120551d4712bba26e72f",
+    "base_commit": "4d6dfe8797223dce4b400d89f987533b6da532f4",
     "sources": [
       "src",
       "tests",
       "scripts",
       "examples"
     ],
-    "sha256": "81ae9f97959f0b8f6f23fd5ca5b69f06bec53302df10549ab5010eb1f64023a1",
+    "sha256": "84ad87e73389cafbe9d9b889f4a70d17ad4984ac2760cd7d4b82b42b89099f8d",
     "check": "python scripts/build_evidence.py --verify-source"
   },
   "python": "3.13.5",
