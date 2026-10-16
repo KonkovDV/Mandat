@@ -2,7 +2,10 @@
 
 По умолчанию выключен. Разрешены только хосты из ``MANDAT_LLM_ALLOWED_HOSTS``
 (по умолчанию localhost): данные клиента не уходят за контур. Перед отправкой
-текст псевдонимизируется. Совместим с vLLM/llama.cpp, на которых запускаются
+из устава берутся только строки о полномочиях
+(``minimize``), ФИО людей кейса заменяются метками ролей, вырезаются дата рождения и адрес
+и псевдонимизируются реквизиты.
+Совместим с vLLM/llama.cpp, на которых запускаются
 открытые модели с российскими лицензиями (GigaChat Lightning, T-Pro и др.),
 и с Yandex AI Studio, если банк разрешит этот хост явно.
 Паттерн allowlist и маркеров данных — из AeroBIM (``openai_compat_llm_provider``).
@@ -14,11 +17,14 @@ import json
 import os
 import urllib.error
 import urllib.request
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
-from mandat.privacy.pii import pseudonymize
+from mandat.domain.model import Case
+from mandat.privacy.names import KnownPerson, known_people, mask_names
+from mandat.privacy.pii import for_model
 
 DATA_BEGIN = "<<<MANDAT_DOCUMENT_DATA_BEGIN>>>"
 DATA_END = "<<<MANDAT_DOCUMENT_DATA_END>>>"
@@ -111,13 +117,49 @@ CHARTER_PROMPT = (
 )
 
 
-def charter_messages(text: str) -> list[dict[str, str]]:
+# Строка устава уходит в модель, только если в ней есть одно из этих слов: модели нужны ограничения полномочий
+# исполнительного органа, а не весь документ. Ограничение без этих слов модель не увидит: факта не будет,
+# и кейс уйдёт на разбор человеку, а не получит подтверждение.
+MODEL_KEYWORDS = (
+    "директор",
+    "единоличн",
+    "исполнительн",
+    "президент",
+    "управляющ",
+    "полномоч",
+    "одобрен",
+    "согласи",
+    "сделк",
+    "подпис",
+    "совет",
+    "собрани",
+    "крупн",
+    "превыша",
+    "сумм",
+    "руб",
+)
+
+
+def minimize(text: str) -> str:
+    """Оставить только строки устава, относящиеся к полномочиям (``MODEL_KEYWORDS``)."""
+    return "\n".join(line for line in text.splitlines() if any(k in line.lower() for k in MODEL_KEYWORDS))
+
+
+def charter_messages(text: str, people: Iterable[KnownPerson] = ()) -> list[dict[str, str]]:
+    """Запрос к модели: строки о полномочиях, ФИО известных людей — метками ролей, затем ``for_model``."""
     # Маркеры границ данных в самом тексте убираются: документ не может «закрыть» блок данных.
-    safe = pseudonymize(text).replace(DATA_BEGIN, "").replace(DATA_END, "")
+    safe = for_model(mask_names(minimize(text), people)).replace(DATA_BEGIN, "").replace(DATA_END, "")
     return [
         {"role": "system", "content": CHARTER_PROMPT},
         {"role": "user", "content": f"{DATA_BEGIN}\n{safe}\n{DATA_END}"},
     ]
+
+
+def case_charter_messages(case: Case) -> list[dict[str, str]]:
+    """Запрос к модели по уставу кейса; ФИО берутся из МЧД, ЕГРЮЛ и заявки этого кейса."""
+    if case.charter is None:
+        raise ValueError("в кейсе нет устава")
+    return charter_messages(case.charter.text, known_people(case))
 
 
 def parse_facts(raw: str) -> list[dict[str, Any]]:
