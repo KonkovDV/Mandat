@@ -626,7 +626,7 @@ async function icon(name, color) {
     const rows = [
       [TH("Критерий"), TH("Что показываем"), TH("Чем проверить")],
       [TD("Готовность MVP", { bold: true }), TD(`демо одной командой, ${N.demo} демо-кейсов, CLI, HTTP API, Docker`), TD("./run-demo.sh; docker compose в CI")],
-      [TD("Техническая реализация", { bold: true }), TD(`${RULES} с нормой и тестом, журнал Меркла, удостоверения со статусом, Cedar`), TD(`${N.tests} автотестов; evidence.json`)],
+      [TD("Техническая реализация", { bold: true }), TD(`${RULES} с нормой и тестом, журнал Меркла, удостоверения со статусом, Cedar`), TD(`${TESTS}; evidence.json`)],
       [TD("Пилот в ВТБ", { bold: true }), TD("ВТБ сам выпускает МЧД клиентам; порты под реестр, ЕФРСБ, СКЗИ"), TD("docs/PILOT.md: теневой режим 6 недель")],
       [TD("Бизнес-модель", { bold: true }), TD("лицензия в контуре банка и поддержка правил"), TD("docs/ECONOMICS.md; сценарии C-15, C-16")],
       [TD("Презентация", { bold: true }), TD("питч 3 минуты, демо 4 шага, трудные вопросы"), TD("docs/JURY.md; числа из evidence.json")],

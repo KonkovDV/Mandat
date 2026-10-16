@@ -181,6 +181,12 @@ def main() -> int:
         evidence["tests"] = pytest_summary()
     target.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({k: evidence[k] for k in ("rule_pack", "tests")}, ensure_ascii=False, indent=2))
+    if evidence["tests"] is not None and evidence["tests"]["returncode"] == 0:
+        # README и JURY: число автотестов и демо-кейсов с согласованной формой слова («1384 автотеста»).
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import sync_counts
+
+        sync_counts.main()
     return 0 if (evidence["tests"] is None or evidence["tests"]["returncode"] == 0) else 1
 
 

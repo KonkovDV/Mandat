@@ -14,6 +14,9 @@ import sys
 import zipfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ru_plural import FORMS, GENITIVE_PREPOSITIONS, plural  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 SKIP_FILES = {"CLAIMS_REGISTRY.md", "BANNED_CLAIMS.txt", "lint_claims.py"}
 SKIP_DIRS = {".git", ".venv", "var", "build", "dist", ".pytest_cache", ".ruff_cache", "__pycache__", "node_modules"}
@@ -29,7 +32,7 @@ def pptx_text(path: Path) -> str:
 
 
 # Число правил в текстах должно совпадать с пакетом. История (CHANGELOG, записи аудитов) не проверяется.
-RULE_COUNT = re.compile(r"\b(\d+)\s+правил\b|правило из (\d+)\b")
+RULE_COUNT = re.compile(r"\b(\d+)\s+правил[оа]?\b|правило из (\d+)\b")
 RULE_COUNT_SKIP = {"CHANGELOG.md"}
 RULE_COUNT_SKIP_PREFIXES = ("docs/AUDIT_", "docs/audit/")
 
@@ -135,6 +138,45 @@ def evidence_count_hits() -> list[str]:
     return hits
 
 
+# Форма слова рядом с числом: «1384 автотеста», «41 правило». Проверяются только формы числительного;
+# другие падежи («на 39 правилах») и родительный после предлога («из 1384 автотестов») не трогаются.
+FORM_WORD = re.compile(
+    r"(?<![\w.,])(\d+)\s+("
+    + "|".join(sorted({re.escape(f) for forms in FORMS.values() for f in forms}, key=len, reverse=True))
+    + r")(?![\w-])"
+)
+FORM_STEM = {form: stem for stem, forms in FORMS.items() for form in forms}
+
+
+def form_mismatches(text: str) -> list[str]:
+    """Несогласованные пары «число — слово» в тексте: «1384 автотестов → 1384 автотеста»."""
+    hits = []
+    for m in FORM_WORD.finditer(text):
+        before = re.search(r"(\w+)\s*$", text[: m.start()])
+        if before is not None and before.group(1).casefold() in GENITIVE_PREPOSITIONS:
+            continue
+        n, word = int(m.group(1)), m.group(2)
+        expected = plural(n, *FORMS[FORM_STEM[word]])
+        if word != expected:
+            hits.append(f"«{m.group(0)}» → «{n} {expected}»")
+    return hits
+
+
+def form_hits() -> list[str]:
+    hits = []
+    for path in sorted(ROOT.rglob("*.md")):
+        rel = path.relative_to(ROOT).as_posix()
+        if path.name in RULE_COUNT_SKIP or rel.startswith(RULE_COUNT_SKIP_PREFIXES):
+            continue
+        if any(part in SKIP_DIRS or part.endswith(".egg-info") for part in path.relative_to(ROOT).parts):
+            continue
+        for i, text in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
+            hits += [f"{rel}:{i}: {hit}" for hit in form_mismatches(text)]
+    for deck in sorted((ROOT / "submission" / "slides").glob("*.pptx")):
+        hits += [f"{deck.relative_to(ROOT).as_posix()}: {hit}" for hit in form_mismatches(pptx_text(deck))]
+    return hits
+
+
 def main() -> int:
     banned = [
         line.strip()
@@ -163,6 +205,10 @@ def main() -> int:
     if evidence_hits:
         message = "числа в текстах не совпадают с evidence.json или тестом фазза:\n"
         sys.stderr.write(message + "\n".join(evidence_hits) + "\n")
+        return 1
+    wrong_forms = form_hits()
+    if wrong_forms:
+        sys.stderr.write("число и слово не согласованы:\n" + "\n".join(wrong_forms) + "\n")
         return 1
     print(f"проверено, запрещённых формулировок нет ({len(banned)} шаблонов)")
     return 0
