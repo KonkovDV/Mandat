@@ -175,3 +175,44 @@ def test_stand_without_request_keeps_old_behaviour(tmp_path, monkeypatch):
     monkeypatch.setenv("MANDAT_ENV", "dev")
     key, cred, sd = _issued(tmp_path)
     assert _authorize(key, cred, sd) == []
+
+
+def test_request_without_amount_is_refused_when_credential_has_amount(tmp_path):
+    key, cred, sd = _issued(tmp_path)
+    problems = _authorize(key, cred, sd, request=_request(amount_rub=None), nonces=Nonces())
+    assert any("в запросе нет суммы" in p for p in problems)
+
+
+def test_request_without_amount_passes_when_credential_has_none():
+    subject = {"operation": "payment_sign", "amountRub": None}
+    problems = attestation.check_request(subject, _request(amount_rub=None), pseudonym_key=None, consume_nonce=None)
+    assert not any("сумм" in p for p in problems)
+
+
+@pytest.mark.parametrize(("amount", "message"), [(True, "целым"), (-5, "отрицательная"), (1.5, "целым")])
+def test_bad_request_amount_is_checked_first(amount, message):
+    subject = {"operation": "payment_sign", "amountRub": None}
+    problems = attestation.check_request(subject, _request(amount_rub=amount), pseudonym_key=None, consume_nonce=None)
+    assert any(message in p for p in problems)
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [({"nonce": "short"}, "короче"), ({"audience": ""}, "не указан получатель"), ({"audience": None}, "получатель")],
+)
+def test_weak_request_fields_are_refused(tmp_path, changes, message):
+    key, cred, sd = _issued(tmp_path)
+    nonces = Nonces()
+    problems = _authorize(key, cred, sd, request=_request(**changes), nonces=nonces)
+    assert any(message in p for p in problems)
+    assert nonces.used == set()
+
+
+def test_failing_nonce_store_means_refusal(tmp_path):
+    key, cred, sd = _issued(tmp_path)
+
+    def down(nonce: str) -> bool:
+        raise ConnectionError("redis down")
+
+    problems = _authorize(key, cred, sd, request=_request(), nonces=down)
+    assert any("недоступно" in p for p in problems)

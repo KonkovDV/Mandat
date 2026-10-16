@@ -376,28 +376,46 @@ def check_request(
     if subject.get("operation") != request.operation:
         problems.append(f"операция {request.operation!r} не та, на которую выпущено удостоверение")
     bound = subject.get("amountRub")
-    if request.amount_rub is not None:
+    amount = request.amount_rub
+    if amount is not None and (isinstance(amount, bool) or not isinstance(amount, int)):
+        problems.append("сумма операции должна быть целым числом рублей")
+    elif amount is not None and amount < 0:
+        problems.append("сумма операции отрицательная")
+    elif bound is not None:
         if isinstance(bound, bool) or not isinstance(bound, int):
-            problems.append("в удостоверении нет суммы: операцию с суммой по нему не допустить")
-        elif request.amount_rub > bound:
-            problems.append(f"сумма {request.amount_rub} больше проверенной {bound}")
-        elif request.amount_rub < 0:
-            problems.append("сумма операции отрицательная")
+            problems.append("сумма в удостоверении повреждена")
+        elif amount is None:
+            problems.append("в запросе нет суммы, а удостоверение выпущено на сумму")
+        elif amount > bound:
+            problems.append(f"сумма {amount} больше проверенной {bound}")
+    elif amount is not None:
+        problems.append("в удостоверении нет суммы: операцию с суммой по нему не допустить")
     token = subject.get("representativeToken")
     if not token or not pseudonym_key:
         problems.append("представителя не сверить: нет токена в удостоверении или ключа HMAC")
     elif not hmac.compare_digest(str(token), representative_token(request.representative_inn, pseudonym_key)):
         problems.append("представитель в запросе не тот, для кого выпущено удостоверение")
-    if not subject.get("audience") or subject.get("audience") != request.audience:
+    audience = subject.get("audience")
+    if not isinstance(request.audience, str) or not request.audience:
+        problems.append("в запросе не указан получатель (audience)")
+    elif not audience or audience != request.audience:
         problems.append(f"удостоверение выпущено не для {request.audience!r}")
     nonce = subject.get("nonce")
-    if not nonce or not hmac.compare_digest(str(nonce), request.nonce):
+    if not isinstance(request.nonce, str) or len(request.nonce) < NONCE_MIN_CHARS:
+        problems.append(f"nonce запроса короче {NONCE_MIN_CHARS} символов")
+    elif not nonce or not hmac.compare_digest(str(nonce), request.nonce):
         problems.append("nonce запроса не совпадает с удостоверением")
     elif consume_nonce is None:
         problems.append("нет хранилища nonce: повтор запроса не обнаружить")
-    elif not problems and not consume_nonce(str(nonce)):
+    elif not problems:
         # nonce расходуется, только если всё остальное сошлось: чужой запрос не «сжигает» удостоверение.
-        problems.append("nonce уже использован: повтор запроса")
+        try:
+            fresh = consume_nonce(str(nonce)) is True
+        except Exception:  # noqa: BLE001 — недоступное хранилище nonce означает отказ
+            problems.append("хранилище nonce недоступно: допуск невозможен")
+        else:
+            if not fresh:
+                problems.append("nonce уже использован: повтор запроса")
     return problems
 
 
