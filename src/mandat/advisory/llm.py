@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 from mandat.domain.model import Case
 from mandat.privacy.names import KnownPerson, known_people, mask_names
 from mandat.privacy.pii import for_model
+from mandat.privacy.unknown_names import mask_unknown_names
 
 DATA_BEGIN = "<<<MANDAT_DOCUMENT_DATA_BEGIN>>>"
 DATA_END = "<<<MANDAT_DOCUMENT_DATA_END>>>"
@@ -189,9 +190,12 @@ def minimize(text: str) -> str:
 
 
 def charter_messages(text: str, people: Iterable[KnownPerson] = ()) -> list[dict[str, str]]:
-    """Запрос к модели: строки о полномочиях, ФИО известных людей — метками ролей, затем ``for_model``."""
+    """Запрос к модели: строки о полномочиях, ФИО известных людей — метками ролей, остальные ФИО — ``[ФИО]``
+    (словарь, M-05), затем ``for_model``."""
     # Маркеры границ данных в самом тексте убираются: документ не может «закрыть» блок данных.
-    safe = for_model(mask_names(minimize(text), people)).replace(DATA_BEGIN, "").replace(DATA_END, "")
+    safe = (
+        for_model(mask_unknown_names(mask_names(minimize(text), people))).replace(DATA_BEGIN, "").replace(DATA_END, "")
+    )
     return [
         {"role": "system", "content": CHARTER_PROMPT},
         {"role": "user", "content": f"{DATA_BEGIN}\n{safe}\n{DATA_END}"},
