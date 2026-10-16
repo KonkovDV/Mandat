@@ -5,6 +5,9 @@
 Для системы с правом воздержаться («на разбор», «недостаточно данных») считаем
 пару «риск — покрытие» (selective classification): покрытие — доля кейсов с
 автоматическим вердиктом, риск — доля ошибок среди них.
+Кейсы одного вида дефекта строит один шаблон, они не независимы: граница по кейсам занижает
+неопределённость. Поэтому рядом считается граница по видам дефектов (кластерам): вид «ложно
+подтверждён», если ложно подтверждён хотя бы один его кейс (M-08).
 Синтетика проверяет логику правил; точность на реальных документах измеряется
 только на пилоте (docs/EVALUATION.md).
 """
@@ -18,6 +21,10 @@ from mandat.eval.metrics import required_n, wilson_interval
 from mandat.eval.synth import DEFECTS, build
 from mandat.intake.case_loader import load_case_inline
 from mandat.services.verify import verify_case
+
+# Отложенный seed (holdout): правила и тесты на нём не отлаживаются, он используется только в evidence.json.
+# Отлавливает подгонку под конкретные значения seed по умолчанию, но не под сам генератор (M-08).
+HOLDOUT_SEED = 20261016
 
 
 def run_corpus(n_per_defect: int = 3, *, seed: int = 7, profile: str = "demo") -> dict[str, Any]:
@@ -44,15 +51,21 @@ def run_corpus(n_per_defect: int = 3, *, seed: int = 7, profile: str = "demo") -
     abstained = sum(r["predicted"] in {"needs_review", "insufficient_data"} for r in rows)
     auto = [r for r in rows if r["predicted"] in {"confirmed", "refuted"}]
     auto_errors = sum(r["predicted"] != r["expected"] for r in auto)
+    negative_types = sorted({r["defect"] for r in negatives})
+    false_types = sorted({r["defect"] for r in negatives if r["predicted"] == "confirmed"})
     confusion = Counter((r["expected"], r["predicted"]) for r in rows)
     return {
         "profile": profile,
+        "seed": seed,
         "cases": total,
         "defect_types": len(DEFECTS),
         "agreement": correct / total,
         "agreement_wilson95": wilson_interval(correct, total),
         "false_confirmed": false_confirmed,
         "false_confirmed_rate_upper95": wilson_interval(false_confirmed, len(negatives))[1],
+        "negative_defect_types": len(negative_types),
+        "false_confirmed_defect_types": false_types,
+        "false_confirmed_rate_upper95_by_defect_type": wilson_interval(len(false_types), len(negative_types))[1],
         "refute_recall": refute_hits / len(refute_rows) if refute_rows else None,
         "refute_recall_wilson95": wilson_interval(refute_hits, len(refute_rows)),
         "abstention_rate": abstained / total,
