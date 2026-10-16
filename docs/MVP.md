@@ -60,7 +60,7 @@
 | US-10 | Антифрод получает тревогу о захвате | три события за 72 ч — `possible_takeover`, удостоверения приостановлены | `test_monitor_revokes_and_suspends_attestations` |
 | US-11 | ДБО проверяет удостоверение | подменённый список статусов отвергается | `test_status_list_revocation_is_signed_and_checked` |
 | US-12 | Аудитор проверяет запись журнала | доказательство включения; правка записи ломает проверку | `test_journal_proof_cli`, `test_journal_detects_edit_truncation_and_bad_key` |
-| US-13 | ИБ уверена, что модель не меняет вердикт и не видит лишних ПДн | находки модели — справка; ИНН, СНИЛС, паспорт псевдонимизированы | `test_advisory_cannot_change_verdict`, `test_pii_detects_and_pseudonymizes_russian_identifiers` |
+| US-13 | ИБ уверена, что модель не меняет вердикт и не видит лишних ПДн | находки модели — справка; ФИО заменяются метками, ИНН, СНИЛС и паспорт псевдонимизированы | `test_advisory_cannot_change_verdict`, `test_pii_detects_and_pseudonymizes_russian_identifiers` |
 
 ## Нефункциональные требования
 
