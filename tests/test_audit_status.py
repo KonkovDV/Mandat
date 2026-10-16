@@ -126,19 +126,21 @@ def test_monitor_revokes_and_suspends_attestations(root: Path, tmp_path: Path, m
 def test_review_appeal_of_auto_verdict(tmp_path: Path):
     case = ReviewCase("c1", "h" * 64, state=ReviewState.AUTO_DECIDED)
     with pytest.raises(ReviewError):
-        case.apply("appeal", actor="client", role="client_service")
+        case.apply("appeal", actor="op", role="operator")
     assert (
         case.apply(
             "appeal",
-            actor="client",
-            role="client_service",
+            actor="op",
+            role="operator",
             reason="клиент не согласен",
             journal_path=tmp_path / "j.jsonl",
         )
         == ReviewState.QUEUED
     )
     assert case.apply("open", actor="op", role="operator") == ReviewState.IN_REVIEW
-    assert journal.read_journal(tmp_path / "j.jsonl")[0]["action"] == "review_appeal"
+    record = journal.read_journal(tmp_path / "j.jsonl")[0]
+    assert record["action"] == "review_appeal"
+    assert record["details"]["on_behalf_of"] == "client"
 
 
 def test_format_registry_rejects_planned_formats():
