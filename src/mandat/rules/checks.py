@@ -1192,6 +1192,16 @@ def coverage_classifier(ctx: RuleContext) -> list[Finding]:
                 ctx.emit("R-COV-002", E.NEEDS_REVIEW, f"Кода {auth.code} нет в снимке классификатора", [ref, cref])
             )
             continue
+        if entry.started is None:
+            out.append(
+                ctx.emit(
+                    "R-COV-002",
+                    E.NEEDS_REVIEW,
+                    f"У кода {auth.code} в классификаторе нет даты начала действия: нельзя считать, что он действует",
+                    [ref, cref],
+                )
+            )
+            continue
         bad = [d for d in (leaf.issue_date, on) if d is not None and not entry.active_on(d)]
         if bad:
             tail = f"исключён {entry.revoked:%d.%m.%Y}" if entry.revoked else f"введён {entry.started:%d.%m.%Y}"

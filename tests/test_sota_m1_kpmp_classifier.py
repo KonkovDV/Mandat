@@ -16,9 +16,11 @@ from conftest import rule_effects
 from mandat.data import load_json
 from mandat.eval import synth
 from mandat.intake.case_loader import load_case_inline
+from mandat.rules.cedar_export import export_policies
 from mandat.rules.classifier import (
     DEFAULT_MAX_AGE_DAYS,
     MAX_AGE_ENV,
+    ClassifierEntry,
     from_payload,
     import_kpmp,
     max_age_days,
@@ -165,6 +167,22 @@ def test_ambiguous_code_always_needs_review():
     report = verify_case(case, profile="demo", classifier=_classifier(ambiguous=_codes(case)[0]))
     assert rule_effects(report, "R-COV-002") == {"needs_review"}
     assert report.verdict.value != "confirmed"
+
+
+def test_code_without_start_date_is_not_in_force():
+    """Нет даты начала — не «действует», как у записи руководителя без начала полномочий."""
+    case = _ok_case()
+    payload = copy.deepcopy(load_json("authority_classifier.json"))
+    for entry in payload["entries"]:
+        if entry["code"] in _codes(case):
+            entry["started"] = None
+    report = verify_case(case, profile="demo", classifier=from_payload(payload))
+    assert rule_effects(report, "R-COV-002") == {"needs_review"}
+    assert report.verdict.value != "confirmed"
+    assert any("нет даты начала" in f.message for f in report.findings if f.rule_id == "R-COV-002")
+    assert ClassifierEntry("X", None, None, None, None).active_on(date(2026, 10, 16)) is False
+    policy = export_policies(classifier=from_payload(payload), on=case.operation.on_date)
+    assert all(f'"{code}"' not in policy for code in _codes(case))
 
 
 def test_unknown_and_outdated_codes_need_review():

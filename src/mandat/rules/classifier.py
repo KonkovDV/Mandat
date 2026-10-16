@@ -38,9 +38,10 @@ class ClassifierEntry:
     ambiguous: bool = False
 
     def active_on(self, day: date) -> bool:
-        if self.started and day < self.started:
+        """Нет даты начала — интервал не доказан, код не действует. Нет даты исключения — код не отозван."""
+        if self.started is None or day < self.started:
             return False
-        return not (self.revoked and day >= self.revoked)
+        return self.revoked is None or day < self.revoked
 
 
 @dataclass(frozen=True)

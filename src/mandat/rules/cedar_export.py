@@ -96,7 +96,7 @@ def export_policies(
     *,
     on: date | None = None,
 ) -> str:
-    """Политики Cedar из каталога операций: коды, исключённые из классификатора на дату, не попадают."""
+    """Политики Cedar из каталога операций: код без даты начала и код, не действующий на дату, не попадают."""
     catalog = catalog or default_catalog()
     classifier = classifier or default_classifier()
     on = on or date.today()

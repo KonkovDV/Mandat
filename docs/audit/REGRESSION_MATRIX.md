@@ -29,7 +29,7 @@
 | | Документ в пространстве имён EMCHD_1, ветвь передоверия, чужое пространство имён, значения вне перечня | разбор по XSD | `tests/test_emchd_format.py` |
 | | Каноническая запись RFC 8785 | совпадение с примерами RFC | `tests/test_jcs.py` |
 | Нормы и операции | Операция не покрыта полномочиями | опровергнуто | `test_r_cov_001_not_covered_refutes` |
-| | Код полномочия исключён из классификатора | разбор | `test_r_cov_002_revoked_code_needs_review` |
+| | Код полномочия исключён из классификатора или без даты начала | разбор | `test_r_cov_002_revoked_code_needs_review`, `test_code_without_start_date_is_not_in_force` |
 | | Текстовые полномочия, совместные полномочия, нет признака совместности, бумажная доверенность | разбор | `test_r_cov_001_text_only_needs_review`, `test_r_jnt_001_joint_powers_needs_review`, `test_missing_joint_flag_on_one_representative_is_not_confirmed`, `test_r_pap_001_paper_poa_needs_review` |
 | | Обязательный устав с найденным фрагментом; разные передоверия в один день; поздний снимок отмены без даты | разбор | `test_partial_required_charter_blocks_confirmation`, `test_same_day_sibling_transfers_need_review`, `test_later_revocation_snapshot_without_event_date_goes_to_review` |
 | | Устав не размечен или есть лимит | разбор | `test_missing_charter_blocks_confirmation`, `test_r_chr_001_limit_needs_review` |

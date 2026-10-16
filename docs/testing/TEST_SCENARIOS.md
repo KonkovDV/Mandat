@@ -80,7 +80,7 @@
 | R-EIO-006 | Выписка ЕГРЮЛ на дату операции | `test_r_eio_006_stale_egrul_is_not_confirmed` |
 | R-EIO-005 | Заявитель — действующий руководитель (без доверенности) | `test_r_eio_005_director_acts_without_poa` |
 | R-COV-001 | Полномочие покрывает запрошенную операцию | `test_r_cov_001_not_covered_refutes`, `test_r_cov_001_text_only_needs_review` |
-| R-COV-002 | Код полномочия действует в классификаторе | `test_r_cov_002_revoked_code_needs_review` |
+| R-COV-002 | Код полномочия действует в классификаторе; нет даты начала — не «действует» | `test_r_cov_002_revoked_code_needs_review`, `test_code_without_start_date_is_not_in_force` |
 | R-JNT-001 | Полномочия совместные; нет признака — не «индивидуально» | `test_r_jnt_001_joint_powers_needs_review`, `test_missing_joint_flag_on_one_representative_is_not_confirmed` |
 | R-SUB-001 | Родительская МЧД разрешает передоверие | `test_r_sub_001_forbidden_refutes` |
 | R-SUB-002 | Передоверенные полномочия не шире исходных | `test_r_sub_002_wider_refutes` |
