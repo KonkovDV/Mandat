@@ -6,8 +6,10 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from mandat.eval import run
-from mandat.eval.metrics import wilson_interval
+from mandat.eval.metrics import clopper_pearson, wilson_interval
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -17,7 +19,7 @@ def test_bound_by_defect_type_is_wider_than_by_case():
     negatives = sum(1 for e in run.DEFECTS.values() if e != "confirmed")
     assert m["negative_defect_types"] == negatives
     assert m["false_confirmed_defect_types"] == []
-    assert m["false_confirmed_rate_upper95_by_defect_type"] == wilson_interval(0, negatives)[1]
+    assert m["false_confirmed_rate_upper95_by_defect_type"] == clopper_pearson(0, negatives)[1]
     assert m["false_confirmed_rate_upper95_by_defect_type"] > m["false_confirmed_rate_upper95"]
     assert m["seed"] == 7
 
@@ -66,3 +68,33 @@ def test_documented_zero_failure_bounds():
         assert round(100 * wilson_interval(0, n)[1], 2) == wilson
         assert round(100 * (1 - 0.05 ** (1 / n)), 2) == cp1
         assert round(100 * 3 / n, 2) == rule3
+
+
+# Эталон: scipy 1.18.1, scipy.stats.beta.ppf(0.975, x + 1, n - x) и beta.ppf(0.025, x, n - x + 1),
+# посчитано в отдельном окружении вне репозитория, не этой функцией.
+@pytest.mark.parametrize(
+    ("x", "n", "lower", "upper"),
+    [
+        (0, 48, 0.0, 0.07397278534728022),
+        (0, 288, 0.0, 0.012726928093101806),
+        (2, 48, 0.005086467930032974, 0.1425409732013774),
+    ],
+)
+def test_clopper_pearson_matches_reference(x, n, lower, upper):
+    lo, hi = clopper_pearson(x, n)
+    assert lo == pytest.approx(lower, abs=1e-9)
+    assert hi == pytest.approx(upper, abs=1e-9)
+
+
+def test_clopper_pearson_edges():
+    assert clopper_pearson(0, 0) == (0.0, 1.0)
+    assert clopper_pearson(48, 48)[1] == 1.0
+    assert clopper_pearson(48, 48)[0] == pytest.approx(1 - 0.07397278534728022)
+    with pytest.raises(ValueError):
+        clopper_pearson(3, 2)
+
+
+def test_corpus_bounds_are_clopper_pearson():
+    m = run.run_corpus(2)
+    negatives = sum(1 for r in run.DEFECTS.values() if r != "confirmed") * 2
+    assert m["false_confirmed_rate_upper95"] == clopper_pearson(0, negatives)[1]
