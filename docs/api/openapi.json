@@ -27,6 +27,18 @@
             "maxLength": 4000,
             "title": "Reason",
             "type": "string"
+          },
+          "specialization": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Specialization"
           }
         },
         "required": [
@@ -369,7 +381,7 @@
     },
     "/v1/cases/{case_id}/review/{action}": {
       "post": {
-        "description": "Действие разбора: appeal, open, accept, reject, request_docs, close (docs/REVIEW.md).\n\n403 — роль, специализация или независимость решения; 409 — переход недопустим или версия устарела;\n422 — нет основания; 503 — журнал не настроен в pilot/prod или хранилище недоступно.",
+        "description": "Действие разбора: appeal, open, accept, reject, request_docs, close, require (docs/REVIEW.md).\n\n403 — роль, специализация или независимость решения; 409 — переход недопустим или версия устарела;\n422 — нет основания; 503 — журнал не настроен в pilot/prod или хранилище недоступно.",
         "operationId": "review_action_v1_cases__case_id__review__action__post",
         "parameters": [
           {
