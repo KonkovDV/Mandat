@@ -1132,12 +1132,37 @@ def coverage_classifier(ctx: RuleContext) -> list[Finding]:
         return []
     on = ctx.case.operation.on_date
     out = []
+    snap = EvidenceRef(f"classifier:{ctx.classifier.classifier_id}", ctx.classifier.sha256, "snapshot_at")
+    lag = ctx.classifier.stale_for(on) if on is not None else None
+    if lag is not None:
+        # Снимок старше допуска на дату операции: исключение кода после выгрузки снимок не покажет.
+        out.append(
+            ctx.emit(
+                "R-COV-002",
+                E.NEEDS_REVIEW,
+                f"Снимок классификатора от {ctx.classifier.snapshot_day():%d.%m.%Y} старше операции на {lag} дн.",
+                [leaf.ref("number"), snap],
+            )
+        )
     for auth in leaf.authorities:
-        if auth.kind != "machine" or auth.code not in op.accepted_codes:
+        if auth.kind != "machine":
             continue
+        entry = ctx.classifier.get(auth.code)
         ref = auth.ref or leaf.ref("number")
         cref = EvidenceRef(f"classifier:{ctx.classifier.classifier_id}", ctx.classifier.sha256, f"code:{auth.code}")
-        entry = ctx.classifier.get(auth.code)
+        if entry is not None and entry.ambiguous:
+            # Неоднозначный код — разбор всегда, даже если операция его не требует (fail-closed).
+            out.append(
+                ctx.emit(
+                    "R-COV-002",
+                    E.NEEDS_REVIEW,
+                    f"Код {auth.code} в классификаторе неоднозначен: записи с этим кодом расходятся",
+                    [ref, cref],
+                )
+            )
+            continue
+        if auth.code not in op.accepted_codes:
+            continue
         if entry is None:
             out.append(
                 ctx.emit("R-COV-002", E.NEEDS_REVIEW, f"Кода {auth.code} нет в снимке классификатора", [ref, cref])
