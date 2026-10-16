@@ -554,11 +554,27 @@ def _from_future(moment: datetime | None, now: datetime | None) -> bool:
     return aware > now + timedelta(minutes=5)
 
 
+def _status_not_shown_on(obs: RegistryObservation, on: date) -> bool:
+    """Отмена или истечение не показаны именно на дату операции.
+
+    Дата события позже операции известна, но она позже. Снимок снят позже, а даты события нет:
+    неизвестно, прекратилось ли полномочие к операции. Без обеих дат снимок — статус самого кейса.
+    """
+    if obs.event_date is not None:
+        return obs.event_date > on
+    if obs.observed_at is not None:
+        return obs.observed_at.date() > on
+    return False
+
+
 @rule("R-REG-001")
 def registry_status(ctx: RuleContext) -> list[Finding]:
     """Статус МЧД по снимку реестра на дату операции.
 
     Отмена с датой позже операции не опровергает историческую операцию, но и не подтверждает её: разбор.
+    То же, если снимок снят после даты операции, а даты отмены в нём нет: что полномочие уже прекратилось
+    к операции, такой снимок не показывает (ст. 189). Снимок без момента запроса и без даты события
+    по-прежнему опровергает: это статус, приложенный к кейсу, а не поздняя выписка.
     Дата события позже момента запроса или снимок «действует», снятый раньше даты операции больше чем на
     ``max_snapshot_age_days``, — сведения реестра не на дату операции. Вне профиля demo снимок «действует»
     без момента запроса тоже не принимается: неизвестно, на какую дату он верен.
@@ -596,11 +612,19 @@ def registry_status(ctx: RuleContext) -> list[Finding]:
                 out.append(ctx.emit("R-REG-001", E.SUPPORTS, f"МЧД {number} действует в реестре", [ref]))
         elif status in (RegistryStatus.REVOKED, RegistryStatus.EXPIRED):
             word = "отменена" if status is RegistryStatus.REVOKED else "истекла"
-            if obs.event_date is not None and obs.event_date > on:
-                text = (
-                    f"МЧД {number} {word} {obs.event_date:%d.%m.%Y}, после даты операции {on:%d.%m.%Y}: "
-                    "действие на дату операции реестр не подтверждает"
-                )
+            if _status_not_shown_on(obs, on):
+                if obs.event_date is not None:
+                    text = (
+                        f"МЧД {number} {word} {obs.event_date:%d.%m.%Y}, после даты операции {on:%d.%m.%Y}: "
+                        "действие на дату операции реестр не подтверждает"
+                    )
+                else:
+                    assert obs.observed_at is not None
+                    seen_on = obs.observed_at.date()
+                    text = (
+                        f"МЧД {number} {word} по снимку от {seen_on:%d.%m.%Y}, дата события не указана, "
+                        f"а операция была {on:%d.%m.%Y}: прекращение к дате операции снимок не показывает"
+                    )
                 out.append(ctx.emit("R-REG-001", E.NEEDS_REVIEW, text, [ref]))
             else:
                 out.append(ctx.emit("R-REG-001", E.REFUTES, f"МЧД {number} {word} по данным реестра", [ref]))
@@ -1359,12 +1383,8 @@ def sub_cascade(ctx: RuleContext) -> list[Finding]:
         obs = ctx.registry(parent.number)
         status = obs.status
         until = parent.effective_until()
-        if (
-            status in (RegistryStatus.REVOKED, RegistryStatus.EXPIRED)
-            and obs.event_date is not None
-            and obs.event_date > on
-        ):
-            continue  # отмена позже операции: это разбор по R-REG-001, а не каскад
+        if status in (RegistryStatus.REVOKED, RegistryStatus.EXPIRED) and _status_not_shown_on(obs, on):
+            continue  # отмена не доказана на дату операции: это разбор по R-REG-001, а не каскад
         if status in (RegistryStatus.REVOKED, RegistryStatus.EXPIRED):
             why = "отменена" if status is RegistryStatus.REVOKED else "истекла"
         elif until is not None and on > until:
