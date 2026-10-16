@@ -65,7 +65,7 @@ BIRTH_BEFORE = re.compile(
 BIRTH_AFTER = re.compile(r"(?:" + _DATE + r"|(?<!\d)\d{4})(?P<label>\s*(?:г\.\s?р\.|года\s+рождения))", re.IGNORECASE)
 # Адрес: по подписи («адрес:», «проживающий по адресу», «место жительства») до конца строки, «;» или «)».
 ADDRESS_LABELED = re.compile(
-    r"(?P<label>(?:(?:почтовый\s+|юридический\s+|фактический\s+)?адрес(?:у|а|ом)?|"
+    r"(?P<label>(?:(?:почтовый\s+|фактический\s+)?адрес(?:у|а|ом)?|"
     r"проживающ(?:ий|ая|его|ей)(?:\s+по\s+адресу)?|зарегистрирован(?:ный|ная|а)?\s+по\s+адресу|"
     r"место\s+жительства)[\s:,-]+)(?!электронн)[^\n;)]+",
     re.IGNORECASE,
@@ -80,12 +80,30 @@ BIRTH_MARK = "[ДАТА_РОЖДЕНИЯ]"
 ADDRESS_MARK = "[АДРЕС]"
 
 
-def redact(text: str) -> str:
-    """Вырезать дату рождения и адрес. Подпись («адрес:») остаётся, значение заменяется меткой без токена."""
-    out = BIRTH_BEFORE.sub(lambda m: m.group("label") + BIRTH_MARK, text)
+# Адрес юридического лица открыт (ЕГРЮЛ, ст. 6 129-ФЗ) и не ПДн: строка с такой подписью адрес не теряет.
+ORG_ADDRESS = re.compile(
+    r"мест[оае]\s+нахождения|юридическ\w*\s+адрес|адрес\w*\s+(?:места\s+нахождения\s+)?"
+    r"(?:общества|организации|юридического\s+лица|компании)",
+    re.IGNORECASE,
+)
+
+
+def _redact_line(line: str) -> str:
+    out = BIRTH_BEFORE.sub(lambda m: m.group("label") + BIRTH_MARK, line)
     out = BIRTH_AFTER.sub(lambda m: BIRTH_MARK + m.group("label"), out)
+    if ORG_ADDRESS.search(out):
+        return out
     out = ADDRESS_LABELED.sub(lambda m: m.group("label") + ADDRESS_MARK, out)
     return ADDRESS_BARE.sub(ADDRESS_MARK, out)
+
+
+def redact(text: str) -> str:
+    """Вырезать дату рождения и адрес. Подпись («адрес:») остаётся, значение заменяется меткой без токена.
+
+    Строка с адресом юридического лица («место нахождения», «юридический адрес», «адрес общества») адрес
+    сохраняет: он публичный. Если в такой строке есть и адрес человека, он тоже останется.
+    """
+    return "\n".join(_redact_line(line) for line in text.split("\n"))
 
 
 MIN_KEY_BYTES = 32

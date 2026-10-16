@@ -1,10 +1,16 @@
-"""M-05: дата рождения и адрес вырезаются, в модель уходят только строки о полномочиях."""
+"""M-05: ФИО известных людей, дата рождения и адрес не уходят в модель; в модель только строки о полномочиях."""
 
 from __future__ import annotations
+
+import dataclasses
 
 import pytest
 
 from mandat.advisory import llm
+from mandat.domain.model import TextDocument
+from mandat.eval import synth
+from mandat.intake.case_loader import load_case_inline
+from mandat.privacy.names import DIRECTOR, REPRESENTATIVE, KnownPerson, known_people, mask_names
 from mandat.privacy.pii import ADDRESS_MARK, BIRTH_MARK, for_model, redact
 
 
@@ -91,3 +97,106 @@ def test_minimize_keeps_only_authority_lines():
 def test_minimize_without_authority_lines_sends_no_document():
     content = llm.charter_messages("Цвет логотипа зелёный.\nТелефон +7 495 123-45-67")[1]["content"]
     assert content == f"{llm.DATA_BEGIN}\n\n{llm.DATA_END}"
+
+
+# --- ФИО известных по кейсу людей (заявка, МЧД, ЕГРЮЛ) ---
+
+
+# В синтетическом кейсе: директор по ЕГРЮЛ «Петров Сергей Сергеевич», представитель «Лебедева Мария Ивановна».
+DIRECTOR_FORMS = [
+    "Петров Сергей Сергеевич",
+    "Петрова Сергея Сергеевича",
+    "Петрову Сергею Сергеевичу",
+    "Петровым Сергеем Сергеевичем",
+    "Петрове Сергее Сергеевиче",
+    "Сергей Сергеевич Петров",
+    "Сергея Сергеевича Петрова",
+    "Петров С.С.",
+    "Петрова С. С.",
+    "С.С. Петров",
+    "С. С. Петрову",
+    "Петровым С.",
+    "Сергей Сергеевич",
+    "Сергеем Сергеевичем",
+    "ПЕТРОВ С.С.",
+    "Петров",
+    "Петровым",
+]
+REPRESENTATIVE_FORMS = [
+    "Лебедева Мария Ивановна",
+    "Лебедевой Марии Ивановны",
+    "Лебедеву Марию Ивановну",
+    "Лебедевой Марией Ивановной",
+    "Мария Ивановна Лебедева",
+    "Лебедева М.И.",
+    "Лебедевой М. И.",
+    "М.И. Лебедева",
+    "М.И. Лебедевой",
+    "Марией Ивановной",
+    "Лебедевой",
+]
+
+
+def _case_with_charter(text: str):
+    case = load_case_inline(synth.build("ok", 1).inline_manifest())
+    charter = TextDocument("charter", "0" * 64, "charter_text", text)
+    return dataclasses.replace(case, charter=charter)
+
+
+def test_known_people_come_from_case_data():
+    people = known_people(_case_with_charter("x"))
+    assert KnownPerson(DIRECTOR, "Петров Сергей Сергеевич") in people
+    assert KnownPerson(REPRESENTATIVE, "Лебедева Мария Ивановна") in people
+
+
+@pytest.mark.parametrize(
+    ("form", "marker"), [(f, DIRECTOR) for f in DIRECTOR_FORMS] + [(f, REPRESENTATIVE) for f in REPRESENTATIVE_FORMS]
+)
+def test_model_payload_has_no_known_name_in_any_form(form, marker):
+    text = f"Сделки свыше 1 000 000 руб. подписывает {form} по одобрению совета директоров."
+    content = llm.case_charter_messages(_case_with_charter(text))[1]["content"]
+    assert form.lower() not in content.lower()
+    for stem in ("петров", "лебедев"):
+        assert stem not in content.lower()
+    assert marker in content and "1 000 000 руб." in content
+
+
+@pytest.mark.parametrize(
+    "full_name",
+    ["Вишневский Павел Андреевич", "Вишневская Ольга Петровна", "Сорокина Анна Юрьевна", "Ким Юрий Ильич"],
+)
+@pytest.mark.parametrize("form", ["{s}", "{s} {i}", "{i} {s}"])
+def test_other_surname_types(full_name, form):
+    surname, first, patronymic = full_name.split()
+    declined = {
+        "Вишневский": "Вишневского",
+        "Вишневская": "Вишневской",
+        "Сорокина": "Сорокиной",
+        "Ким": "Кима",
+    }[surname]
+    text = form.format(s=declined, i=f"{first[0]}.{patronymic[0]}.")
+    assert mask_names(text, [KnownPerson(DIRECTOR, full_name)]) == DIRECTOR
+
+
+@pytest.mark.parametrize(("name", "forms"), [("Волков Павел Львович", ["Павла Львовича", "Павлом Львовичем"])])
+def test_fleeting_vowel_first_names(name, forms):
+    for form in forms:
+        assert mask_names(form, [KnownPerson(DIRECTOR, name)]) == DIRECTOR
+
+
+def test_unknown_names_are_not_masked():
+    # Имя, которого нет в данных кейса, остаётся: это остаточный риск (DATA_PROTECTION).
+    assert mask_names("Сидоров Пётр Ильич", [KnownPerson(DIRECTOR, "Петров Сергей Сергеевич")]) == "Сидоров Пётр Ильич"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Место нахождения Общества: 101000, г. Москва, ул. Ленина, д. 1",
+        "Юридический адрес: г. Москва, ул. Тверская, д. 7",
+        "Адрес общества: 190000, г. Санкт-Петербург, Невский 1",
+        "Адрес юридического лица: г. Казань, ул. Баумана, д. 3",
+    ],
+)
+def test_legal_entity_address_is_kept(line):
+    assert redact(line) == line
