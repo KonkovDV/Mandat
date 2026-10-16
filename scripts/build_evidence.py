@@ -23,7 +23,7 @@ from pathlib import Path
 from bench import bench
 
 from mandat import ENGINE
-from mandat.eval.run import run_corpus
+from mandat.eval.run import HOLDOUT_SEED, run_corpus
 from mandat.examples import DEMO, OVERLAYS
 from mandat.intake.case_loader import load_case_dir
 from mandat.rules.classifier import default_classifier
@@ -115,6 +115,25 @@ def main() -> int:
     corpus = run_corpus(args.per_defect)
     corpus.pop("mismatches")
     strict = run_corpus(args.per_defect, profile="strict")
+    holdout = run_corpus(args.per_defect, seed=HOLDOUT_SEED)
+    holdout_summary = {
+        "command": f"mandat eval --per-defect {args.per_defect} --seed {HOLDOUT_SEED}",
+        **{
+            k: holdout[k]
+            for k in (
+                "seed",
+                "cases",
+                "agreement",
+                "false_confirmed",
+                "false_confirmed_rate_upper95",
+                "false_confirmed_defect_types",
+                "false_confirmed_rate_upper95_by_defect_type",
+                "coverage",
+            )
+        },
+        "mismatches": len(holdout["mismatches"]),
+        "boundary": "отложенный seed: те же шаблоны с другими значениями; подгонку под генератор не исключает",
+    }
     strict_summary = {
         "command": f"mandat eval --per-defect {args.per_defect} --profile strict",
         "cases": strict["cases"],
@@ -140,6 +159,7 @@ def main() -> int:
         "demo_cases": {"command": "mandat demo", "results": demo},
         "synthetic_corpus": {"command": f"mandat eval --per-defect {args.per_defect}", **corpus},
         "synthetic_corpus_strict": strict_summary,
+        "synthetic_corpus_holdout": holdout_summary,
         "subdelegation_property": {
             "command": "python -m pytest tests/test_properties.py tests/test_cedar.py",
             "chains": 384,

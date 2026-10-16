@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-10-16T06:23:44+00:00",
+  "generated_at": "2026-10-16T06:37:29+00:00",
   "engine": "mandat/0.3.0",
   "source": {
-    "base_commit": "78f59994aa8e0efa0a5cce961ffb4e462092305d",
+    "base_commit": "cb1b30b04e24042dbcf3f326c4e5124ef70ccb19",
     "sources": [
       "src",
       "tests",
       "scripts",
       "examples"
     ],
-    "sha256": "ca36903fe30e1119ecac43d6cd6ecece4ca1ac81dfd1663f6a7eb48d88f5e123",
+    "sha256": "ccbb0ef83abfb58e4504cc40e4fc70fb5559ef764cd5574a3cfa086557126531",
     "check": "python scripts/build_evidence.py --verify-source"
   },
   "python": "3.13.5",
@@ -89,6 +89,7 @@
   "synthetic_corpus": {
     "command": "mandat eval --per-defect 6",
     "profile": "demo",
+    "seed": 7,
     "cases": 294,
     "defect_types": 49,
     "agreement": 1.0,
@@ -97,7 +98,10 @@
       1.0
     ],
     "false_confirmed": 0,
-    "false_confirmed_rate_upper95": 0.013162827640106806,
+    "false_confirmed_rate_upper95": 0.01272692809310183,
+    "negative_defect_types": 48,
+    "false_confirmed_defect_types": [],
+    "false_confirmed_rate_upper95_by_defect_type": 0.07397278534728025,
     "refute_recall": 1.0,
     "refute_recall_wilson95": [
       0.9656526402534428,
@@ -106,7 +110,7 @@
     "abstention_rate": 0.6122448979591837,
     "coverage": 0.3877551020408163,
     "auto_risk": 0.0,
-    "auto_risk_upper95": 0.03259853415884162,
+    "auto_risk_upper95": 0.03184065408347425,
     "n_for_recall_0_9_pm_0_05": 139,
     "confusion": {
       "confirmed->confirmed": 6,
@@ -124,6 +128,19 @@
     "abstention_rate": 1.0,
     "boundary": "строгий профиль не подтверждает по черновикам правил и по снимку ЕГРЮЛ из пакета кейса; без СКЗИ подпись не проверена. Доля покрытия — в этом файле, не в старых слайдах"
   },
+  "synthetic_corpus_holdout": {
+    "command": "mandat eval --per-defect 6 --seed 20261016",
+    "seed": 20261016,
+    "cases": 294,
+    "agreement": 1.0,
+    "false_confirmed": 0,
+    "false_confirmed_rate_upper95": 0.01272692809310183,
+    "false_confirmed_defect_types": [],
+    "false_confirmed_rate_upper95_by_defect_type": 0.07397278534728025,
+    "coverage": 0.3877551020408163,
+    "mismatches": 0,
+    "boundary": "отложенный seed: те же шаблоны с другими значениями; подгонку под генератор не исключает"
+  },
   "subdelegation_property": {
     "command": "python -m pytest tests/test_properties.py tests/test_cedar.py",
     "chains": 384,
@@ -140,7 +157,7 @@
   "latency": {
     "command": "python scripts/bench.py --rounds 20",
     "cases": 280,
-    "median_ms": 1.91,
+    "median_ms": 1.93,
     "p95_ms": 2.69,
     "machine": "x86_64, Python 3.13.5",
     "scope": "разбор XML и JSON, 39 правил, свёртка, отчёт; без сети и без модели"
@@ -148,8 +165,8 @@
   "tests": {
     "command": "python -m pytest -q",
     "returncode": 0,
-    "summary": "1443 passed in 110.34s (0:01:50)",
-    "passed": 1443,
+    "summary": "1445 passed in 107.99s (0:01:47)",
+    "passed": 1445,
     "coverage_percent": 96.1
   }
 }
