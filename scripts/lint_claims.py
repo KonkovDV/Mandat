@@ -32,7 +32,7 @@ def pptx_text(path: Path) -> str:
 
 
 # Число правил в текстах должно совпадать с пакетом. История (CHANGELOG, записи аудитов) не проверяется.
-RULE_COUNT = re.compile(r"\b(\d+)\s+правил[оа]?\b|правило из (\d+)\b")
+RULE_COUNT = re.compile(r"\b(\d+)\*{0,2}\s+\*{0,2}правил[оа]?\b|правило из (\d+)\b")
 RULE_COUNT_SKIP = {"CHANGELOG.md"}
 RULE_COUNT_SKIP_PREFIXES = ("docs/AUDIT_", "docs/audit/")
 
@@ -60,11 +60,15 @@ def rule_count_hits() -> list[str]:
 
 # Ключевые числа для жюри должны совпадать с источником: автотесты и демо-кейсы — с evidence.json,
 # мутации фазза — с тестом tests/test_redteam_fuzz.py.
+# Разметка между числом и словом («**1017** автотестов») не прячет число от проверки.
+EMPH = r"\*{0,2}"
 EVIDENCE_COUNTS = {
-    "автотест": re.compile(r"\b(\d+)\s+автотест"),
-    "демо-кейс": re.compile(r"\b(\d+)\s+демо-кейс"),
+    "автотест": re.compile(rf"\b(\d+){EMPH}\s+{EMPH}автотест"),
+    "демо-кейс": re.compile(rf"\b(\d+){EMPH}\s+{EMPH}демо-кейс"),
     # «8814», «8 814» и «8\u00a0814»; «мутаций», «мутированных сценариев».
-    "мутаци": re.compile(r"\b(\d{1,3}(?:[ \u00a0\u202f]\d{3})+|\d+)\s+(?:мутаци|мутированн)", re.IGNORECASE),
+    "мутаци": re.compile(
+        rf"\b(\d{{1,3}}(?:[ \u00a0\u202f]\d{{3}})+|\d+){EMPH}\s+{EMPH}(?:мутаци|мутированн)", re.IGNORECASE
+    ),
 }
 
 

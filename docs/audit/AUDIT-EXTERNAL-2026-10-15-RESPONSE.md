@@ -1,11 +1,11 @@
 # Ответ на внешний аудит Mandat (2026-10-15)
 
-**Срез кода:** `be0d786` (`main`, post-merge [#24](https://github.com/KonkovDV/Mandat/pull/24); leftovers [#25](https://github.com/KonkovDV/Mandat/pull/25))  
+**Срез кода:** `3d48770` (`main` после [#60](https://github.com/KonkovDV/Mandat/pull/60))  
 **Аудит-пакет:** внешний, в репозиторий не входит; ниже — только находки и ответ.  
-**Evidence:** 1017 passed, coverage 95,7 % (`evidence.json`)  
+**Evidence:** число тестов и покрытие — в `evidence.json` на том же срезе; здесь не копируются, чтобы не устаревать  
 **Правило ответа:** без завышений; «FIXED» только при коде + тестах в `main`.
 
-| ID | Pri | Статус на `51f247d` | Что сделано / что осталось | Доказательство |
+| ID | Pri | Статус на `3d48770` | Что сделано / что осталось | Доказательство |
 |---|---|---|---|---|
 | **M-01** | P1 | **FIXED** (residual → M-04) | Fail-closed: в pilot/prod статус обязателен; revoked/suspended/missing/corrupt/stale → отказ; CLI `--crypto-only` не говорит «принимается»; `authorize_operation` требует `verdict=confirmed`. Residual закрыт в M-04. | PR #18; `tests/test_m01_status_required.py` |
 | **M-02** | P1 | **FIXED** (residual: **POSIX/Linux only**) | `fcntl.flock` + CAS sequence; OR только revocation; suspension/конфликт idx → `StaleRegistryError`; snapshots + `CURRENT`. **Residual:** `import fcntl` на уровне модуля `status_list.py` → на native Windows `ImportError` при импорте: сломаны status registry и `attest-verify` целиком (не «flock не покрыт тестами»). Целевой контур: Linux / Docker / WSL. CI — только `ubuntu-latest`, Windows matrix нет. | PR #18; `tests/test_m02_*`; `LIMITS.md` |
@@ -17,7 +17,7 @@
 | **M-08** | P2 | **STILL_OPEN** (eval) | Synth stats ≠ bank risk; нужны честные bounds / holdout. | — |
 | **M-09** | P2 | **FIXED** (residual: см. REVIEW «Ограничения») | Роли и независимость решения (#42), хранение с проверкой версии (#44), API: `POST /v1/cases/{id}/review/{action}` с `expected_version` (409 при конфликте), `GET /v1/review/queue`, журнал обязателен в pilot/prod, SLA в `MANDAT_REVIEW_SLA_HOURS` (по умолчанию 4/24/72 ч, не из норм). **Residual:** `required_specialization` через API не задаётся; жалоба только на автоматическое решение; `replace=true` не сбрасывает разбор; эскалации по сроку нет. | PR [#42](https://github.com/KonkovDV/Mandat/pull/42), [#44](https://github.com/KonkovDV/Mandat/pull/44), [#48](https://github.com/KonkovDV/Mandat/pull/48); `tests/test_m09c_review_api.py`; `docs/REVIEW.md` |
 | **M-10** | P2 | **FIXED** (residual: не exactly-once) | `POST /v1/cases`: stage → журнал → commit, 200 только после commit; сверка после сбоя; `Idempotency-Key`; fencing по номеру попытки. **Residual:** журнал и хранилище остаются двумя системами; вытесненная по сроку заявки попытка может оставить запись журнала без отчёта; другие маршруты записи журнала схемой не охвачены (`LIMITS.md`). | PR [#30](https://github.com/KonkovDV/Mandat/pull/30); `tests/test_m10_journal_store_atomicity.py` |
-| **M-11** | P3 | **PARTIAL** | R6 закрыл часть дрейфа; живые gates/числа ещё местами устарели. Post-merge docs: `SUBMISSION_DRIFT` → 993. | этот PR |
+| **M-11** | P3 | **FIXED** (residual: исторические заметки) | Шапка, «Нельзя утверждать» и очередь этого ответа сверены с `main`; `SUBMISSION_DRIFT` описывает текущую колоду; `lint_claims` видит числа внутри разметки (`**1017** автотестов` раньше проходил). **Residual:** заметки передачи и снимки аудита (`HANDOFF_*`, `AUDIT-2026-10-15-R*`) — история, их числа не обновляются. | #63; `tests/test_m11_lint_emphasis.py` |
 | **M-12** | P2 | **FIXED** (residual: не IAM) | `expires_at` и `revoked` у пользователей API проверяются при каждом запросе; в pilot/prod `expires_at` обязателен; отзыв без перезапуска. **Residual:** общий `MANDAT_API_TOKEN` стенда без срока; нет provisioning и OIDC (`LIMITS.md`). | PR [#29](https://github.com/KonkovDV/Mandat/pull/29); `tests/test_m12_token_lifecycle.py` |
 | **M-13** | P2 | **FIXED** | `status_max_age_for(risk)`; unknown → strictest; `min(global, risk)` (G1); в protected JSON risk-map только ужесточает defaults (G-A); `authorize_operation` fail-closed без `seen`. Residual: нет — см. LIMITS POSIX. | PR #24/#25; `tests/test_m13_*` |
 | **M-14** | P3 | **FIXED** (residual: выжившие мутанты) | Целевой прогон mutmut по `audit/attestation.py` и `audit/status_list.py`; тесты на логических выживших. **Residual:** оставшиеся выжившие и причины — в `docs/testing/MUTATION.md`. | PR [#34](https://github.com/KonkovDV/Mandat/pull/34); `tests/test_m14_mutation_kills.py` |
@@ -25,12 +25,13 @@
 ## Что можно говорить жюри / банку сейчас
 
 - Удостоверение в pilot/prod **не принимается** без актуального статуса; concurrent revoke не теряется на Linux flock/CAS (#18). Status registry — **только POSIX/Linux** (Docker/WSL); native Windows не поддерживается.
-- **Нельзя** утверждать: полный IAM, durable pilot compose, атомарность journal↔store, применимость приказа №74 к банку, bank-risk KPI со синтеза, сквозной HITL API. TLS к модели в protected закрыт (#21); residual — IAM lifecycle (M-12).
+- Удостоверение допускает только ту операцию, на которую выпущено: сумма не больше проверенной, тот же представитель и получатель, одноразовый nonce (M-04, #58). Хранилище nonce ведёт интегратор.
+- **Нельзя** утверждать: полный IAM (нет provisioning и OIDC, M-12), готовность pilot compose к пилоту (M-03), атомарность journal↔store и exactly-once (M-10), применимость приказа №74 к банку (M-07), риск банка по синтетике (M-08), полный процесс разбора без ограничений из [REVIEW](../REVIEW.md#ограничения) (M-09). TLS к модели в protected закрыт (#21).
 
 ## Очередь после этого ответа
 
-1. M-06 + M-13 влиты (#21/#24/#25). Дальше: M-03 pilot compose.  
-2. M-10 + M-12 → M-09 → M-04 → M-05 + M-07/M-08 docs.  
-3. M-11 sync gates; M-14 kill-tests на attestation/status_list.
+1. Закрыто кодом и тестами в `main`: M-01, M-02, M-03, M-04, M-05, M-06, M-09, M-10, M-12, M-13, M-14 (residual — в строках таблицы).
+2. В работе: M-08 — граница по видам дефектов и отложенный seed ([#62](https://github.com/KonkovDV/Mandat/pull/62)); M-11 — этот PR (#63).
+3. Ждёт банка: M-07 — заключение юриста банка (LEGAL_REVIEW п. 11).
 
 Исторические снимки аудита (`AUDIT-2026-10-15-R*.md`, pack `updated-documentation/`) **не переписываем**.
