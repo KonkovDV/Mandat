@@ -2,7 +2,8 @@
 
 Перенесено из SynAPS-ProgramPlan. Список — BANNED_CLAIMS.txt, одна фраза в строке,
 сравнение без учёта регистра. Текст презентации (слайды и заметки из .pptx) проверяется
-тем же списком: она главный материал для жюри.
+тем же списком: она главный материал для жюри. Числа в текстах сверяются с evidence.json; число автотестов в
+презентации может быть меньше фактического (колоду пересобирают к релизу, а не в каждом PR), но не больше.
 """
 
 from __future__ import annotations
@@ -82,6 +83,20 @@ def red_run(tests: dict | None) -> str | None:
     return None
 
 
+# В презентации число автотестов может отставать от evidence.json: «N автотестов проходят» остаётся верным, пока
+# N не больше фактического. Так колоду не пересобирают в каждом PR, а только к релизу. Остальные числа — точно.
+DECK_AT_MOST = {"автотест"}
+
+
+def count_mismatch(name: str, found: int, expected: int | None, *, deck: bool) -> bool:
+    """Число в тексте расходится с источником. В презентации для DECK_AT_MOST допустимо меньшее, но не 0."""
+    if expected is None:
+        return False
+    if deck and name in DECK_AT_MOST:
+        return not 0 < found <= expected
+    return found != expected
+
+
 def evidence_count_hits() -> list[str]:
     import json
 
@@ -105,15 +120,18 @@ def evidence_count_hits() -> list[str]:
         for i, text in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
             for name, pattern in EVIDENCE_COUNTS.items():
                 for m in pattern.finditer(text):
-                    if expected[name] is not None and int(re.sub(r"\D", "", m.group(1))) != expected[name]:
+                    if count_mismatch(name, int(re.sub(r"\D", "", m.group(1))), expected[name], deck=False):
                         hits.append(f"{rel}:{i}: «{m.group(0)}», а в источнике {expected[name]}")
-    # Слайды собираются из evidence.json (make deck); устаревшая колода — тоже расхождение.
+    # Слайды собираются из evidence.json (make deck). Число автотестов в колоде может быть меньше фактического
+    # (DECK_AT_MOST), больше — нет: утверждение стало бы неверным.
     for deck in sorted((ROOT / "submission" / "slides").glob("*.pptx")):
         text = pptx_text(deck)
         for name, pattern in EVIDENCE_COUNTS.items():
             for m in pattern.finditer(text):
-                if expected[name] is not None and int(re.sub(r"\D", "", m.group(1))) != expected[name]:
-                    hits.append(f"{deck.relative_to(ROOT).as_posix()}: «{m.group(0)}», а в источнике {expected[name]}")
+                if count_mismatch(name, int(re.sub(r"\D", "", m.group(1))), expected[name], deck=True):
+                    rel = deck.relative_to(ROOT).as_posix()
+                    bound = "не больше " if name in DECK_AT_MOST else ""
+                    hits.append(f"{rel}: «{m.group(0)}», а в источнике {bound}{expected[name]}")
     return hits
 
 

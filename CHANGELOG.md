@@ -5,6 +5,10 @@
 - `attestation.issue` подписывает сумму операции, а при передаче — получателя (`audience`) и одноразовый `nonce` (не короче 16 символов).
 - `authorize_operation(request=OperationRequest(...))` сверяет операцию, сумму (не больше проверенной), представителя по HMAC-псевдониму, получателя и nonce; в pilot/prod без запроса или хранилища nonce — отказ. Nonce расходуется только когда остальные проверки пройдены.
 
+## 2026-10-16 — число автотестов в презентации
+
+- `lint_claims.py`: в презентации число автотестов может быть меньше фактического, но не больше и не 0; колоду не пересобирают в каждом PR ([README колоды](submission/deck/README.md)). README, JURY и остальные тексты по-прежнему сверяются точно.
+
 ## 2026-10-16 — SOTA-M1 снимок классификатора ФНС
 
 - `scripts/import_classifier.py` принимает JSON ФНС `GetAllRecords` (kpmp.nalog.gov.ru): момент выгрузки и sha256 источника в снимке, даты в UTC с поясом, сравнение по календарной дате в Europe/Moscow ([CLASSIFIER](docs/CLASSIFIER.md)).
@@ -88,7 +92,6 @@
 - `StatusRegistry`: `fcntl.flock`, CAS sequence, OR только для revocation; suspension/конфликт idx → `StaleRegistryError`; snapshots + `CURRENT`.
 - Автотесты / **line coverage**: **993** / **95,8 %** (поля `tests.passed` / `tests.coverage_percent` в `evidence.json`).
 - Docs: DEMO/ARCHITECTURE — OR только revocation.
-
 
 ## 2026-10-15 — R6 docs
 
