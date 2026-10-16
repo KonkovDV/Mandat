@@ -1,14 +1,15 @@
-"""Статистика оценки: интервал Вилсона, размер выборки, κ Коэна.
+"""Статистика оценки: интервалы Клоппера — Пирсона и Вилсона, размер выборки, κ Коэна.
 
 Перенесено из AeroBIM (``study_design.wilson_interval``, ``eval_statistics.cohen_kappa``).
-Источник формул: Brown, Cai, DasGupta (2001), Statistical Science 16(2); Cohen (1960).
+Источник формул: Clopper, Pearson (1934), Biometrika 26(4); Brown, Cai, DasGupta (2001),
+Statistical Science 16(2); Cohen (1960).
 """
 
 from __future__ import annotations
 
 import math
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 Z95 = 1.959963984540054
 
@@ -22,6 +23,44 @@ def wilson_interval(successes: int, n: int, z: float = Z95) -> tuple[float, floa
     half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
     lower = 0.0 if successes == 0 else max(0.0, centre - half)
     upper = 1.0 if successes == n else min(1.0, centre + half)
+    return (lower, upper)
+
+
+def _binom_cdf(x: int, n: int, p: float) -> float:
+    """P(X ≤ x) для X ~ Bin(n, p)."""
+    return math.fsum(math.comb(n, k) * p**k * (1 - p) ** (n - k) for k in range(x + 1))
+
+
+def _bisect(f: Callable[[float], float], lo: float, hi: float, iterations: int = 100) -> float:
+    """Корень убывающей f на [lo, hi]: f(lo) > 0 > f(hi)."""
+    for _ in range(iterations):
+        mid = (lo + hi) / 2
+        if f(mid) > 0:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
+def clopper_pearson(successes: int, n: int, alpha: float = 0.05) -> tuple[float, float]:
+    """Точный двусторонний интервал Клоппера — Пирсона уровня 1 − alpha.
+
+    Без внешних зависимостей: при 0 и n — замкнутая формула (верх = 1 − (alpha/2)^(1/n)),
+    иначе бисекция по функции распределения биномиального закона.
+    """
+    if n <= 0:
+        return (0.0, 1.0)
+    if not 0 <= successes <= n:
+        raise ValueError("число успехов вне [0, n]")
+    tail = alpha / 2
+    if successes == 0:
+        lower, upper = 0.0, 1 - tail ** (1 / n)
+    elif successes == n:
+        lower, upper = tail ** (1 / n), 1.0
+    else:
+        # верх: P(X ≤ x; p) = alpha/2; низ: P(X ≥ x; p) = alpha/2, то есть P(X ≤ x − 1; p) = 1 − alpha/2.
+        upper = _bisect(lambda p: _binom_cdf(successes, n, p) - tail, 0.0, 1.0)
+        lower = _bisect(lambda p: _binom_cdf(successes - 1, n, p) - (1 - tail), 0.0, 1.0)
     return (lower, upper)
 
 
