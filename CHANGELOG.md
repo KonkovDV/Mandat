@@ -1,5 +1,9 @@
 # Изменения
 
+## 2026-10-16 — M-09b хранение разбора
+
+- `Store.review_get` / `review_put(expected_version)` в памяти, SQLite и Redis: устаревшая версия — `ReviewVersionConflict` ([REVIEW](docs/REVIEW.md#хранение-состояния-часть-b)).
+
 ## 2026-10-16 — M-09a роли разбора
 
 - Роли разбора: `operator`, `reviewer` со специализацией, `auditor`, `admin` ([REVIEW](docs/REVIEW.md)). `operator` больше не решает кейсы и подаёт жалобу от имени клиента; `auditor` и `admin` кейсы не двигают; решать нельзя автору кейса, подавшему жалобу и автору обжалуемого решения.
