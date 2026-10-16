@@ -118,6 +118,9 @@ class Store(Protocol):
         Возвращает новую версию (``expected_version + 1``); иначе ``ReviewVersionConflict``.
         """
 
+    def review_list(self) -> list[tuple[str, dict[str, Any], int]]:
+        """Все разборы: (case_id, состояние, версия), по case_id. Для очереди разбора."""
+
 
 class MemoryStore:
     name = "memory"
@@ -246,6 +249,11 @@ class MemoryStore:
                 raise ReviewVersionConflict(case_id, expected_version, current)
             self._reviews[case_id] = (body, current + 1)
             return current + 1
+
+    def review_list(self) -> list[tuple[str, dict[str, Any], int]]:
+        with self._lock:
+            items = sorted(self._reviews.items())
+        return [(cid, json.loads(json.dumps(body)), version) for cid, (body, version) in items]
 
 
 class SQLiteStore:
@@ -467,6 +475,10 @@ class SQLiteStore:
             )
             return current + 1
 
+    def review_list(self) -> list[tuple[str, dict[str, Any], int]]:
+        rows = self._db().execute("SELECT case_id, body, version FROM reviews ORDER BY case_id").fetchall()
+        return [(str(r[0]), json.loads(r[1]), int(r[2])) for r in rows]
+
 
 class RedisStore:
     """Окно лимита — сортированное множество на клиента, отчёты — строки JSON, порядок — ещё одно множество."""
@@ -547,6 +559,7 @@ class RedisStore:
     local cur = tonumber(redis.call('HGET', k, 'version') or '0')
     if cur ~= tonumber(ARGV[1]) then return {-1, cur} end
     redis.call('HSET', k, 'version', cur + 1, 'body', ARGV[2])
+    redis.call('SADD', KEYS[2], ARGV[3])
     return {cur + 1, cur}
     """
 
@@ -655,10 +668,20 @@ class RedisStore:
 
     def review_put(self, case_id: str, state: dict[str, Any], expected_version: int) -> int:
         body = json.dumps(state, ensure_ascii=False)
-        new, current = self._review_put(keys=[f"{self.prefix}review:{case_id}"], args=[expected_version, body])
+        new, current = self._review_put(
+            keys=[f"{self.prefix}review:{case_id}", f"{self.prefix}reviews"], args=[expected_version, body, case_id]
+        )
         if int(new) < 0:
             raise ReviewVersionConflict(case_id, expected_version, int(current))
         return int(new)
+
+    def review_list(self) -> list[tuple[str, dict[str, Any], int]]:
+        out: list[tuple[str, dict[str, Any], int]] = []
+        for raw in sorted(self._text(c) for c in self.r.smembers(f"{self.prefix}reviews")):
+            found = self.review_get(raw)
+            if found is not None:
+                out.append((raw, found[0], found[1]))
+        return out
 
 
 def open_store(spec: str | None = None) -> Store:
