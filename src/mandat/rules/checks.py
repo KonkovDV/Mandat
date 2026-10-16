@@ -1213,16 +1213,16 @@ def joint_powers(ctx: RuleContext) -> list[Finding]:
     leaf = ctx.chain.leaf
     if leaf is None:
         return []
-    # Нет признака — не значит «каждый подписывает сам» (Контур: ненайденное значение не считается соответствием).
-    if leaf.joint is None and len(leaf.representatives) > 1:
-        return [
-            ctx.emit(
-                "R-JNT-001",
-                E.NEEDS_REVIEW,
-                f"В МЧД {leaf.number} несколько представителей, а признак совместных полномочий не указан",
-                [leaf.ref("joint")],
+    # Нет признака — не значит «представитель действует один».
+    if leaf.joint is None:
+        if len(leaf.representatives) > 1:
+            message = f"В МЧД {leaf.number} несколько представителей, а признак совместных полномочий не указан"
+        else:
+            message = (
+                f"В МЧД {leaf.number} не указан признак совместных полномочий: "
+                "нельзя считать, что представитель действует один"
             )
-        ]
+        return [ctx.emit("R-JNT-001", E.NEEDS_REVIEW, message, [leaf.ref("joint")])]
     if not leaf.joint:
         return []
     others = [p.label() for p in leaf.representatives if not p.same_as(ctx.case.requester)]

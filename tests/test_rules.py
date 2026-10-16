@@ -249,6 +249,22 @@ def test_r_jnt_001_joint_powers_needs_review():
     assert not rule_effects(run("ok"), "R-JNT-001")
 
 
+def test_missing_joint_flag_on_one_representative_is_not_confirmed():
+    import re
+
+    from mandat.eval.synth import build
+    from mandat.intake.case_loader import load_case_inline
+    from mandat.services.verify import verify_case
+
+    manifest = build("ok_charter_cleared", seed=1).inline_manifest()
+    root = next(doc for doc in manifest["documents"] if doc["id"] == "poa-root")
+    assert 'ПрСовмПолн="' in root["content"]
+    root["content"] = re.sub(r'\sПрСовмПолн="[^"]*"', "", root["content"], count=1)
+    report = verify_case(load_case_inline(manifest))
+    assert report.verdict.value == "needs_review"
+    assert rule_effects(report, "R-JNT-001") == {"needs_review"}
+
+
 def test_r_sub_001_forbidden_refutes():
     report = run("subdelegation_forbidden")
     assert "refutes" in rule_effects(report, "R-SUB-001")
