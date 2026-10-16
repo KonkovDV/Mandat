@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-10-16T06:18:24+00:00",
+  "generated_at": "2026-10-16T06:37:29+00:00",
   "engine": "mandat/0.3.0",
   "source": {
-    "base_commit": "30d5655024c8765e804a9b4d45ea0002c31c7be6",
+    "base_commit": "cb1b30b04e24042dbcf3f326c4e5124ef70ccb19",
     "sources": [
       "src",
       "tests",
       "scripts",
       "examples"
     ],
-    "sha256": "5f0e37ff3221d1e082b00ba9ea30fc80e0be0889eaae4f2b5594b83f642b5a18",
+    "sha256": "ccbb0ef83abfb58e4504cc40e4fc70fb5559ef764cd5574a3cfa086557126531",
     "check": "python scripts/build_evidence.py --verify-source"
   },
   "python": "3.13.5",
@@ -98,10 +98,10 @@
       1.0
     ],
     "false_confirmed": 0,
-    "false_confirmed_rate_upper95": 0.013162827640106806,
+    "false_confirmed_rate_upper95": 0.01272692809310183,
     "negative_defect_types": 48,
     "false_confirmed_defect_types": [],
-    "false_confirmed_rate_upper95_by_defect_type": 0.07410012966611748,
+    "false_confirmed_rate_upper95_by_defect_type": 0.07397278534728025,
     "refute_recall": 1.0,
     "refute_recall_wilson95": [
       0.9656526402534428,
@@ -110,7 +110,7 @@
     "abstention_rate": 0.6122448979591837,
     "coverage": 0.3877551020408163,
     "auto_risk": 0.0,
-    "auto_risk_upper95": 0.03259853415884162,
+    "auto_risk_upper95": 0.03184065408347425,
     "n_for_recall_0_9_pm_0_05": 139,
     "confusion": {
       "confirmed->confirmed": 6,
@@ -134,9 +134,9 @@
     "cases": 294,
     "agreement": 1.0,
     "false_confirmed": 0,
-    "false_confirmed_rate_upper95": 0.013162827640106806,
+    "false_confirmed_rate_upper95": 0.01272692809310183,
     "false_confirmed_defect_types": [],
-    "false_confirmed_rate_upper95_by_defect_type": 0.07410012966611748,
+    "false_confirmed_rate_upper95_by_defect_type": 0.07397278534728025,
     "coverage": 0.3877551020408163,
     "mismatches": 0,
     "boundary": "отложенный seed: те же шаблоны с другими значениями; подгонку под генератор не исключает"
@@ -157,16 +157,16 @@
   "latency": {
     "command": "python scripts/bench.py --rounds 20",
     "cases": 280,
-    "median_ms": 1.88,
-    "p95_ms": 2.73,
+    "median_ms": 1.93,
+    "p95_ms": 2.69,
     "machine": "x86_64, Python 3.13.5",
     "scope": "разбор XML и JSON, 39 правил, свёртка, отчёт; без сети и без модели"
   },
   "tests": {
     "command": "python -m pytest -q",
     "returncode": 0,
-    "summary": "1440 passed in 111.08s (0:01:51)",
-    "passed": 1440,
+    "summary": "1445 passed in 107.99s (0:01:47)",
+    "passed": 1445,
     "coverage_percent": 96.1
   }
 }
