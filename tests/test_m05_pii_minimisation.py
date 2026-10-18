@@ -183,6 +183,9 @@ def test_spaced_inn_next_to_its_label_is_masked_without_widening_the_validator()
     bare = for_model("7707 083893")
     assert "083893" not in bare and "[ПАСПОРТ:" in bare
     assert for_model("ИНН 5001 0073 2250") == "ИНН 5001 0073 2250"
+    trailed = for_model("ИНН 5001 0073 2259 10")
+    assert "5001 0073 2259" not in trailed and "[ИНН:" in trailed and trailed.endswith(" 10")
+    assert for_model("ИНН 5001 0073 2250 10") == "ИНН 5001 0073 2250 10"
     assert for_model("5001 0073 2259") == "5001 0073 2259"
     assert for_model("ИНН 100 000 000 000") == "ИНН 100 000 000 000"
     assert "7707083893" not in for_model("ИНН 7707083893")
