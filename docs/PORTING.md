@@ -14,7 +14,7 @@
 | Безопасный разбор XML | AeroBIM: `core/security/xml_limits.py` | `intake/xml_safety.py` | лимиты под размер МЧД |
 | Пакет правил с хешем и статусом | AeroBIM: `json_norm_rule_pack_loader.py`, `norm_pack_hash.py`, `norm_rule_eligibility.py` | `rules/pack.py`, `data/rules.json` | в `strict` неутверждённое правило не опровергает |
 | Машина состояний разбора | AeroBIM: `domain/review_state_machine.py` | `review/state_machine.py` | банковские роли, основание обязательно |
-| Псевдонимизация HMAC | AeroBIM: `domain/hybrid/privacy_guard.py`, `sensitive_entities.py` | `privacy/pii.py` | ИНН и СНИЛС с контрольными числами, паспорт РФ |
+| Псевдонимизация HMAC | AeroBIM: `domain/hybrid/privacy_guard.py`, `sensitive_entities.py` | `privacy/pii.py` | ИНН и СНИЛС с контрольными числами, паспорт и телефон в том числе с пробелами, точками и словом «номер» |
 | Клиент модели с белым списком хостов | AeroBIM: `infrastructure/adapters/openai_compat_llm_provider.py` | `advisory/llm.py` | без облачного хоста по умолчанию, псевдонимизация |
 | Интервал Вилсона, объём выборки, κ Коэна | AeroBIM: `domain/study_design.py`, `eval_statistics.py` | `eval/metrics.py` | только нужные функции |
 | Журнал с хеш-цепочкой, HMAC и свидетелем | SynAPS-ProgramPlan: `src/synaps_programplan/journal.py` | `audit/journal.py` | банковские действия |
