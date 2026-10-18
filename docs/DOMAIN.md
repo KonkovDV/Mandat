@@ -46,7 +46,7 @@
 {
   "inn": "…", "ogrn": "…", "kpp": "…", "name": "ООО «…»",
   "full_name": "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ «…»",
-  "status": "active | in_liquidation | liquidated | unknown",
+  "status": "active | reorganizing | in_liquidation | liquidated | terminated | unknown",
   "extracted_at": "2026-10-19",
   "executives": [
     {"full_name": "…", "inn": "…", "position": "Генеральный директор", "grn": "…",
