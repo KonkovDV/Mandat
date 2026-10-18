@@ -124,10 +124,17 @@ def test_passport_with_the_word_number_is_masked():
         "паспорт 4506 номер 123456",
         "45 06 номер 123456",
         "Паспорта 45 06 номер 123456",
+        "серия 45-06 номер 123456",
+        "серия 45.06 номер 123456",
+        "45-06 номер 123456",
+        "45-06 123456",
+        "45-06-123456",
+        "45.06.123456",
     ):
         out = for_model(text)
         assert "123456" not in out and "[ПАСПОРТ:" in out
     assert for_model("договор 2024 номер 123456") == "договор 2024 номер 123456"
+    assert for_model("договор 2024-123456") == "договор 2024-123456"
     kept = "Сделки свыше 1 000 000 руб. одобряет совет директоров"
     assert for_model(kept) == kept
 
@@ -139,7 +146,9 @@ def test_dotted_snils_is_masked_without_widening_the_validator():
     assert snils_valid("112-233-445 95")
     assert not snils_valid("112.233.445.95")
     assert not snils_valid("112.233.445 95")
-    for text in ("112.233.445.95", "112.233.445 95"):
+    assert not snils_valid("112-233-445.95")
+    assert not snils_valid("112 233 445-95")
+    for text in ("112.233.445.95", "112.233.445 95", "112-233-445.95", "112 233 445-95"):
         out = for_model(f"СНИЛС {text}")
         assert text not in out and "[СНИЛС:" in out
     assert for_model("СНИЛС 112.233.445.96") == "СНИЛС 112.233.445.96"
@@ -176,6 +185,8 @@ def test_spaced_inn_next_to_its_label_is_masked_without_widening_the_validator()
     assert not inn_valid("5001 0073 2259")
     assert not inn_valid("5001-0073-2259")
     assert not inn_valid("7707 083893")
+    assert not inn_valid("5001.0073.2259")
+    assert not inn_valid("5001 - 0073 - 2259")
     for text in (
         "ИНН 5001 0073 2259",
         "ИНН 500100 732259",
@@ -183,6 +194,9 @@ def test_spaced_inn_next_to_its_label_is_masked_without_widening_the_validator()
         "ИНН 5001-0073-2259",
         "ИНН 7707-083893",
         "ИНН 770708389 3",
+        "ИНН 5001.0073.2259",
+        "ИНН 5001 - 0073 - 2259",
+        "ИНН № 5001-0073-2259",
     ):
         out = for_model(text)
         assert text.split(maxsplit=1)[1] not in out and "[ИНН:" in out and "[ПАСПОРТ:" not in out
@@ -199,6 +213,10 @@ def test_spaced_inn_next_to_its_label_is_masked_without_widening_the_validator()
     assert for_model("ИНН 5001 0073 2250 10") == "ИНН 5001 0073 2250 10"
     assert for_model("5001 0073 2259") == "5001 0073 2259"
     assert for_model("5001-0073-2259") == "5001-0073-2259"
+    assert for_model("5001.0073.2259") == "5001.0073.2259"
+    assert for_model("ИНН 5001.0073.2250") == "ИНН 5001.0073.2250"
+    dotted_trailed = for_model("ИНН 5001.0073.2259 10")
+    assert "5001.0073.2259" not in dotted_trailed and "[ИНН:" in dotted_trailed and dotted_trailed.endswith(" 10")
     assert for_model("ИНН 100 000 000 000") == "ИНН 100 000 000 000"
     assert "7707083893" not in for_model("ИНН 7707083893")
     kept = "Сделки свыше 1 000 000 руб. одобряет совет директоров"
@@ -207,7 +225,7 @@ def test_spaced_inn_next_to_its_label_is_masked_without_widening_the_validator()
 
 def test_dotted_phone_is_masked_but_a_dotted_amount_stays():
     """Точки в телефоне не оставляют номер в тексте. Сумма с точками короче телефона."""
-    for text in ("8.903.123.45.67", "+7.903.123.45.67"):
+    for text in ("8.903.123.45.67", "+7.903.123.45.67", "8-903-123.45.67"):
         out = for_model(f"тел. {text}")
         assert text not in out and "[ТЕЛЕФОН:" in out
     assert "123-45-67" not in for_model("тел. +7 (915) 123-45-67")
