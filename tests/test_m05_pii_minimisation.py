@@ -149,6 +149,20 @@ def test_dotted_snils_is_masked_without_widening_the_validator():
     assert for_model("100.000.000.00 руб.") == "100.000.000.00 руб."
 
 
+def test_dotted_phone_is_masked_but_a_dotted_amount_stays():
+    """Точки в телефоне не оставляют номер в тексте. Сумма с точками короче телефона."""
+    for text in ("8.903.123.45.67", "+7.903.123.45.67"):
+        out = for_model(f"тел. {text}")
+        assert text not in out and "[ТЕЛЕФОН:" in out
+    assert "123-45-67" not in for_model("тел. +7 (915) 123-45-67")
+    for kept in (
+        "8.100.000 рублей",
+        "8.100.000.000 рублей",
+        "Сделки свыше 1 000 000 руб. одобряет совет директоров",
+    ):
+        assert for_model(kept) == kept
+
+
 def test_minimize_keeps_only_authority_lines():
     charter = "\n".join(
         [
