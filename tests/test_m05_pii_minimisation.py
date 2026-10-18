@@ -174,8 +174,16 @@ def test_spaced_inn_next_to_its_label_is_masked_without_widening_the_validator()
 
     assert inn_valid("500100732259") and inn_valid("7707083893")
     assert not inn_valid("5001 0073 2259")
+    assert not inn_valid("5001-0073-2259")
     assert not inn_valid("7707 083893")
-    for text in ("ИНН 5001 0073 2259", "ИНН 500100 732259"):
+    for text in (
+        "ИНН 5001 0073 2259",
+        "ИНН 500100 732259",
+        "ИНН 5001007322 59",
+        "ИНН 5001-0073-2259",
+        "ИНН 7707-083893",
+        "ИНН 770708389 3",
+    ):
         out = for_model(text)
         assert text.split(maxsplit=1)[1] not in out and "[ИНН:" in out and "[ПАСПОРТ:" not in out
     out = for_model("инн: 7707 083893")
@@ -183,10 +191,14 @@ def test_spaced_inn_next_to_its_label_is_masked_without_widening_the_validator()
     bare = for_model("7707 083893")
     assert "083893" not in bare and "[ПАСПОРТ:" in bare
     assert for_model("ИНН 5001 0073 2250") == "ИНН 5001 0073 2250"
+    assert for_model("ИНН 5001-0073-2250") == "ИНН 5001-0073-2250"
     trailed = for_model("ИНН 5001 0073 2259 10")
     assert "5001 0073 2259" not in trailed and "[ИНН:" in trailed and trailed.endswith(" 10")
+    hyphen_trailed = for_model("ИНН 5001-0073-2259 10")
+    assert "5001-0073-2259" not in hyphen_trailed and "[ИНН:" in hyphen_trailed and hyphen_trailed.endswith(" 10")
     assert for_model("ИНН 5001 0073 2250 10") == "ИНН 5001 0073 2250 10"
     assert for_model("5001 0073 2259") == "5001 0073 2259"
+    assert for_model("5001-0073-2259") == "5001-0073-2259"
     assert for_model("ИНН 100 000 000 000") == "ИНН 100 000 000 000"
     assert "7707083893" not in for_model("ИНН 7707083893")
     kept = "Сделки свыше 1 000 000 руб. одобряет совет директоров"

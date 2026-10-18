@@ -172,9 +172,9 @@ def token(kind: str, value: str) -> str:
     return f"[{kind}:{digest}]"
 
 
-# «ИНН 5001 0073 2259»: подпись и пробелы. Без подписи группы не ИНН.
+# «ИНН 5001 0073 2259», «ИНН 5001-0073-2259», «ИНН 5001007322 59»: подпись и пробелы или дефисы.
 # Хвост (« 10») не входит в номер: иначе лишняя группа ломает контрольное число и весь ИНН остаётся.
-_LABELED_INN_RUN = re.compile(r"(?i)(?<![А-ЯЁа-яё])(?P<label>инн\s*[:\-]?\s*)(?P<num>\d{2,6}(?: +\d{2,6})+)")
+_LABELED_INN_RUN = re.compile(r"(?i)(?<![А-ЯЁа-яё])(?P<label>инн\s*[:\-]?\s*)(?P<num>\d{1,10}(?:(?: +|-)\d{1,10})+)")
 
 
 def _group_cut(num: str, groups: int) -> int:
@@ -182,7 +182,7 @@ def _group_cut(num: str, groups: int) -> int:
     index = 0
     length = len(num)
     while seen < groups and index < length:
-        while index < length and num[index] == " ":
+        while index < length and num[index] in " -":
             index += 1
         start = index
         while index < length and num[index].isdigit():
@@ -199,7 +199,7 @@ def _labeled_inn_parts(match: re.Match[str]) -> tuple[str, str] | None:
     label = match.group("label")
     if num is None or label is None:
         return None
-    groups = re.split(r" +", num)
+    groups = re.split(r" +|-", num)
     for end in range(len(groups), 1, -1):
         cut = _group_cut(num, end)
         chunk = num[:cut]
