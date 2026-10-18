@@ -102,6 +102,15 @@ def test_person_cue_masks_the_following_word(text):
 def test_known_gap_bare_foreign_surname_without_cue():
     """Без подсказки одиночная фамилия вне словаря и без русского суффикса не ловится (LIMITS)."""
     assert mask_unknown_names("В протоколе назван Шор.") == "В протоколе назван Шор."
+    assert mask_unknown_names("В протоколе назван Дюбуа-Леруа.") == "В протоколе назван Дюбуа-Леруа."
+
+
+def test_hyphenated_surname_is_masked_when_one_part_is_known():
+    """Дефис не прячет известную часть: маскируется всё слово, названия организаций остаются."""
+    out = mask_unknown_names("Договор подписал Петров-Шор.")
+    assert out == f"Договор подписал {MARKER}."
+    assert mask_unknown_names("Филиал в городе Санкт-Петербург.") == "Филиал в городе Санкт-Петербург."
+    assert mask_unknown_names("Платёж через систему «Альфа-Банк».") == "Платёж через систему «Альфа-Банк»."
 
 
 def test_adjacent_words_become_one_marker():
