@@ -132,6 +132,23 @@ def test_passport_with_the_word_number_is_masked():
     assert for_model(kept) == kept
 
 
+def test_dotted_snils_is_masked_without_widening_the_validator():
+    """Точки в записи СНИЛС не оставляют номер в тексте и не расширяют проверку движка."""
+    from mandat.domain.identifiers import snils_valid
+
+    assert snils_valid("112-233-445 95")
+    assert not snils_valid("112.233.445.95")
+    assert not snils_valid("112.233.445 95")
+    for text in ("112.233.445.95", "112.233.445 95"):
+        out = for_model(f"СНИЛС {text}")
+        assert text not in out and "[СНИЛС:" in out
+    assert for_model("СНИЛС 112.233.445.96") == "СНИЛС 112.233.445.96"
+    assert "112-233-445 95" not in for_model("СНИЛС 112-233-445 95")
+    kept = "Сделки свыше 1 000 000 руб. одобряет совет директоров"
+    assert for_model(kept) == kept
+    assert for_model("100.000.000.00 руб.") == "100.000.000.00 руб."
+
+
 def test_minimize_keeps_only_authority_lines():
     charter = "\n".join(
         [
