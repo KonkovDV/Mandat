@@ -149,6 +149,25 @@ def test_dotted_snils_is_masked_without_widening_the_validator():
     assert for_model("100.000.000.00 руб.") == "100.000.000.00 руб."
 
 
+def test_spaced_snils_is_masked_without_widening_the_validator():
+    """Пробелы между группами СНИЛС не оставляют номер в тексте и не расширяют проверку движка."""
+    from mandat.domain.identifiers import snils_valid
+
+    assert snils_valid("112-233-445 95")
+    assert not snils_valid("112 233 445 95")
+    out = for_model("СНИЛС 112 233 445 95")
+    assert "112 233 445 95" not in out and "[СНИЛС:" in out
+    bare = for_model("112 233 445 95")
+    assert "112 233 445 95" not in bare and "[СНИЛС:" in bare
+    assert for_model("СНИЛС 112 233 445 96") == "СНИЛС 112 233 445 96"
+    for kept in (
+        "100 000 000 00",
+        "123 456 789 01",
+        "Сделки свыше 1 000 000 руб. одобряет совет директоров",
+    ):
+        assert for_model(kept) == kept
+
+
 def test_dotted_phone_is_masked_but_a_dotted_amount_stays():
     """Точки в телефоне не оставляют номер в тексте. Сумма с точками короче телефона."""
     for text in ("8.903.123.45.67", "+7.903.123.45.67"):
