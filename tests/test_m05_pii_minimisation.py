@@ -117,6 +117,21 @@ def test_keyed_details_still_pseudonymized():
     assert "7707083893" not in out and "[ИНН:" in out and BIRTH_MARK in out
 
 
+def test_passport_with_the_word_number_is_masked():
+    """Слово «номер» между серией и номером не оставляет паспорт в тексте."""
+    for text in (
+        "серия 45 06 номер 123456",
+        "паспорт 4506 номер 123456",
+        "45 06 номер 123456",
+        "Паспорта 45 06 номер 123456",
+    ):
+        out = for_model(text)
+        assert "123456" not in out and "[ПАСПОРТ:" in out
+    assert for_model("договор 2024 номер 123456") == "договор 2024 номер 123456"
+    kept = "Сделки свыше 1 000 000 руб. одобряет совет директоров"
+    assert for_model(kept) == kept
+
+
 def test_minimize_keeps_only_authority_lines():
     charter = "\n".join(
         [
