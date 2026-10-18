@@ -52,13 +52,6 @@ DETECTORS = (
     # «112 233 445 95»: пробелы между всеми группами. Неверная сумма не СНИЛС.
     Detector("СНИЛС", re.compile(r"(?<!\d)\d{3} +\d{3} +\d{3} +\d{2}(?!\d)"), _snils_digits_valid),
     Detector("ИНН", re.compile(r"(?<!\d)(\d{12}|\d{10})(?!\d)"), inn_valid),
-    # «ИНН 5001 0073 2259»: подпись и пробелы. Без подписи группы не ИНН.
-    # inn_valid пробелы не принимает, контрольное число считается по цифрам.
-    Detector(
-        "ИНН",
-        re.compile(r"(?i)(?<![А-ЯЁа-яё])инн\s*[:\-]?\s*\d{2,6}(?: +\d{2,6})+"),
-        inn_valid,
-    ),
     # 12 цифр с неверной контрольной суммой — скорее всего ИНН физлица с опечаткой, а это всё равно ПДн.
     # Буквы a–f и двоеточие перед числом — это уже выданный токен, его не трогаем.
     Detector("НОМЕР", re.compile(r"(?<![\d:a-f])\d{12}(?![\da-f\]])")),
@@ -179,8 +172,64 @@ def token(kind: str, value: str) -> str:
     return f"[{kind}:{digest}]"
 
 
-def find(text: str) -> list[tuple[str, str]]:
+# «ИНН 5001 0073 2259»: подпись и пробелы. Без подписи группы не ИНН.
+# Хвост (« 10») не входит в номер: иначе лишняя группа ломает контрольное число и весь ИНН остаётся.
+_LABELED_INN_RUN = re.compile(r"(?i)(?<![А-ЯЁа-яё])(?P<label>инн\s*[:\-]?\s*)(?P<num>\d{2,6}(?: +\d{2,6})+)")
+
+
+def _group_cut(num: str, groups: int) -> int:
+    seen = 0
+    index = 0
+    length = len(num)
+    while seen < groups and index < length:
+        while index < length and num[index] == " ":
+            index += 1
+        start = index
+        while index < length and num[index].isdigit():
+            index += 1
+        if index == start:
+            break
+        seen += 1
+    return index
+
+
+def _labeled_inn_parts(match: re.Match[str]) -> tuple[str, str] | None:
+    """Самый длинный префикс групп с верным контрольным числом и хвост после него."""
+    num = match.group("num")
+    label = match.group("label")
+    if num is None or label is None:
+        return None
+    groups = re.split(r" +", num)
+    for end in range(len(groups), 1, -1):
+        cut = _group_cut(num, end)
+        chunk = num[:cut]
+        if inn_valid(re.sub(r"\D", "", chunk)):
+            return label + chunk, num[cut:]
+    return None
+
+
+def _mask_labeled_inn(text: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        parts = _labeled_inn_parts(match)
+        if parts is None:
+            return match.group(0)
+        value, tail = parts
+        return token("ИНН", value) + tail
+
+    return _LABELED_INN_RUN.sub(repl, text)
+
+
+def _find_labeled_inn(text: str) -> list[tuple[str, str]]:
     found: list[tuple[str, str]] = []
+    for match in _LABELED_INN_RUN.finditer(text):
+        parts = _labeled_inn_parts(match)
+        if parts is not None:
+            found.append(("ИНН", parts[0]))
+    return found
+
+
+def find(text: str) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = _find_labeled_inn(text)
     for det in DETECTORS:
         for match in det.pattern.finditer(text):
             value = match.group(0)
@@ -190,7 +239,8 @@ def find(text: str) -> list[tuple[str, str]]:
 
 
 def pseudonymize(text: str) -> str:
-    out = text
+    # Раньше паспорта: «ИНН 77 07 083893» не должен стать паспортом.
+    out = _mask_labeled_inn(text)
     for det in DETECTORS:
 
         def repl(match: re.Match[str], det: Detector = det) -> str:
