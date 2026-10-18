@@ -48,6 +48,17 @@ def test_iso_birth_date_is_removed_whole():
     assert redact("1980-02-01 г.р.") == f"{BIRTH_MARK} г.р."
 
 
+def test_abbreviated_birth_label_is_removed_whole():
+    """«г. рождения», «год рождения», «дата рожд.» и «д/р» — те же подписи, не новый вид даты."""
+    assert redact("1980 г. рождения") == f"{BIRTH_MARK} г. рождения"
+    assert redact("1980 г.рождения") == f"{BIRTH_MARK} г.рождения"
+    assert redact("1980 год рождения") == f"{BIRTH_MARK} год рождения"
+    assert redact("01.02.1980 года рожд.") == f"{BIRTH_MARK} года рожд."
+    assert redact("дата рожд. 01.02.1980") == f"дата рожд. {BIRTH_MARK}"
+    assert redact("д/р 01.02.1980") == f"д/р {BIRTH_MARK}"
+    assert redact("1980-02-01 г. рождения") == f"{BIRTH_MARK} г. рождения"
+
+
 @pytest.mark.parametrize(
     ("text", "secret"),
     [
@@ -84,6 +95,9 @@ def test_cut_values_are_not_tokens():
         "Невский проспект и Садовая улица названы в договоре аренды складов.",
         "ул. Ленина, 5 процентов стоимости имущества.",
         "юридический адрес: г. Москва, ул. Садовая, д. 19.",
+        "Устав утверждён в 2020 году",
+        "Срок до 2026 г.",
+        "и др. 01.02.2020",
     ],
 )
 def test_other_dates_and_text_are_kept(text):
