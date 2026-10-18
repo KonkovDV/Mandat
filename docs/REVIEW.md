@@ -1,7 +1,6 @@
 # Разбор кейса человеком: роли и правила
 
-Решения по находке M-09 (часть a). Код: `src/mandat/review/state_machine.py`, `src/mandat/api/principals.py`;
-тесты: `tests/test_m09a_review_roles.py`. Хранение состояния разбора — часть b, маршруты API — часть c (ниже).
+Как устроен ручной разбор спорного кейса: роли, независимость второго мнения, хранение версий и маршруты HTTP API. Код: `src/mandat/review/state_machine.py`, `src/mandat/api/principals.py`, `src/mandat/api/review.py`; тесты: `tests/test_m09a_review_roles.py`, `tests/test_m09b_review_store.py`, `tests/test_m09c_review_api.py`.
 
 ## Роли
 
