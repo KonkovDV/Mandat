@@ -9,7 +9,7 @@
       "scripts",
       "examples"
     ],
-    "sha256": "01768ae9f71b4abf8f6668a0eb8d721a2ec475dfee2705a3d0554c3a21babcee",
+    "sha256": "a8102b70cab92c3da07713399b045676a84c6e07b08ec3cfe59581907645d919",
     "check": "python scripts/build_evidence.py --verify-source"
   },
   "python": "3.13.5",
