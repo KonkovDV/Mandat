@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 import logging
 import os
 import threading
@@ -35,6 +34,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+from mandat.strictjson import strict_loads
 
 # Кто что может. Видеть чужие кейсы могут только аудитор и администратор.
 ROLES = {
@@ -154,7 +155,7 @@ def load_users(value: str | None = None) -> tuple[UserEntry, ...]:
         return ()
     if not text.startswith("["):
         text = Path(text).read_text(encoding="utf-8")
-    return parse_users(json.loads(text))
+    return parse_users(strict_loads(text))
 
 
 class Directory:
@@ -216,7 +217,7 @@ class Directory:
             try:
                 if raw is None:
                     raise OSError("нет файла")
-                self.users = parse_users(json.loads(raw.decode("utf-8")))
+                self.users = parse_users(strict_loads(raw))
             except (ValueError, OSError):
                 self.users = ()  # fail closed: нечитаемый список не оставляет прежних токенов в силе
             self._stamp, self._digest = stamp, digest

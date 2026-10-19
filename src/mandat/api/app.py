@@ -55,11 +55,12 @@ from mandat.services.env_policy import PROFILES, ProfileNotAllowed, protected, r
 from mandat.services.monitoring import evaluate, parse_events
 from mandat.services.next_steps import check_sla
 from mandat.services.verify import verify_case
+from mandat.strictjson import MAX_JSON_DEPTH, strict_loads
+from mandat.strictjson import depth_exceeds as json_depth_exceeds
 
 MAX_BODY = 8 * 1024 * 1024
 OPEN_PATHS = {"/health", "/readyz"}
-# Глубина вложенности JSON. Глубокий массив в 2 КБ вызывал RecursionError при разборе ошибки валидации (500).
-MAX_JSON_DEPTH = 64
+# Глубина вложенности JSON — MAX_JSON_DEPTH в strictjson. Глубокий массив в 2 КБ вызывал RecursionError (500).
 # OWASP Secure Headers Project и ASVS 5.0 V3.4: ответы с ПДн не кэшируются, не встраиваются во фреймы,
 # не уходят с Referer. CSP по умолчанию ставится, только если маршрут не задал свою (HTML-карточка).
 SECURITY_HEADERS = [
@@ -120,27 +121,14 @@ class ApiProblem(Exception):
         self.status, self.detail, self.cause = status, detail, cause
 
 
-def json_depth_exceeds(body: bytes, limit: int = MAX_JSON_DEPTH) -> bool:
-    """Глубина скобок ``[`` и ``{`` вне строк превышает ``limit``. Линейный проход без разбора JSON."""
-    depth = 0
-    in_string = escaped = False
-    for byte in body:
-        if in_string:
-            if escaped:
-                escaped = False
-            elif byte == 0x5C:  # обратная косая черта
-                escaped = True
-            elif byte == 0x22:
-                in_string = False
-        elif byte == 0x22:
-            in_string = True
-        elif byte in (0x5B, 0x7B):
-            depth += 1
-            if depth > limit:
-                return True
-        elif byte in (0x5D, 0x7D):
-            depth -= 1
-    return False
+async def strict_json_object(request: Request) -> None:
+    """Тело POST — объект I-JSON. Повтор ключа и NaN, которые ``json.loads`` принимает, здесь отказ."""
+    try:
+        value = strict_loads(await request.body())
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(422, "тело не является строгим JSON") from exc
+    if not isinstance(value, dict):
+        raise HTTPException(422, "тело должно быть объектом")
 
 
 class Guard:
@@ -400,7 +388,7 @@ def create_app(
     with contextlib.suppress(Exception):
         reconcile_all()
 
-    @app.post("/v1/cases")
+    @app.post("/v1/cases", dependencies=[Depends(strict_json_object)])
     def create_case(
         manifest: dict[str, Any],
         profile: str | None = None,
@@ -677,7 +665,7 @@ def create_app(
         )
         return {"items": items, "states": sorted(open_states), "auto_decided": ReviewState.AUTO_DECIDED.value}
 
-    @app.post("/v1/events", dependencies=[Depends(writer)])
+    @app.post("/v1/events", dependencies=[Depends(writer), Depends(strict_json_object)])
     def post_events(payload: dict[str, Any], window_hours: int = 72) -> dict[str, Any]:
         """Только оценка событий. Статусы удостоверений этот метод не меняет: их пишет CLI monitor."""
         if not isinstance(payload, dict):

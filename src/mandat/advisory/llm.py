@@ -26,6 +26,7 @@ from mandat.domain.model import Case
 from mandat.privacy.names import KnownPerson, known_people, mask_names
 from mandat.privacy.pii import for_model
 from mandat.privacy.unknown_names import mask_unknown_names
+from mandat.strictjson import strict_loads
 
 DATA_BEGIN = "<<<MANDAT_DOCUMENT_DATA_BEGIN>>>"
 DATA_END = "<<<MANDAT_DOCUMENT_DATA_END>>>"
@@ -148,7 +149,7 @@ class OpenAICompatClient:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
         if len(raw) > MAX_RESPONSE_BYTES:
             raise ValueError(f"ответ модели больше {MAX_RESPONSE_BYTES} байт")
-        body = json.loads(raw.decode("utf-8"))
+        body = strict_loads(raw)
         return str(body["choices"][0]["message"]["content"])
 
 
@@ -218,7 +219,7 @@ def parse_facts(raw: str) -> list[dict[str, Any]]:
     if start < 0 or end <= start:
         return []
     try:
-        payload = json.loads(raw[start : end + 1])
+        payload = strict_loads(raw[start : end + 1])
     except (json.JSONDecodeError, RecursionError):
         # Ответ модели — недоверенный ввод: сверхглубокий JSON значит «фактов нет», а не падение.
         return []

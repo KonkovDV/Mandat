@@ -22,6 +22,7 @@ from mandat.intake.egrul import EgrulError, parse_egrul
 from mandat.intake.emchd import EmchdError
 from mandat.intake.formats import parse_poa
 from mandat.intake.xml_safety import XmlRejected
+from mandat.strictjson import strict_loads
 
 KINDS = {"emchd_xml", "egrul_json", "charter_text", "paper_poa_text"}
 MAX_DOCUMENTS = 500  # длинные цепочки до 300 звеньев проверяет test_long_expired_chain_is_bounded
@@ -288,7 +289,10 @@ def load_case_dir(path: Path) -> Case:
         raw_manifest = _read_regular(manifest_path, MAX_DOC_BYTES)
     except ValueError as exc:
         raise CaseError(f"case.json: {exc}") from exc
-    manifest = json.loads(raw_manifest.decode("utf-8"))
+    try:
+        manifest = strict_loads(raw_manifest)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CaseError("case.json: не строгий JSON") from exc
     base = path.resolve()
 
     def read(doc: dict[str, Any]) -> bytes:
