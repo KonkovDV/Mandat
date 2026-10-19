@@ -27,3 +27,14 @@
 | `httpx`, `fakeredis` | разработка | BSD-3-Clause |
 
 Дерево Меркла построено по RFC 6962 и RFC 9162, списки статусов — по W3C Bitstring Status List v1.0.
+
+## Тестовые векторы
+
+`tests/vectors/eddsa-jcs-2022/` — копия векторов `eddsa-jcs-2022` из
+[w3c/vc-di-eddsa](https://github.com/w3c/vc-di-eddsa) на коммите
+`13e7070534d1ba1c2987cb26bfb1535e0f15bb72`, без правок. Лицензия — W3C Software and
+Document License, текст в `tests/vectors/eddsa-jcs-2022/LICENSE.md`.
+
+This repository includes material copied from Data Integrity EdDSA Cryptosuites
+(https://github.com/w3c/vc-di-eddsa). Copyright © 2023 World Wide Web Consortium.
+https://www.w3.org/copyright/software-license-2023/
