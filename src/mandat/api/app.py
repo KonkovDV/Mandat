@@ -122,13 +122,16 @@ class ApiProblem(Exception):
 
 
 async def strict_json_object(request: Request) -> None:
-    """Тело POST — объект I-JSON. Повтор ключа и NaN, которые ``json.loads`` принимает, здесь отказ."""
+    """Тело POST — объект I-JSON. Повтор ключа и NaN, которые ``json.loads`` принимает, здесь отказ.
+
+    Клиенту уходит тот же общий текст, что и при ошибке схемы: в ответе и в журнале нет тела запроса.
+    """
     try:
         value = strict_loads(await request.body())
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise HTTPException(422, "тело не является строгим JSON") from exc
+        raise ApiProblem(422, "запрос не соответствует схеме", "тело не является строгим JSON") from exc
     if not isinstance(value, dict):
-        raise HTTPException(422, "тело должно быть объектом")
+        raise ApiProblem(422, "запрос не соответствует схеме", "тело должно быть объектом")
 
 
 class Guard:
