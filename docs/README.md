@@ -11,7 +11,7 @@
 | ИБ (информационная безопасность) банка | [модель угроз](THREAT_MODEL.md), [аудит октября 2026](audit/AUDIT.md) | [защита данных](DATA_PROTECTION.md), [риски ИИ](AI_RISKS.md), [SECURITY](../SECURITY.md) |
 | Владелец процесса | [пилот](PILOT.md) | [экономика](ECONOMICS.md), [дорожная карта](ROADMAP.md) |
 | Инженер | [запуск и API](RUN.md) | [архитектура](ARCHITECTURE.md), [каркас MVP](MVP.md), [ключи](KEYS.md), [перенос идей](PORTING.md) |
-| ИИ-исполнитель | [AGENTS.md](../AGENTS.md), [план работы](HANDOFF_NEXT_QUOTA.md) | [план исправлений](audit/FIX_PLAN.md), [реестр утверждений](../CLAIMS_REGISTRY.md), [границы](../LIMITS.md) |
+| Исполнитель | [AGENTS.md](../AGENTS.md), [план работы](HANDOFF_NEXT_QUOTA.md) | [план исправлений](audit/FIX_PLAN.md), [реестр утверждений](../CLAIMS_REGISTRY.md), [границы](../LIMITS.md) |
 
 ## По вопросу
 
