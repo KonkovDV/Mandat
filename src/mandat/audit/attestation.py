@@ -34,9 +34,10 @@ import os
 import secrets
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -51,6 +52,8 @@ CONTEXTS = ["https://www.w3.org/ns/credentials/v2"]
 CRYPTOSUITE = "eddsa-jcs-2022"
 PURPOSE = "assertionMethod"
 VALID_FOR = timedelta(days=30)  # срок принятия удостоверения; параметр банка
+# Дата операции — календарный день банка, а не сутки UTC.
+BANK_TZ = ZoneInfo("Europe/Moscow")
 
 
 def b58encode(data: bytes) -> str:
@@ -174,7 +177,15 @@ def issue(
     (``authorize_operation`` с ``OperationRequest``, M-04).
     """
     moment = now or datetime.now(UTC)
+    if moment.tzinfo is None:
+        raise ValueError("момент выпуска без часового пояса")
     created = moment.isoformat(timespec="seconds")
+    until = moment + valid_for
+    authority_end = _authority_end(report)
+    if authority_end is not None:
+        until = min(until, authority_end)
+    if until <= moment:
+        until = moment  # полномочие уже кончилось: окно нулевой длины не проходит проверку срока
     rep_inn = (report.get("requester") or {}).get("inn") or ""
     subject: dict[str, Any] = {
         "organizationInn": (report.get("organization") or {}).get("inn"),
@@ -201,7 +212,7 @@ def issue(
         "type": ["VerifiableCredential", "MandatAuthorityAttestation"],
         "issuer": ISSUER,
         "validFrom": created,
-        "validUntil": (moment + valid_for).isoformat(timespec="seconds"),
+        "validUntil": until.isoformat(timespec="seconds"),
         "credentialSubject": subject,
     }
     if status:
@@ -363,6 +374,39 @@ class OperationRequest:
     representative_inn: str
     audience: str
     nonce: str
+    organization_inn: str
+    operation_date: date
+
+
+def bank_date(moment: datetime) -> date:
+    """Календарный день момента в часовом поясе банка."""
+    if moment.tzinfo is None:
+        raise ValueError("момент проверки без часового пояса")
+    return moment.astimezone(BANK_TZ).date()
+
+
+def _authority_end(report: dict[str, Any]) -> datetime | None:
+    """Конец самого раннего срока документов цепочки: день ``effective_until`` включительно.
+
+    Берётся ``effective_until`` (срок по МЧД или год по ст. 186 ГК РФ), иначе ``valid_until``.
+    Конец — начало следующих суток по Москве, чтобы день срока ещё входил в окно.
+    """
+    documents = (report.get("chain") or {}).get("documents") or []
+    if not isinstance(documents, list):
+        return None
+    ends: list[datetime] = []
+    for doc in documents:
+        if not isinstance(doc, dict):
+            continue
+        raw = doc.get("effective_until") or doc.get("valid_until")
+        if not isinstance(raw, str) or len(raw) < 10:
+            continue
+        try:
+            day = date.fromisoformat(raw[:10])
+        except ValueError:
+            continue
+        ends.append(datetime.combine(day + timedelta(days=1), time.min, tzinfo=BANK_TZ))
+    return min(ends) if ends else None
 
 
 def check_request(
@@ -371,9 +415,26 @@ def check_request(
     *,
     pseudonym_key: bytes | None,
     consume_nonce: Callable[[str], bool] | None,
+    now: datetime | None = None,
 ) -> list[str]:
-    """Сверить удостоверение с запросом: операция, сумма, представитель, получатель, одноразовый nonce."""
+    """Сверить удостоверение с запросом: организация, дата, операция, сумма, представитель, получатель, nonce."""
     problems: list[str] = []
+    asked_org = request.organization_inn
+    signed_org = subject.get("organizationInn")
+    if not isinstance(asked_org, str) or not asked_org.strip():
+        problems.append("в запросе не указана организация")
+    elif not isinstance(signed_org, str) or not signed_org:
+        problems.append("в удостоверении нет организации")
+    elif signed_org != asked_org:
+        problems.append(f"организация {asked_org!r} не та, на которую выпущено удостоверение")
+    asked_day = request.operation_date
+    signed_day = subject.get("operationDate")
+    if isinstance(asked_day, datetime) or not isinstance(asked_day, date):
+        problems.append("дата операции в запросе должна быть календарной датой")
+    elif not isinstance(signed_day, str) or signed_day[:10] != asked_day.isoformat():
+        problems.append("дата операции не та, на которую выпущено удостоверение")
+    elif now is not None and bank_date(now) != asked_day:
+        problems.append("момент проверки не приходится на день операции")
     if subject.get("operation") != request.operation:
         problems.append(f"операция {request.operation!r} не та, на которую выпущено удостоверение")
     bound = subject.get("amountRub")
@@ -472,7 +533,7 @@ def authorize_operation(
         return problems
     if problems:
         return problems  # nonce не расходуется на удостоверении, которое и так не проходит
-    return check_request(subject, request, pseudonym_key=pseudonym_key, consume_nonce=consume_nonce)
+    return check_request(subject, request, pseudonym_key=pseudonym_key, consume_nonce=consume_nonce, now=now)
 
 
 def verify(credential: dict[str, Any], public_key: Ed25519PublicKey) -> bool:
