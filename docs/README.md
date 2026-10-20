@@ -54,7 +54,7 @@
 
 **Аудиты, новые сверху.**
 
-- 20.10: [Murder Board и Red Team допуска операции](audit/MURDER_BOARD-2026-10-20.md).
+- 20.10: [повторная проверка влитого дерева](audit/AUDIT-2026-10-20-MERGE.md), [Murder Board и Red Team допуска операции](audit/MURDER_BOARD-2026-10-20.md).
 - 16.10: [сверка R7](audit/AUDIT-2026-10-16-R7.md), [ответ на статический разбор](audit/AUDIT-2026-10-16-EXPERT-RESPONSE.md).
 - 15.10: [R4](audit/AUDIT-2026-10-15-R4.md), [глубокий проход R5](audit/AUDIT-2026-10-15-R5.md), [R5.1](audit/AUDIT-2026-10-15-R5.1.md), [R6 по документам](audit/AUDIT-2026-10-15-R6-DOCS.md), [ответ на внешний аудит](audit/AUDIT-EXTERNAL-2026-10-15-RESPONSE.md).
 - 14.10: [R2](audit/AUDIT-2026-10-14-R2.md), [R3](audit/AUDIT-2026-10-14-R3.md), [Red Team](audit/REDTEAM-2026-10-14.md), [Murder Board](audit/MURDER_BOARD-2026-10-14.md).
