@@ -33,6 +33,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 from mandat.audit import attestation
 from mandat.audit.signing import Signer
 from mandat.domain.identifiers import normalize_poa_number
+from mandat.strictjson import strict_loads
 
 MIN_BITS = 131_072
 # Предел распаковки: сжатый список в несколько килобайт не должен раздуваться в гигабайты.
@@ -101,7 +102,7 @@ def _risk_age_mapping() -> dict[str, float]:
     if not raw:
         return mapping
     try:
-        payload = json.loads(raw)
+        payload = strict_loads(raw)
     except json.JSONDecodeError as exc:
         raise ValueError(f"MANDAT_STATUS_MAX_AGE_BY_RISK: невалидный JSON: {exc}") from exc
     if not isinstance(payload, dict):
@@ -255,7 +256,7 @@ class StatusRegistry:
             reg = cls(directory, epoch=secrets.token_hex(8))
             reg.lists = {p: bytearray(MIN_BITS // 8) for p in PURPOSES}
             return reg
-        payload = json.loads(state.read_text(encoding="utf-8"))
+        payload = strict_loads(state.read_text(encoding="utf-8"))
         size = int(payload["size"])
         if size < MIN_BITS or size % 8:
             raise ValueError(f"список статусов меньше {MIN_BITS} бит: групповая приватность не обеспечена")
@@ -527,11 +528,11 @@ def check_status(
     issuer_sequence = -1
     if issuer_state.exists():
         # Список старше состояния издателя в том же каталоге — подложен: подписан верно, но устарел.
-        issuer_sequence = int(json.loads(issuer_state.read_text(encoding="utf-8")).get("sequence") or -1)
+        issuer_sequence = int(strict_loads(issuer_state.read_text(encoding="utf-8")).get("sequence") or -1)
     for entry in credential.get("credentialStatus") or []:
         purpose = entry["statusPurpose"]
         path = root / f"{purpose}.json"
-        status_cred = json.loads(path.read_text(encoding="utf-8"))
+        status_cred = strict_loads(path.read_text(encoding="utf-8"))
         if status_cred.get("id") != entry["statusListCredential"]:
             raise ValueError(f"список {path} не тот, на который ссылается удостоверение")
         if not _verify_any(status_cred, public_key):

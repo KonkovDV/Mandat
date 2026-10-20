@@ -24,6 +24,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from mandat.data import load_json, sha256_json
+from mandat.strictjson import strict_loads
 
 
 @dataclass(frozen=True)
@@ -175,7 +176,7 @@ def import_esnsi(raw: bytes, *, source: str) -> dict[str, Any]:
     text = raw.decode("utf-8-sig")
     stripped = text.lstrip()
     if stripped.startswith("["):
-        rows = json.loads(stripped)
+        rows = strict_loads(stripped)
     else:
         sample = text[:2048]
         delimiter = ";" if sample.count(";") > sample.count(",") else ","
@@ -237,7 +238,7 @@ def import_kpmp(raw: bytes, *, source: str) -> dict[str, Any]:
     Повторы кода: полностью одинаковые записи схлопываются; различие только в группе даёт список групп;
     различие по существу помечает код ``ambiguous``, и МЧД с таким кодом уходит на разбор (R-COV-002).
     """
-    payload = json.loads(raw.decode("utf-8-sig"))
+    payload = strict_loads(raw.decode("utf-8-sig"))
     if not isinstance(payload, dict) or not isinstance(payload.get("classRecords"), list):
         raise ValueError("ожидался объект ФНС с полем classRecords")
     if str(payload.get("date") or "").startswith("0001-"):

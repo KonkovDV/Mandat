@@ -14,6 +14,7 @@ from datetime import date
 from typing import Any
 
 from mandat.domain.model import EgrulSnapshot, EvidenceRef, ExecutiveRecord, Organization, Person
+from mandat.strictjson import strict_loads
 
 STATUSES = {"active", "in_liquidation", "liquidated", "reorganizing", "terminated", "unknown"}
 
@@ -60,7 +61,7 @@ def parse_egrul(data: bytes | str, *, doc_id: str) -> EgrulSnapshot:
         raise EgrulError(f"выписка ЕГРЮЛ больше {MAX_EGRUL_BYTES} байт")
     sha = hashlib.sha256(raw).hexdigest()
     try:
-        payload = json.loads(raw.decode("utf-8"))
+        payload = strict_loads(raw)
     except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
         raise EgrulError(f"JSON не разбирается: {exc}") from exc
     if not isinstance(payload, dict):
