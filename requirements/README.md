@@ -1,6 +1,6 @@
 # Lock-файлы зависимостей
 
-Файлы с хешами (`--require-hashes`), общие для Python 3.11–3.13 (`--universal`).
+Файлы с хешами (`--require-hashes`), общие для Python 3.11 и новее (`--universal`); CI ставит их на 3.11–3.14.
 
 - `runtime.lock` — ядро и extra `[api]`, ставится в Docker-образ.
 - `dev.lock` — всё для CI: `[dev,api,cedar,redis]` (в `dev` входит `tuf` для тестов `audit/trust.py`).
@@ -19,3 +19,7 @@ uv pip compile requirements/build.in --universal --python-version 3.11 --generat
 ```
 
 Сам пакет ставится поверх без зависимостей: `pip install --no-deps --no-build-isolation -e .`.
+
+## Dependabot
+
+Dependabot видит `pyproject.toml`, но не эти lock-файлы: в [#117](https://github.com/KonkovDV/Mandat/pull/117) он поднял `cedarpy` только в `pyproject.toml`, а `dev.lock` остался на прежней версии. Такой PR сам по себе ничего не обновляет: CI ставит зависимости из lock-файла. Перед влитием в ту же ветку добавляется пересборка lock-файлов командами выше. Для `cedarpy` версия закреплена точно, и дифференциальный тест `tests/test_cedar.py` должен пройти на новой версии.

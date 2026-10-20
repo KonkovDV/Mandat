@@ -41,6 +41,7 @@
 | Почему модель не выносит вердикт | [ADR-001](adr/ADR-001-verdict-ownership.md) |
 | Почему Cedar, а не OpenFGA | [передовые решения](SOTA.md) |
 | Насколько проект готов | [ступени готовности](audit/READINESS_GATES.md) |
+| Что требуют от банка за рубежом и где у банка болит | [практика банков](research/BANK-PRACTICE-2026-10-20.md) |
 | Что и когда сдаём | [сдача](../submission/README.md) |
 | Откуда источники | [источники](SOURCES.md), [реестр источников](audit/SOURCE_LEDGER.md), [литература](LITERATURE.md) |
 | Как говорить с пользователями | [discovery](discovery/) |
@@ -53,12 +54,13 @@
 
 **Аудиты, новые сверху.**
 
+- 20.10: [Murder Board и Red Team допуска операции](audit/MURDER_BOARD-2026-10-20.md).
 - 16.10: [сверка R7](audit/AUDIT-2026-10-16-R7.md), [ответ на статический разбор](audit/AUDIT-2026-10-16-EXPERT-RESPONSE.md).
 - 15.10: [R4](audit/AUDIT-2026-10-15-R4.md), [глубокий проход R5](audit/AUDIT-2026-10-15-R5.md), [R5.1](audit/AUDIT-2026-10-15-R5.1.md), [R6 по документам](audit/AUDIT-2026-10-15-R6-DOCS.md), [ответ на внешний аудит](audit/AUDIT-EXTERNAL-2026-10-15-RESPONSE.md).
 - 14.10: [R2](audit/AUDIT-2026-10-14-R2.md), [R3](audit/AUDIT-2026-10-14-R3.md), [Red Team](audit/REDTEAM-2026-10-14.md), [Murder Board](audit/MURDER_BOARD-2026-10-14.md).
 - Сводный: [аудит октября 2026](audit/AUDIT.md) и [покрытие файлов](audit/FILE_COVERAGE.md) на 13.10.
 - История: [первый аудит](AUDIT_2026-10.md), [закрытие аудита 12.10](AUDIT_CLOSURE.md), [план по внешнему аудиту](REMEDIATION_PLAN_2026-10.md), [расхождения презентации и кода](SUBMISSION_DRIFT.md).
 
-**Исследования, новые сверху.** [SOTA 20.10](research/SOTA-2026-10-20.md), [SOTA 15.10](research/SOTA-2026-10-15.md), [правовая база 15.10](research/LEGAL-BASIS-2026-10-15.md), [идеи из репозиториев 15.10](research/PORTFOLIO-IDEAS-2026-10-15.md), [SOTA 14.10](research/SOTA-2026-10-14.md), [OSINT 14.10](research/OSINT-2026-10-14.md), [матрица требований](research/REQUIREMENTS_MATRIX.md), [план перехода на 315-ФЗ](research/MIGRATION-315-FZ-R-FMT-001.md).
+**Исследования, новые сверху.** [Практика банков 20.10](research/BANK-PRACTICE-2026-10-20.md), [SOTA 20.10](research/SOTA-2026-10-20.md), [SOTA 15.10](research/SOTA-2026-10-15.md), [правовая база 15.10](research/LEGAL-BASIS-2026-10-15.md), [идеи из репозиториев 15.10](research/PORTFOLIO-IDEAS-2026-10-15.md), [SOTA 14.10](research/SOTA-2026-10-14.md), [OSINT 14.10](research/OSINT-2026-10-14.md), [матрица требований](research/REQUIREMENTS_MATRIX.md), [план перехода на 315-ФЗ](research/MIGRATION-315-FZ-R-FMT-001.md).
 
 Все решения архитектуры кратко — в [docs/adr](adr/).
