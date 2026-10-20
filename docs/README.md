@@ -8,10 +8,22 @@
 |---|---|---|
 | Жюри | [README](../README.md) | [реестр утверждений](../CLAIMS_REGISTRY.md), [конкуренты](COMPETITORS.md), [оценка](EVALUATION.md) |
 | Юрист банка | [вопросы юристу](LEGAL_REVIEW.md), [нормы](REGULATORY.md) | [правила](RULES.md), [формат МЧД](FORMAT_NOTES.md), [предметная модель](DOMAIN.md) |
-| ИБ (информационная безопасность) банка | [модель угроз](THREAT_MODEL.md), [аудит октября 2026](audit/AUDIT.md) | [защита данных](DATA_PROTECTION.md), [риски ИИ](AI_RISKS.md), [SECURITY](../SECURITY.md) |
+| ИБ (информационная безопасность) банка | [модель угроз](THREAT_MODEL.md), [аудит октября 2026](audit/AUDIT.md) | [защита данных](DATA_PROTECTION.md), [риски модели](AI_RISKS.md), [ключи](KEYS.md), [SECURITY](../SECURITY.md) |
 | Владелец процесса | [пилот](PILOT.md) | [экономика](ECONOMICS.md), [дорожная карта](ROADMAP.md) |
 | Инженер | [запуск и API](RUN.md) | [архитектура](ARCHITECTURE.md), [каркас MVP](MVP.md), [ключи](KEYS.md), [перенос идей](PORTING.md) |
+| Участник проекта | [CONTRIBUTING](../CONTRIBUTING.md) | [кодекс поведения](../CODE_OF_CONDUCT.md), [SECURITY](../SECURITY.md), [история изменений](../CHANGELOG.md) |
 | Исполнитель | [AGENTS.md](../AGENTS.md), [план работы](HANDOFF_NEXT_QUOTA.md) | [план исправлений](audit/FIX_PLAN.md), [реестр утверждений](../CLAIMS_REGISTRY.md), [границы](../LIMITS.md) |
+
+## По типу
+
+Типы — по схеме [Diátaxis](https://diataxis.fr/): учебник, рецепт, справочник и объяснение не смешиваются в одном файле.
+
+| Тип | Зачем | Документы |
+|---|---|---|
+| Начать | запустить и показать | [демо в README](../README.md#запустить-демо), [сценарий показа](DEMO.md), [для жюри](JURY.md) |
+| Сделать | решить конкретную задачу | [запуск и API](RUN.md), [ключи](KEYS.md), [разбор](REVIEW.md), [классификатор](CLASSIFIER.md), [пилот](PILOT.md), [сдача](../submission/README.md), [мутационное тестирование](testing/MUTATION.md) |
+| Справочник | найти точный факт | [правила](RULES.md), [реестр утверждений](../CLAIMS_REGISTRY.md), [границы](../LIMITS.md), [формат МЧД](FORMAT_NOTES.md), [предметная модель](DOMAIN.md), [переменные окружения](RUN.md#переменные-окружения), [контракт API](api/openapi.json), [схема манифеста](api/case-manifest.schema.json) |
+| Объяснение | понять, почему так | [архитектура](ARCHITECTURE.md), [решения ADR](adr/), [передовые решения](SOTA.md), [литература](LITERATURE.md), [нормы](REGULATORY.md), [конкуренты](COMPETITORS.md), [экономика](ECONOMICS.md), [оценка](EVALUATION.md), [риски модели](AI_RISKS.md), [защита данных](DATA_PROTECTION.md), [модель угроз](THREAT_MODEL.md), [перенос идей](PORTING.md) |
 
 ## По вопросу
 
@@ -23,15 +35,30 @@
 | Как человек разбирает кейс | [разбор](REVIEW.md) |
 | Откуда коды полномочий | [классификатор](CLASSIFIER.md) |
 | Где лежат ключи стенда и что нужно к пилоту | [ключи](KEYS.md) |
+| Куда уходит хеш журнала | [внешний якорь](KEYS.md#внешний-якорь-журнала) |
 | Какая норма за каким правилом | [правила](RULES.md), [трассировка норм](audit/LEGAL_TRACEABILITY.md) |
 | Почему смена руководителя не гасит доверенность | [ADR-002](adr/ADR-002-director-change.md) |
 | Почему модель не выносит вердикт | [ADR-001](adr/ADR-001-verdict-ownership.md) |
-| Почему Cedar, а не OpenFGA | [мировой уровень](SOTA.md) |
+| Почему Cedar, а не OpenFGA | [передовые решения](SOTA.md) |
 | Насколько проект готов | [ступени готовности](audit/READINESS_GATES.md) |
-| Что говорят открытые источники и чего не хватает | [OSINT](research/OSINT-2026-10-14.md), [SOTA](research/SOTA-2026-10-14.md), [матрица требований](research/REQUIREMENTS_MATRIX.md), [Murder Board](audit/MURDER_BOARD-2026-10-14.md), [SOTA 15.10](research/SOTA-2026-10-15.md), [идеи из репозиториев](research/PORTFOLIO-IDEAS-2026-10-15.md), [контракт API](api/openapi.json) |
-| Что нашёл аудит | [сверка 16.10](audit/AUDIT-2026-10-16-R7.md), [ответ на статический разбор](audit/AUDIT-2026-10-16-EXPERT-RESPONSE.md), [аудит октября 2026](audit/AUDIT.md), [аудит R3](audit/AUDIT-2026-10-14-R3.md), [аудит R4](audit/AUDIT-2026-10-15-R4.md), [глубокий проход 15.10](audit/AUDIT-2026-10-15-R5.md), [R5.1](audit/AUDIT-2026-10-15-R5.1.md), [R6 docs](audit/AUDIT-2026-10-15-R6-DOCS.md), [правовая база](research/LEGAL-BASIS-2026-10-15.md), [план 315-ФЗ](research/MIGRATION-315-FZ-R-FMT-001.md), [мутационное тестирование](testing/MUTATION.md); история: [первый аудит](AUDIT_2026-10.md), [закрытие аудита 12.10](AUDIT_CLOSURE.md), [расхождения презентации и кода](SUBMISSION_DRIFT.md) |
 | Что и когда сдаём | [сдача](../submission/README.md) |
 | Откуда источники | [источники](SOURCES.md), [реестр источников](audit/SOURCE_LEDGER.md), [литература](LITERATURE.md) |
 | Как говорить с пользователями | [discovery](discovery/) |
+
+## Проверки, аудиты и исследования
+
+Файлы с датой в имени — срезы на эту дату. Их не переписывают: новый факт идёт в новый срез, решение — в ADR или [SOTA](SOTA.md).
+
+**Проверки.** [Ступени готовности](audit/READINESS_GATES.md), [план исправлений](audit/FIX_PLAN.md), [трассировка норм](audit/LEGAL_TRACEABILITY.md), [границы доверия](audit/THREAT_AND_TRUST_BOUNDARIES.md), [матрица регрессий](audit/REGRESSION_MATRIX.md), [сценарии тестов](testing/TEST_SCENARIOS.md), [мутационное тестирование](testing/MUTATION.md), [нагрузка 14.10](testing/LOAD_REPORT-2026-10-14.md).
+
+**Аудиты, новые сверху.**
+
+- 16.10: [сверка R7](audit/AUDIT-2026-10-16-R7.md), [ответ на статический разбор](audit/AUDIT-2026-10-16-EXPERT-RESPONSE.md).
+- 15.10: [R4](audit/AUDIT-2026-10-15-R4.md), [глубокий проход R5](audit/AUDIT-2026-10-15-R5.md), [R5.1](audit/AUDIT-2026-10-15-R5.1.md), [R6 по документам](audit/AUDIT-2026-10-15-R6-DOCS.md), [ответ на внешний аудит](audit/AUDIT-EXTERNAL-2026-10-15-RESPONSE.md).
+- 14.10: [R2](audit/AUDIT-2026-10-14-R2.md), [R3](audit/AUDIT-2026-10-14-R3.md), [Red Team](audit/REDTEAM-2026-10-14.md), [Murder Board](audit/MURDER_BOARD-2026-10-14.md).
+- Сводный: [аудит октября 2026](audit/AUDIT.md) и [покрытие файлов](audit/FILE_COVERAGE.md) на 13.10.
+- История: [первый аудит](AUDIT_2026-10.md), [закрытие аудита 12.10](AUDIT_CLOSURE.md), [план по внешнему аудиту](REMEDIATION_PLAN_2026-10.md), [расхождения презентации и кода](SUBMISSION_DRIFT.md).
+
+**Исследования, новые сверху.** [SOTA 20.10](research/SOTA-2026-10-20.md), [SOTA 15.10](research/SOTA-2026-10-15.md), [правовая база 15.10](research/LEGAL-BASIS-2026-10-15.md), [идеи из репозиториев 15.10](research/PORTFOLIO-IDEAS-2026-10-15.md), [SOTA 14.10](research/SOTA-2026-10-14.md), [OSINT 14.10](research/OSINT-2026-10-14.md), [матрица требований](research/REQUIREMENTS_MATRIX.md), [план перехода на 315-ФЗ](research/MIGRATION-315-FZ-R-FMT-001.md).
 
 Все решения архитектуры кратко — в [docs/adr](adr/).
