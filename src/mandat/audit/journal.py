@@ -8,8 +8,9 @@
 внешнего якоря. Без ключа подмену обоих файлов ловит только внешний якорь — последний
 хеш, сохранённый вне журнала.
 
-Строка журнала разбирается строго: повторяющийся ключ в JSON — подделка (хеш считался бы
-по одному значению, а читатель увидел бы другое), битая строка — отказ проверки, а не исключение.
+Строка журнала разбирается строго: повторяющийся ключ, NaN и сверхглубокая вложенность — подделка
+или битый вход (хеш считался бы по одному значению, а читатель увидел бы другое). Битая строка —
+отказ проверки, а не исключение.
 
 Ключ HMAC — переменная окружения ``MANDAT_JOURNAL_KEY``.
 
@@ -33,6 +34,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from mandat.strictjson import strict_loads
 
 GENESIS = "0" * 64
 ACTIONS = (
@@ -98,17 +101,6 @@ class JournalError(ValueError):
     def __init__(self, line: int, reason: str):
         super().__init__(f"строка {line}: {reason}")
         self.line, self.reason = line, reason
-
-
-def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    keys = [k for k, _ in pairs]
-    if len(keys) != len(set(keys)):
-        raise ValueError("повторяющийся ключ в записи")
-    return dict(pairs)
-
-
-def strict_loads(text: str) -> Any:
-    return json.loads(text, object_pairs_hook=_no_duplicates)
 
 
 DEFAULT_SEGMENT_RECORDS = 1000

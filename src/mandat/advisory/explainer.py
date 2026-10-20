@@ -15,6 +15,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from mandat.strictjson import strict_loads
+
 _DATE = re.compile(r"\b(\d{2})\.(\d{2})\.(\d{4})\b|\b(\d{4})-(\d{2})-(\d{2})\b")
 _NUMBER = re.compile(r"\d+")
 # Язык разрешения. Отрицания вырезаются до поиска: «не вправе» — отказ, а не разрешение.
@@ -88,7 +90,7 @@ def _statements(raw: str) -> list[tuple[str, list[str]]]:
     if start < 0 or end <= start:
         return []
     try:
-        rows = json.loads(raw[start : end + 1]).get("statements")
+        rows = strict_loads(raw[start : end + 1]).get("statements")
     except (json.JSONDecodeError, AttributeError, RecursionError):
         return []
     if not isinstance(rows, list):

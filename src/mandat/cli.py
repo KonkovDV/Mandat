@@ -31,6 +31,7 @@ from mandat.report.html import render
 from mandat.services.monitoring import evaluate, parse_events
 from mandat.services.verify import verify_case
 from mandat.services.webhooks import delivery
+from mandat.strictjson import strict_loads
 
 EXIT = {"confirmed": 0, "needs_review": 10, "insufficient_data": 11, "refuted": 12}
 
@@ -105,7 +106,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
     mismatches = 0
     print(f"{'кейс':32s} {'ожидалось':20s} получено")
     for case_dir in cases:
-        manifest = json.loads((case_dir / "case.json").read_text(encoding="utf-8"))
+        manifest = strict_loads((case_dir / "case.json").read_text(encoding="utf-8"))
         report = verify_case(load_case_dir(case_dir), profile=args.profile).as_dict()
         _write(out / f"{case_dir.name}.html", render(report))
         _write(out / f"{case_dir.name}.json", json.dumps(report, ensure_ascii=False, indent=2))
@@ -144,7 +145,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
 
 
 def cmd_monitor(args: argparse.Namespace) -> int:
-    payload = json.loads(Path(args.events).read_text(encoding="utf-8"))
+    payload = strict_loads(Path(args.events).read_text(encoding="utf-8"))
     rights, events = parse_events(payload)
     alerts = evaluate(rights, events, window_hours=args.window_hours)
     result: dict[str, Any] = {"alerts": [a.as_dict() for a in alerts]}
@@ -304,7 +305,14 @@ def _attest_verify_keyring(args: argparse.Namespace, cred: dict[str, Any]) -> in
 
 
 def cmd_attest_verify(args: argparse.Namespace) -> int:
-    cred = json.loads(Path(args.path).read_text(encoding="utf-8"))
+    try:
+        cred = strict_loads(Path(args.path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        print("ошибка: удостоверение не является строгим JSON", file=sys.stderr)
+        return 2
+    if not isinstance(cred, dict):
+        print("ошибка: удостоверение должно быть объектом JSON", file=sys.stderr)
+        return 2
     method = cred.get("proof", {}).get("verificationMethod", "")
     if args.keyring:
         return _attest_verify_keyring(args, cred)
@@ -369,8 +377,10 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
     seen_path = Path(args.seen_file) if status_dir is not None and args.seen_file else None
     seen: dict[str, Any] = {}
     if status_dir is not None:
-        seen = json.loads(seen_path.read_text(encoding="utf-8")) if seen_path and seen_path.exists() else {}
         try:
+            seen = strict_loads(seen_path.read_text(encoding="utf-8")) if seen_path and seen_path.exists() else {}
+            if not isinstance(seen, dict):
+                raise ValueError("файл seen должен быть объектом JSON")
             status = check_status(
                 cred,
                 status_dir,

@@ -847,7 +847,7 @@ def read_receipts(journal_path: Path) -> dict[tuple[int, str], dict[str, Any]]:
 
 
 def _segment_records(seg: Path) -> list[dict[str, Any]]:
-    from mandat.audit.journal import strict_loads
+    from mandat.strictjson import strict_loads
 
     return [strict_loads(line) for line in seg.read_text(encoding="utf-8").splitlines() if line.strip()]
 
