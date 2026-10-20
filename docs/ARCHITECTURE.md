@@ -6,17 +6,21 @@
 
 | Слой | Модули | Правило |
 |---|---|---|
-| Домен | `domain/model.py`, `identifiers.py`, `graph.py`, `verdict.py` | не импортирует инфраструктуру |
+| Домен | `domain/model.py`, `identifiers.py`, `graph.py`, `verdict.py`, `verdict_oracle.py` | не импортирует инфраструктуру; `verdict_oracle.py` — независимая свёртка, которой тесты сверяют основную |
 | Приём | `intake/xml_safety.py`, `emchd.py`, `formats.py`, `egrul.py`, `charter.py`, `case_loader.py` | ошибка разбора попадает в `intake_errors`, а не роняет проверку; форматы МЧД — адаптеры ([ADR-008](adr/ADR-008-formats-and-classifier.md)) |
 | Правила | `rules/pack.py`, `checks.py`, `classifier.py`, `data/*.json` | метаданные в JSON, логика в коде ([ADR-003](adr/ADR-003-rules-as-data.md)) |
 | Перекрёстная проверка | `rules/cedar_export.py`, `policies/cedar/` | передоверие на Cedar ([ADR-006](adr/ADR-006-decision-engine.md)) |
 | Порты | `ports.py` | реестр МЧД (запрос по номеру, ИНН доверителя и ИНН представителя, как в реестре ФНС с 01.03.2026), подпись, банкротство; в MVP заглушки |
-| Контракт API | `docs/api/openapi.json` | фиксируется `scripts/export_openapi.py`; тест сверяет его с приложением и проверяет, что каждый маршрут, кроме `/health`, требует токен |
+| Контракт API | `docs/api/openapi.json` | фиксируется `scripts/export_openapi.py`; тест сверяет его с приложением и проверяет, что каждый маршрут, кроме `/health` и `/readyz`, требует токен |
 | Контракт манифеста кейса | `docs/api/case-manifest.schema.json` | JSON Schema 2020-12; `tests/test_r11_manifest_schema.py` проверяет, что схема и `intake/case_loader.py` принимают и отвергают одно и то же. Неизвестные ключи верхнего уровня загрузчик пропускает, схема — нет |
-| Сервисы | `services/verify.py`, `next_steps.py`, `rights.py`, `monitoring.py` | собирают проверку, о форматах не знают |
-| Аудит | `audit/journal.py`, `merkle.py`, `attestation.py`, `status_list.py` | всё проверяется без базы ([ADR-007](adr/ADR-007-status-list-and-merkle.md)) |
+| Сервисы | `services/verify.py`, `next_steps.py`, `rights.py`, `monitoring.py`, `webhooks.py`, `env_policy.py` | собирают проверку, о форматах не знают; `env_policy.py` разрешает профиль по `MANDAT_ENV`, `webhooks.py` подписывает события по Standard Webhooks |
+| Аудит | `audit/journal.py`, `merkle.py`, `jcs.py`, `attestation.py`, `status_list.py` | всё проверяется без базы; удостоверения подписываются по канонической записи RFC 8785 (`jcs.py`) ([ADR-007](adr/ADR-007-status-list-and-merkle.md)) |
+| Внешний якорь и ключи | `audit/anchor.py`, `tlog.py`, `trust.py`, `revocation.py`, `signing.py` | по настройке хеш закрытого сегмента журнала уходит наружу (файл, вебхук, RFC 3161, Sigstore Rekor); подпись — файл, PKCS#11, Vault Transit или AWS KMS ([ключи](KEYS.md)) |
+| Разбор | `review/state_machine.py`, `api/review.py` | состояния кейса у человека, роли и сроки; решение по устаревшей версии разбора получает 409 ([разбор](REVIEW.md)) |
+| Приватность | `privacy/pii.py`, `names.py`, `unknown_names.py` | псевдонимы реквизитов и метки ФИО до отправки в модель ([защита данных](DATA_PROTECTION.md)) |
 | Советник | `advisory/gate.py`, `llm.py`, `explainer.py` | на вердикт не влияет ([ADR-001](adr/ADR-001-verdict-ownership.md)) |
-| Интерфейсы | `cli.py`, `api/app.py`, `report/html.py` | тонкие обёртки над сервисами |
+| Интерфейсы | `cli.py`, `api/app.py`, `api/principals.py`, `api/storage.py`, `report/html.py` | тонкие обёртки над сервисами; пользователи и роли API, хранилище лимитов и отчётов (память, SQLite, Redis) |
+| Оценка | `eval/synth.py`, `run.py`, `metrics.py` | синтетический корпус и границы ([оценка](EVALUATION.md)) |
 
 ## Путь кейса
 
@@ -39,7 +43,7 @@
 
 ## Чего нет
 
-Хранилища кейсов с историей на дату, очереди исключений, адаптеров ЕГРЮЛ и реестра МЧД, проверки КЭП через СКЗИ, OIDC, внешнего якоря для корня журнала. Полный список — [LIMITS](../LIMITS.md), план — [ROADMAP](ROADMAP.md).
+Хранилища кейсов с историей на дату, адаптеров ЕГРЮЛ и реестра МЧД, проверки КЭП через СКЗИ, входа через OIDC. Очередь разбора и внешний якорь журнала уже есть: [разбор](REVIEW.md), [внешний якорь](KEYS.md#внешний-якорь-журнала). Полный список — [LIMITS](../LIMITS.md), план — [ROADMAP](ROADMAP.md).
 
 
 ## Статусы удостоверений

@@ -10,4 +10,4 @@ labels: bug
 
 **Что ожидалось**
 
-**Версия и окружение** (`mandat --version`, Python, `MANDAT_ENV`)
+**Версия и окружение** (`pip show mandat` или коммит `main`, Python, ОС, `MANDAT_ENV`)

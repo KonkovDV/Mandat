@@ -1,12 +1,13 @@
 ## Что изменено и зачем
 
-<!-- Ссылка на issue или находку аудита (AUD-…). -->
+<!-- Closes #N или находка аудита (M-…, R-…). Один PR — одна задача, ветка от свежего main. -->
 
 ## Проверки
 
-- [ ] `ruff check`, `ruff format --check`, `mypy`, `pytest` проходят локально
-- [ ] Новое поведение закреплено тестом
-- [ ] Числа в документах сверены (`python scripts/lint_claims.py`)
+- [ ] `ruff check`, `ruff format --check`, `mypy`, `pytest --cov=mandat` проходят (на Windows без WSL — затронутые тесты, полное доказательство — CI)
+- [ ] Новое поведение закреплено тестом, и откат правки его валит
+- [ ] Числа и формулировки сверены (`python scripts/lint_claims.py`), ссылки целы (`python scripts/check_links.py`)
+- [ ] Правка в `src`, `tests`, `scripts` или `examples`: `python scripts/build_evidence.py --verify-source` проходит
 - [ ] Изменение правил: указаны норма и тест, статус `draft` не менялся без юриста
 - [ ] Нет секретов, ключей и реальных ПДн в коде, тестах и примерах
 

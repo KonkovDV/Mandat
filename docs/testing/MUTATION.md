@@ -5,7 +5,10 @@
 
 > **Не путать с фаззом входа.** `tests/test_redteam_fuzz.py` (C-17, 8814 сценариев) мутирует *документы кейса*. Этот файл — про **mutmut**: намеренные правки *кода* `rules/checks.py`. Это разные инструменты и разные числа.
 ```bash
-pip install mutmut==3.8.0 -r requirements/dev.lock && pip install -e .
+python -m pip install --require-hashes -r requirements/pip.lock
+python -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
+python -m pip install --no-deps --no-build-isolation -e .
+python -m pip install mutmut==3.8.0   # отдельно: в lock-файлах его нет, а с хешами pip не примет пакет без хеша
 mutmut run --max-children 8
 mutmut results            # выжившие мутанты
 mutmut show <имя>         # что именно изменено
