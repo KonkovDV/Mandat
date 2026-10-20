@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -50,6 +51,8 @@ def _request(**changes) -> OperationRequest:
         "representative_inn": REP_INN,
         "audience": AUDIENCE,
         "nonce": NONCE,
+        "organization_inn": "7707083893",
+        "operation_date": NOW.date(),
     }
     return OperationRequest(**{**base, **changes})
 
@@ -146,7 +149,12 @@ def test_missing_pseudonym_key_at_check_is_refused(tmp_path):
 
 
 def test_amount_without_bound_amount_is_refused():
-    subject = {"operation": "payment_sign", "amountRub": None}
+    subject = {
+        "operation": "payment_sign",
+        "amountRub": None,
+        "organizationInn": "7707083893",
+        "operationDate": NOW.date().isoformat(),
+    }
     problems = attestation.check_request(subject, _request(), pseudonym_key=None, consume_nonce=None)
     assert any("нет суммы" in p for p in problems)
 
@@ -184,14 +192,24 @@ def test_request_without_amount_is_refused_when_credential_has_amount(tmp_path):
 
 
 def test_request_without_amount_passes_when_credential_has_none():
-    subject = {"operation": "payment_sign", "amountRub": None}
+    subject = {
+        "operation": "payment_sign",
+        "amountRub": None,
+        "organizationInn": "7707083893",
+        "operationDate": NOW.date().isoformat(),
+    }
     problems = attestation.check_request(subject, _request(amount_rub=None), pseudonym_key=None, consume_nonce=None)
     assert not any("сумм" in p for p in problems)
 
 
 @pytest.mark.parametrize(("amount", "message"), [(True, "целым"), (-5, "отрицательная"), (1.5, "целым")])
 def test_bad_request_amount_is_checked_first(amount, message):
-    subject = {"operation": "payment_sign", "amountRub": None}
+    subject = {
+        "operation": "payment_sign",
+        "amountRub": None,
+        "organizationInn": "7707083893",
+        "operationDate": NOW.date().isoformat(),
+    }
     problems = attestation.check_request(subject, _request(amount_rub=amount), pseudonym_key=None, consume_nonce=None)
     assert any(message in p for p in problems)
 
@@ -206,6 +224,55 @@ def test_weak_request_fields_are_refused(tmp_path, changes, message):
     problems = _authorize(key, cred, sd, request=_request(**changes), nonces=nonces)
     assert any(message in p for p in problems)
     assert nonces.used == set()
+
+
+def test_other_day_and_other_company_are_refused(tmp_path):
+    key, cred, sd = _issued(tmp_path)
+    nonces = Nonces()
+    other_day = _authorize(
+        key, cred, sd, request=_request(operation_date=NOW.date() + timedelta(days=1)), nonces=nonces
+    )
+    assert any("дата операции" in p for p in other_day)
+    other_company = _authorize(key, cred, sd, request=_request(organization_inn="7729985006"), nonces=nonces)
+    assert any("организация" in p for p in other_company)
+    assert nonces.used == set()
+    assert _authorize(key, cred, sd, request=_request(), nonces=nonces) == []
+
+
+def test_check_after_moscow_midnight_is_the_next_day(tmp_path):
+    key, cred, sd = _issued(tmp_path)
+    # 22:00 UTC — уже следующие сутки в Москве.
+    late = datetime(2026, 10, 1, 22, 0, tzinfo=UTC)
+    assert late.astimezone(ZoneInfo("Europe/Moscow")).date() == NOW.date() + timedelta(days=1)
+    problems = attestation.authorize_operation(
+        cred,
+        [key.public_key()],
+        now=late,
+        status_dir=sd,
+        seen={},
+        operation_risk="default",
+        request=_request(),
+        pseudonym_key=PSEUDONYM_KEY,
+        consume_nonce=Nonces(),
+    )
+    assert any("день операции" in p for p in problems)
+
+
+def test_credential_ends_with_the_power_of_attorney(tmp_path):
+    key = Ed25519PrivateKey.generate()
+    report = _report()
+    report["chain"]["documents"] = [{"number": "poc", "effective_until": "2026-10-06"}]
+    cred = attestation.issue(report, key, now=NOW, pseudonym_key=PSEUDONYM_KEY, audience=AUDIENCE, nonce=NONCE)
+    until = datetime.fromisoformat(cred["validUntil"])
+    assert until == datetime(2026, 10, 7, 0, 0, tzinfo=ZoneInfo("Europe/Moscow"))
+    assert until < NOW + attestation.VALID_FOR
+
+
+def test_expired_power_makes_a_zero_window(tmp_path):
+    report = _report()
+    report["chain"]["documents"] = [{"effective_until": "2026-09-30"}]
+    cred = attestation.issue(report, Ed25519PrivateKey.generate(), now=NOW)
+    assert cred["validFrom"] == cred["validUntil"]
 
 
 def test_failing_nonce_store_means_refusal(tmp_path):
