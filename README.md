@@ -230,7 +230,7 @@ curl http://127.0.0.1:8000/readyz   # 200 только если журнал, х
 - API на FastAPI и Uvicorn рядом с HTML-карточкой для экрана сотрудника; лимиты и отчёты — в памяти, SQLite или Redis.
 - Cedar в CI: вторая реализация передоверия.
 - Модель по желанию, в контуре, только для устава.
-- CI: ruff, mypy в строгом режиме, pytest с порогом покрытия, pip-audit, Trivy и OpenSSF Scorecard. Для `main` собираются SBOM CycloneDX и подписанное происхождение сборки (SLSA).
+- CI: ruff, mypy в строгом режиме, pytest с порогом покрытия, pip-audit, Trivy, CodeQL и OpenSSF Scorecard. `build_evidence.py --verify-source` сверяет с деревом и хеш исходников, и число тестов. Для `main` собираются SBOM CycloneDX и подписанное происхождение сборки (SLSA).
 
 ## Лицензия
 

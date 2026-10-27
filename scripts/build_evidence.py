@@ -41,6 +41,24 @@ except ModuleNotFoundError:
     COVERAGE_ARGS = ()
 
 
+def collected_count() -> int:
+    """Число тестов в дереве по ``pytest --collect-only``, без запуска.
+
+    Перенесено из SynAPS-GridPlan (снимок collect-only в CI). Хеш исходников один не ловит, что числа
+    в evidence.json от старого прогона: 20.10 хеш переписали без pytest, и 1491 осталось при 1554 тестах.
+    """
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-o", "addopts=", "-p", "no:cacheprovider"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    match = re.search(r"(\d+) tests? collected", proc.stdout)
+    if proc.returncode != 0 or match is None:
+        raise SystemExit("pytest --collect-only не собрал тесты:\n" + proc.stdout[-2000:] + proc.stderr[-2000:])
+    return int(match.group(1))
+
+
 def pytest_summary() -> dict:
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-o", "addopts=", "-p", "no:warnings", *COVERAGE_ARGS],
@@ -50,11 +68,16 @@ def pytest_summary() -> dict:
         capture_output=True,
         text=True,
     )
-    tail = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else ""
+    lines = proc.stdout.strip().splitlines()
+    tail = next((line for line in reversed(lines) if re.search(r"\d+ passed", line)), lines[-1] if lines else "")
     counts = {k: int(v) for v, k in re.findall(r"(\d+) (passed|failed|skipped|error)", tail)}
-    tail = next((line for line in reversed(proc.stdout.strip().splitlines()) if re.search(r"\d+ passed", line)), tail)
-    counts = {k: int(v) for v, k in re.findall(r"(\d+) (passed|failed|skipped|error)", tail)}
-    out: dict = {"command": "python -m pytest -q", "returncode": proc.returncode, "summary": tail, **counts}
+    out: dict = {
+        "command": "python -m pytest -q",
+        "returncode": proc.returncode,
+        "summary": tail,
+        **counts,
+        "collected": collected_count(),
+    }
     cov = ROOT / "var" / "coverage.json"
     if COVERAGE_ARGS and cov.exists():
         out["coverage_percent"] = round(json.loads(cov.read_text(encoding="utf-8"))["totals"]["percent_covered"], 1)
@@ -89,12 +112,20 @@ def source_binding() -> dict:
 
 
 def verify_source() -> int:
-    recorded = (json.loads((ROOT / "evidence.json").read_text(encoding="utf-8")).get("source") or {}).get("sha256")
+    evidence = json.loads((ROOT / "evidence.json").read_text(encoding="utf-8"))
+    recorded = (evidence.get("source") or {}).get("sha256")
     actual = source_digest()
     if recorded != actual:
         print(f"evidence.json собран не из этих исходников: {recorded} != {actual}. Пересоберите: make evidence")
         return 1
-    print(f"evidence.json соответствует исходникам ({actual[:16]}…)")
+    # Хеш можно переписать и без прогона: число тестов в evidence.json должно совпасть с деревом.
+    tests = evidence.get("tests") or {}
+    ran = int(tests.get("passed") or 0) + int(tests.get("skipped") or 0)
+    collected = collected_count()
+    if ran != collected:
+        print(f"evidence.json: тестов в прогоне — {ran}, в дереве — {collected}. Пересоберите: make evidence")
+        return 1
+    print(f"evidence.json соответствует исходникам ({actual[:16]}…) и числу тестов ({collected})")
     return 0
 
 
