@@ -59,12 +59,18 @@ def key_problem() -> str | None:
 def require_attestation_status() -> bool:
     """Нужна ли обязательная проверка статуса удостоверения.
 
-    В pilot/prod (и любом защищённом режиме) — да. Переопределение:
-    ``MANDAT_REQUIRE_ATTESTATION_STATUS=1/0``.
+    В pilot/prod (и любом защищённом режиме) — да, и выключить её нельзя: значение ``0`` там — ошибка
+    конфигурации ``ValueError``, как и ослабление ``MANDAT_STATUS_MAX_AGE_BY_RISK`` (#112). Переменная
+    ``MANDAT_REQUIRE_ATTESTATION_STATUS=1/0`` включает и выключает проверку только на стенде.
     """
     raw = __import__("os").environ.get("MANDAT_REQUIRE_ATTESTATION_STATUS", "").strip().lower()
     if raw in {"1", "true", "yes", "on"}:
         return True
     if raw in {"0", "false", "no", "off"}:
+        if protected():
+            raise ValueError(
+                f"MANDAT_ENV={mode()}: MANDAT_REQUIRE_ATTESTATION_STATUS={raw} не применяется: "
+                "в защищённом режиме проверку статуса удостоверения выключить нельзя"
+            )
         return False
     return protected()

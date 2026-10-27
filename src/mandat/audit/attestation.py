@@ -301,9 +301,13 @@ def validate_attestation(
     """
     from mandat.services.env_policy import require_attestation_status
 
-    if require_status is None:
-        require_status = require_attestation_status()
     problems: list[str] = []
+    if require_status is None:
+        try:
+            require_status = require_attestation_status()
+        except ValueError as exc:  # попытка выключить статус в pilot/prod: проверка остаётся, удостоверение — нет
+            problems.append(str(exc))
+            require_status = True
     proof = credential.get("proof") or {}
     method = str(proof.get("verificationMethod") or "")
     keyring = trusted_keys if isinstance(trusted_keys, Keyring) else Keyring.of(trusted_keys)

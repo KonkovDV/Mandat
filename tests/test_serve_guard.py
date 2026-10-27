@@ -145,3 +145,48 @@ def test_runtime_image_drops_pip():
     """CI docker/Trivy: вендоренные в pip urllib3/msgpack/pkg_resources не попадают в образ."""
     docker = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text(encoding="utf-8")
     assert "pip uninstall -y setuptools pip" in docker
+
+
+@pytest.mark.parametrize("value", ["0", "false", "off"])
+def test_status_check_cannot_be_turned_off_in_pilot(monkeypatch, value, tmp_path, capsys):
+    """#112: в pilot переключатель не выключает проверку статуса, а serve и attest-verify видят ошибку конфигурации."""
+    from datetime import UTC, datetime
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from mandat.audit import attestation
+    from mandat.services.env_policy import require_attestation_status
+
+    key = Ed25519PrivateKey.generate()
+    cred = attestation.issue({"verdict": "confirmed", "profile": "strict"}, key)
+    monkeypatch.setenv("MANDAT_ENV", "pilot")
+    monkeypatch.setenv("MANDAT_REQUIRE_ATTESTATION_STATUS", value)
+    with pytest.raises(ValueError, match="выключить нельзя"):
+        require_attestation_status()
+    problems = attestation.validate_attestation(cred, [key.public_key()], now=datetime.now(UTC))
+    assert any("выключить нельзя" in p for p in problems)
+    assert any("каталог статусов не передан" in p for p in problems)
+    _access(monkeypatch)
+    monkeypatch.setenv("MANDAT_JOURNAL_KEY", STRONG)
+    monkeypatch.setenv("MANDAT_PII_KEY", STRONG)
+    assert cli.main(["serve"]) == 2
+    assert "выключить нельзя" in capsys.readouterr().err
+    path = tmp_path / "cred.json"
+    path.write_text(attestation.dump(cred), encoding="utf-8")
+    public = attestation.public_key_multibase(key)
+    assert cli.main(["attest-verify", str(path), "--public-key", public]) == 2
+    assert "выключить нельзя" in capsys.readouterr().err
+
+
+def test_status_switch_still_works_on_the_stand(monkeypatch):
+    from mandat.services.env_policy import require_attestation_status
+
+    monkeypatch.setenv("MANDAT_ENV", "demo")
+    monkeypatch.setenv("MANDAT_REQUIRE_ATTESTATION_STATUS", "0")
+    assert require_attestation_status() is False
+    monkeypatch.setenv("MANDAT_REQUIRE_ATTESTATION_STATUS", "1")
+    assert require_attestation_status() is True
+    monkeypatch.setenv("MANDAT_ENV", "pilot")
+    assert require_attestation_status() is True
+    monkeypatch.delenv("MANDAT_REQUIRE_ATTESTATION_STATUS")
+    assert require_attestation_status() is True
