@@ -13,7 +13,7 @@
 
 Критерии. Числа — из `evidence.json`, команды — те же, что в CI.
 
-- `python -m pytest -q` — 1491 автотест (`tests.passed`);
+- `python -m pytest -q` — 1600 автотестов (`tests.passed`, сверяется с `tests.collected`);
 - `python -m ruff check src tests scripts tools`, `python -m ruff format --check src tests scripts tools`, `python -m mypy` (каталог `src` из `pyproject.toml`), `python scripts/lint_claims.py`;
 - `mandat demo` — 14 демо-кейсов (`demo_cases`); `mandat journal-verify` проверяет целость журнала;
 - `mandat eval --per-defect 6` — ложных «подтверждено» 0 на 294 синтетических кейсах (`synthetic_corpus.false_confirmed`, `synthetic_corpus.cases`);

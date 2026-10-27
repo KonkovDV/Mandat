@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mandat.domain.verdict import CHECK_LABEL_RU, PROFILES
+from mandat.domain.verdict import CHECK_LABEL_RU, PROFILES, Profile
 from mandat.rules.pack import default_catalog, default_pack
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +24,18 @@ def _cell(text: str | None) -> str:
     return (text or "—").replace("|", "\\|")
 
 
+WAIVED_REASON = {"signature": "в стенде нет СКЗИ", "bankruptcy": "ЕФРСБ в стенде не подключён"}
+
+
+def profile_cell(profile: Profile, check: str) -> str:
+    """Ячейка таблицы групп: как профиль обращается с группой в ``verdict.fold``."""
+    if check in profile.waived:
+        return "снята, если не проверялась"
+    if check in profile.mandatory:
+        return "обязательна"
+    return "по ситуации"
+
+
 def render_rules_doc() -> str:
     pack, catalog = default_pack(), default_catalog()
     groups: dict[str, int] = {}
@@ -32,15 +44,13 @@ def render_rules_doc() -> str:
     demo, strict = PROFILES["demo"], PROFILES["strict"]
 
     def mark(check: str) -> str:
-        cells = []
-        for profile in (demo, strict):
-            if check in profile.mandatory:
-                cells.append("обязательна")
-            elif check in profile.waived:
-                cells.append("снята")
-            else:
-                cells.append("по ситуации")
-        return " | ".join(cells)
+        # Снятие сильнее обязательности: группа из waived без ответа источника «да» не мешает (verdict.fold, #111).
+        return " | ".join(profile_cell(profile, check) for profile in (demo, strict))
+
+    waived = "; ".join(
+        f"«{CHECK_LABEL_RU.get(c, c)}» ({WAIVED_REASON.get(c, 'источник в стенде не подключён')})"
+        for c in sorted(demo.waived, key=list(CHECK_LABEL_RU).index)
+    )
 
     lines = [
         "# Правила «Мандата»",
@@ -82,8 +92,11 @@ def render_rules_doc() -> str:
         "",
         "## Группы проверок",
         "",
-        "Профиль `demo` открыто снимает проверку подписи, потому что СКЗИ в стенде нет. "
-        "Профиль `strict` требует всё и не доверяет правилам в статусе `draft`.",
+        f"Профиль `demo` открыто снимает группы без ответа источника: {waived}. Снятая группа не мешает "
+        "«да», но опровержение, найденное в ней, остаётся опровержением. Профиль `strict` требует все группы. "
+        "Правило в статусе `draft` там группу не закрывает: его подтверждение становится «не проверено», "
+        "а опровержение — «на разбор». Реестр, ЕГРЮЛ, сведения о банкротстве и подпись из пакета кейса "
+        "в `strict` не считаются доверенным источником.",
         "",
         "| Группа | Правил | `demo` | `strict` |",
         "|---|---|---|---|",

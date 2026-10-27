@@ -594,7 +594,8 @@ def create_app(
         body, version = review_state(case_id, report, owner)
         return review_api.view(case_id, body, version)
 
-    @app.post("/v1/cases/{case_id}/review/{action}")
+    # Тело разбора тоже I-JSON: повтор «reason» иначе молча брал последнее значение в журнал.
+    @app.post("/v1/cases/{case_id}/review/{action}", dependencies=[Depends(strict_json_object)])
     def review_action(
         case_id: str, action: str, payload: ReviewAction, principal: Principal = Depends(writer)
     ) -> dict[str, Any]:

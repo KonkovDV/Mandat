@@ -339,8 +339,12 @@ class StatusRegistry:
         self.entries[str(index)].setdefault("history", []).append({"purpose": purpose, "reason": reason})
         return True
 
-    def find(self, *, org_inn: str, poa_number: str | None = None) -> list[int]:
-        """Номера удостоверений организации, по которым выданы или рекомендованы права (не опровергнутые)."""
+    def find(self, *, org_inn: str, poa_number: str | None = None, chain_kind: str | None = None) -> list[int]:
+        """Номера удостоверений организации, по которым выданы или рекомендованы права (не опровергнутые).
+
+        ``chain_kind`` сужает выбор видом цепочки из отчёта (``eio_direct`` — руководитель без МЧД). У записи,
+        выданной до появления поля, вид выводится из номеров МЧД: без них она считается ``eio_direct``.
+        """
         return sorted(
             int(i)
             for i, meta in self.entries.items()
@@ -349,6 +353,10 @@ class StatusRegistry:
             and (
                 poa_number is None
                 or normalize_poa_number(poa_number) in {normalize_poa_number(n) for n in meta.get("poa_numbers", [])}
+            )
+            and (
+                chain_kind is None
+                or meta.get("chain_kind", "poa" if meta.get("poa_numbers") else "eio_direct") == chain_kind
             )
         )
 

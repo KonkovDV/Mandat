@@ -106,6 +106,18 @@ def test_full_cycle_and_journal(store, tmp_path):
     ]
 
 
+def test_review_body_with_a_duplicate_key_is_422_and_not_journaled(store, tmp_path):
+    """R12 для маршрута разбора: два «reason» молча давали 200 и писали в журнал последнее значение."""
+    client = _client(store, tmp_path)
+    case_id = _case(client)
+    version = client.get(f"/v1/cases/{case_id}/review", headers=_h("rv")).json()["version"]
+    body = f'{{"expected_version": {version}, "reason": "a", "reason": "b"}}'
+    headers = {**_h("rv"), "Content-Type": "application/json"}
+    assert client.post(f"/v1/cases/{case_id}/review/open", content=body, headers=headers).status_code == 422
+    assert client.get(f"/v1/cases/{case_id}/review", headers=_h("rv")).json()["version"] == version
+    assert [r["action"] for r in journal.read_journal(tmp_path / "j.jsonl")] == ["verify"]
+
+
 def test_stale_version_is_409_and_state_kept(store, tmp_path):
     client = _client(store, tmp_path)
     case_id = _case(client)
