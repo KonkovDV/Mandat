@@ -89,10 +89,19 @@ def test_number_table(ieee, text):
     assert canonicalize(value) == text
 
 
-@pytest.mark.parametrize("bad", [float("nan"), float("inf"), -float("inf"), 2**53 + 1, "\ud800", {1: "x"}, {"a"}])
+@pytest.mark.parametrize(
+    "bad", [float("nan"), float("inf"), -float("inf"), 2**53, -(2**53), 2**53 + 1, "\ud800", {1: "x"}, {"a"}]
+)
 def test_rejected_values(bad):
     with pytest.raises(JcsError):
         canonicalize(bad)
+
+
+def test_integer_bound_is_max_safe_integer():
+    """RFC 7493 разд. 2.2: точны целые из [−(2**53) + 1, 2**53 − 1]. Число двойной точности 2**53 остаётся числом."""
+    assert canonicalize(2**53 - 1) == "9007199254740991"
+    assert canonicalize(-(2**53) + 1) == "-9007199254740991"
+    assert canonicalize(float(2**53)) == "9007199254740992"
 
 
 def test_ascii_documents_keep_their_old_bytes():

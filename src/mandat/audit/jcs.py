@@ -6,8 +6,10 @@
   младше U+0020 — ``\\u00xx`` строчными; остальное без экранирования (разд. 3.2.2.2);
 - NaN и бесконечность — ошибка (разд. 3.2.2.3); одиночные суррогаты — ошибка, их нет в UTF-8.
 
-Целые за пределами ±2**53 тоже ошибка: в IEEE 754 они теряют точность, а JCS работает с ними
-как с числами двойной точности. Проверено на примерах из текста RFC 8785 (``tests/test_jcs.py``).
+Целое вне ±(2**53 − 1) тоже ошибка: JCS работает с числами двойной точности, а RFC 7493 (разд. 2.2)
+считает точными только целые из этого диапазона. Уже 2**53 и 2**53 + 1 дают одно и то же число IEEE 754;
+независимая реализация (пакет ``rfc8785``) такое целое тоже отвергает. Проверено на примерах из текста
+RFC 8785 (``tests/test_jcs.py``).
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ import math
 from decimal import Context, Decimal
 from typing import Any
 
-MAX_SAFE = 2**53
+MAX_SAFE = 2**53 - 1  # Number.MAX_SAFE_INTEGER
 
 _ESCAPES = {'"': '\\"', "\\": "\\\\", "\b": "\\b", "\t": "\\t", "\n": "\\n", "\f": "\\f", "\r": "\\r"}
 
@@ -80,7 +82,7 @@ def canonicalize(value: Any) -> str:
         return "false"
     if isinstance(value, int):
         if abs(value) > MAX_SAFE:
-            raise JcsError(f"целое {value} вне ±2**53")
+            raise JcsError(f"целое {value} вне ±(2**53 − 1)")
         return _number(float(value))
     if isinstance(value, float):
         return _number(value)
