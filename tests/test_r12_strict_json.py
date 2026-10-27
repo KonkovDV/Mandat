@@ -93,3 +93,50 @@ def test_status_list_with_duplicate_key_is_rejected(tmp_path) -> None:
     (tmp_path / "revocation.json").write_text('{"id": "a", "id": "b"}', encoding="utf-8")
     with pytest.raises(json.JSONDecodeError, match="ключ"):
         check_status(cred, tmp_path, key)
+
+
+@pytest.mark.parametrize("text", ["1e309", "-1e309", '{"n": 1e309}', "[1, 2e400]"])
+def test_overflow_to_infinity_is_rejected(text: str) -> None:
+    """#122, RFC 7493 разд. 2.2: число вне IEEE 754 — ошибка входа, а не бесконечность."""
+    with pytest.raises(StrictJsonError, match="NaN"):
+        strict_loads(text)
+    assert strict_loads("1.7976931348623157e308") == 1.7976931348623157e308
+
+
+@pytest.mark.parametrize("text", ['"\\ud800"', '{"\\udead": 1}', '{"a": ["ok", "\\udc00"]}', '"\\ude00\\ud83d"'])
+def test_lone_surrogates_are_rejected(text: str) -> None:
+    """RFC 7493 разд. 2.1: одиночный суррогат запрещён и в экранированном виде, в UTF-8 его не записать."""
+    with pytest.raises(StrictJsonError, match="суррогат"):
+        strict_loads(text)
+
+
+def test_noncharacters_are_kept_because_the_journal_is_read_strictly(tmp_path) -> None:
+    """U+FFFE в основании решения приходит через API разбора; строгий читатель не должен ломать журнал."""
+    from mandat.audit import journal
+
+    assert strict_loads('"\\ufffe \\udbff\\udfff"') == "￾ \U0010ffff"
+    log = tmp_path / "j.jsonl"
+    journal.append(log, action="review_open", actor="rv", role="reviewer", case_id="c1", reason="x ￾ y")
+    assert journal.verify_journal(log).ok
+
+
+def test_valid_pairs_and_line_separator_are_kept() -> None:
+    # Пара суррогатов — один символ U+1F600. U+2028 разрешён I-JSON, а JCS оставляет его без экранирования.
+    assert strict_loads('"\\ud83d\\ude00"') == "\U0001f600"
+    assert strict_loads('"a b"') == "a b"
+
+
+def test_lone_surrogate_in_python_text_and_huge_integer_are_input_errors() -> None:
+    with pytest.raises(StrictJsonError, match="суррогат"):
+        strict_loads('"\ud800"')
+    with pytest.raises(StrictJsonError, match="цифр"):
+        strict_loads("1" * 5000)
+    assert strict_loads("1" * 400) == int("1" * 400)
+
+
+@pytest.mark.parametrize("idem", [None, "surrogate-1"])
+def test_api_manifest_with_lone_surrogate_is_422_not_500(idem: str | None) -> None:
+    client = TestClient(create_app("t", rate_per_min=0), raise_server_exceptions=False)
+    body = b'{"case_id": "\\ud800", "operation": {"code": "PAYMENT_SIGN", "date": "2026-10-20"}}'
+    headers = {**AUTH, **({"Idempotency-Key": idem} if idem else {})}
+    assert client.post("/v1/cases", content=body, headers=headers).status_code == 422
