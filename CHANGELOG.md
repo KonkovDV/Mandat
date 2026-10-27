@@ -8,7 +8,7 @@
 - `MANDAT_REQUIRE_ATTESTATION_STATUS=0` в `pilot` и `prod` — ошибка конфигурации ([#112](https://github.com/KonkovDV/Mandat/issues/112)). `RULES.md` показывает банкротство в `demo` снятым ([#111](https://github.com/KonkovDV/Mandat/issues/111)).
 - JCS отвергает целое 2**53, как требует RFC 7493 и как делает независимая реализация `rfc8785`. Метка времени вебхука длиннее 12 цифр — несовпадение подписи, а не исключение.
 - `evidence.json` пересобран; `--verify-source` теперь сверяет и число тестов (снимок collect-only из SynAPS-GridPlan). Добавлен CodeQL по образцу SynAPS-RepairFlow.
-- Разбор: [сверка с эталонами 27.10](docs/audit/AUDIT-2026-10-27-DIFFERENTIAL.md).
+- Разбор: [сверка с эталонами 27.10](docs/audit/AUDIT-2026-10-27-DIFFERENTIAL.md). На дереве до этих исправлений падение выпуска описано в [глубокой проверке 27.10](docs/audit/AUDIT-2026-10-27.md). U+2028 канонизация оставляет как есть (RFC 8785); RFC 7493 его не запрещает.
 
 ## 2026-10-26 — проверка зависимостей после красного CI
 
