@@ -208,6 +208,54 @@ def test_takeover_window_keeps_revocation():
     assert {"possible_takeover", "poa_invalidated"} <= kinds
 
 
+def _director_change(new_eio_inn: object) -> dict:
+    """Право по МЧД и право самого руководителя без МЧД, событие смены руководителя."""
+    payload: dict = {} if new_eio_inn is None else {"new_eio_inn": new_eio_inn}
+    return {
+        "rights": [
+            {
+                "right_id": "by-poa",
+                "org_inn": "7700000000",
+                "representative_inn": "rep",
+                "operation": "pay",
+                "poa_numbers": ["n1"],
+                "eio_inn": "old",
+            },
+            {
+                "right_id": "own",
+                "org_inn": "7700000000",
+                "representative_inn": "old",
+                "operation": "pay",
+                "poa_numbers": [],
+                "eio_inn": "old",
+            },
+        ],
+        "events": [
+            {"kind": "EIO_CHANGED", "org_inn": "7700000000", "at": "2026-10-21T09:10:00+03:00", "payload": payload}
+        ],
+    }
+
+
+def test_director_change_ends_the_directors_own_right_but_not_a_power_of_attorney():
+    """#124: полномочие руководителя без МЧД — сама должность (п. 1 ст. 53 ГК РФ); МЧД смена не прекращает."""
+    alerts = {a.kind: a for a in evaluate(*parse_events(_director_change("new")))}
+    assert alerts["eio_changed"].affected_rights == ("by-poa",)
+    assert alerts["eio_changed"].attestation_action is None
+    ended = alerts["eio_authority_ended"]
+    assert ended.affected_rights == ("own",)
+    assert ended.attestation_action == "revocation" and ended.chain_kind == "eio_direct"
+    assert ended.as_dict()["chain_kind"] == "eio_direct"
+
+
+def test_director_change_without_the_new_director_suspends_instead_of_revoking():
+    alerts = {a.kind: a for a in evaluate(*parse_events(_director_change(None)))}
+    assert alerts["eio_authority_ended"].attestation_action == "suspension"
+
+
+def test_reappointed_director_keeps_the_own_right():
+    assert evaluate(*parse_events(_director_change("old"))) == []
+
+
 def test_explainer_drops_verdict_inversion():
     facts = [Fact("verdict", "Вердикт: ОПРОВЕРГНУТО")]
 

@@ -116,6 +116,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
                 "org_inn": report["organization"]["inn"],
                 "verdict": report["verdict"],
                 "poa_numbers": report["chain"]["poa_numbers"],
+                "chain_kind": report["chain"]["kind"],
                 "attestation": f"attestations/{case_dir.name}.json",
             }
         )
@@ -169,7 +170,7 @@ def cmd_monitor(args: argparse.Namespace) -> int:
             if not alert.attestation_action:
                 continue
             number = alert.poa_number if alert.attestation_action == "revocation" else None
-            for index in registry.find(org_inn=alert.org_inn, poa_number=number):
+            for index in registry.find(org_inn=alert.org_inn, poa_number=number, chain_kind=alert.chain_kind):
                 if registry.mark(index, alert.attestation_action, alert.kind):
                     meta = registry.entries[str(index)]
                     changes.append({"attestation": meta.get("attestation"), "status": alert.attestation_action})

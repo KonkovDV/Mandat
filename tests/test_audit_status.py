@@ -123,6 +123,38 @@ def test_monitor_revokes_and_suspends_attestations(root: Path, tmp_path: Path, m
     assert main(["attest-verify", refuted, "--public-key", key, *status]) == 0  # опровергнутые не трогаем
 
 
+def test_monitor_revokes_only_the_directors_own_attestation_on_director_change(
+    root: Path, tmp_path: Path, monkeypatch, capsys
+):
+    """#124: смена руководителя отзывает удостоверение цепочки eio_direct, удостоверения по МЧД не трогает."""
+    monkeypatch.chdir(root)
+    demo = tmp_path / "demo"
+    assert main(["demo", "--out", str(demo)]) == 0
+    key = (demo / "public_key.txt").read_text().strip()
+    status = ["--status-dir", str(demo / "status")]
+    payload = json.loads((root / "examples" / "events" / "takeover.json").read_text(encoding="utf-8"))
+    payload["events"] = [e for e in payload["events"] if e["kind"] == "EIO_CHANGED"]
+    events = tmp_path / "eio_changed.json"
+    events.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    capsys.readouterr()
+    assert main(["monitor", str(events), *status]) == 0
+    changes = json.loads(capsys.readouterr().out)["status_changes"]
+    assert changes == [{"attestation": "attestations/02_director_without_poa.json", "status": "revocation"}]
+    director = str(demo / "attestations" / "02_director_without_poa.json")
+    by_poa = str(demo / "attestations" / "01_ok.json")
+    assert main(["attest-verify", director, "--public-key", key, *status]) == 3
+    assert main(["attest-verify", by_poa, "--public-key", key, *status]) == 0
+
+
+def test_find_infers_chain_kind_for_entries_issued_before_the_field(tmp_path: Path):
+    registry = StatusRegistry.open(tmp_path / "status")
+    legacy = registry.allocate({"org_inn": "1", "verdict": "confirmed", "poa_numbers": []})
+    by_poa = registry.allocate({"org_inn": "1", "verdict": "confirmed", "poa_numbers": ["n1"]})
+    unmatched = registry.allocate({"org_inn": "1", "verdict": "confirmed", "poa_numbers": [], "chain_kind": "none"})
+    assert registry.find(org_inn="1", chain_kind="eio_direct") == [legacy]
+    assert registry.find(org_inn="1") == sorted([legacy, by_poa, unmatched])
+
+
 def test_review_appeal_of_auto_verdict(tmp_path: Path):
     case = ReviewCase("c1", "h" * 64, state=ReviewState.AUTO_DECIDED)
     with pytest.raises(ReviewError):
