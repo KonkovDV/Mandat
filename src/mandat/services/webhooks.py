@@ -204,6 +204,15 @@ def sign_headers(secret: str | Iterable[str], delivery_id: str, body: bytes, now
     }
 
 
+# Секунды Unix: 10 цифр сейчас, 12 хватает до 33 658 года. Длиннее — не метка, а попытка уронить проверку:
+# 400 цифр не переводятся во float (OverflowError), 5000 — в int (предел цифр интерпретатора).
+_STAMP = re.compile(r"[0-9]{1,12}")
+
+
+def _fresh(stamp: str, now: datetime, skew: int) -> bool:
+    return _STAMP.fullmatch(stamp) is not None and abs(now.timestamp() - int(stamp)) <= skew
+
+
 def signature_ok(
     secret: str | Iterable[str],
     headers: Mapping[str, str],
@@ -221,9 +230,7 @@ def signature_ok(
     delivery_id = lower.get("webhook-id") or ""
     stamp = lower.get("webhook-timestamp") or ""
     offered = _offered(lower.get("webhook-signature") or "")
-    if not _ID.fullmatch(delivery_id) or not stamp.isascii() or not stamp.isdigit() or not offered:
-        return False
-    if abs(now.timestamp() - int(stamp)) > skew:
+    if not _ID.fullmatch(delivery_id) or not offered or not _fresh(stamp, now, skew):
         return False
     if not _matches(parse_keys(secret), delivery_id, stamp, body, offered):
         return False
@@ -245,7 +252,7 @@ def response_signature_ok(
         return False
     stamp = lower.get("webhook-timestamp") or ""
     offered = _offered(lower.get("webhook-signature") or "")
-    if not stamp.isascii() or not stamp.isdigit() or not offered or abs(now.timestamp() - int(stamp)) > SKEW_SECONDS:
+    if not offered or not _fresh(stamp, now, SKEW_SECONDS):
         return False
     return _matches(parse_keys(secret), expected_id, stamp, body, offered)
 

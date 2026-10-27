@@ -121,3 +121,15 @@ def test_missing_replay_store_in_protected_mode_is_a_refusal(monkeypatch):
     body = b"{}"
     headers = sign_headers(secret, "evt_1", body, NOW)
     assert signature_ok(secret, headers, body, NOW) is False
+
+
+@pytest.mark.parametrize("stamp", ["9" * 13, "9" * 400, "9" * 5000, "", "１６１４２６５３３０", "+1614265330"])
+def test_oversized_or_foreign_timestamp_is_a_mismatch_not_an_exception(stamp):
+    """Метка из 400 цифр роняла проверку OverflowError, из 5000 — ValueError: отправитель не аутентифицирован."""
+    from mandat.services.webhooks import response_signature_ok
+
+    secret = new_secret()
+    headers = {**sign_headers(secret, "msg_1", b"{}", NOW), "webhook-timestamp": stamp}
+    assert not signature_ok(secret, headers, b"{}", NOW)
+    assert not response_signature_ok(secret, headers, b"{}", NOW, "msg_1")
+    assert signature_ok(secret, sign_headers(secret, "msg_1", b"{}", NOW), b"{}", NOW)
