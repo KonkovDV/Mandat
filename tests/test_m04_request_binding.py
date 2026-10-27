@@ -283,3 +283,55 @@ def test_failing_nonce_store_means_refusal(tmp_path):
 
     problems = _authorize(key, cred, sd, request=_request(), nonces=down)
     assert any("недоступно" in p for p in problems)
+
+
+def test_term_without_a_next_day_gives_a_zero_window_not_an_exception():
+    """#126: у 9999-12-31 нет следующих суток. Раньше выпуск падал с OverflowError."""
+    report = _report()
+    report["chain"]["documents"] = [{"number": "poc", "effective_until": "9999-12-31"}]
+    cred = attestation.issue(report, Ed25519PrivateKey.generate(), now=NOW)
+    assert cred["validFrom"] == cred["validUntil"]
+
+
+@pytest.mark.parametrize(
+    "documents",
+    [
+        [{"effective_until": "not-a-date"}],
+        [{"effective_until": "2026-13-01"}],
+        [{"effective_until": "2026-10-20garbage"}],
+        [{"effective_until": 20261020}],
+        [{"effective_until": ""}],
+        [{"effective_until": None, "valid_until": "31.10.2026"}],
+        [{"effective_until": "2026-10-20"}, "poc"],
+        "poc",
+    ],
+)
+def test_unreadable_term_gives_a_zero_window_not_thirty_days(documents):
+    """#126: нечитаемый срок не оставляет 30-дневное окно, как будто срока не было."""
+    report = _report()
+    report["chain"]["documents"] = documents
+    cred = attestation.issue(report, Ed25519PrivateKey.generate(), now=NOW)
+    assert cred["validFrom"] == cred["validUntil"]
+
+
+def test_document_without_a_term_keeps_the_thirty_day_window():
+    report = _report()
+    report["chain"]["documents"] = [{"number": "poc", "effective_until": None, "valid_until": None}]
+    cred = attestation.issue(report, Ed25519PrivateKey.generate(), now=NOW)
+    assert datetime.fromisoformat(cred["validUntil"]) == NOW + attestation.VALID_FOR
+
+
+def test_power_of_attorney_until_9999_12_31_is_verified_and_issued():
+    """Сквозной путь #126: разбор МЧД принимает 9999-12-31, проверка и выпуск не падают."""
+    from dataclasses import replace
+    from datetime import date
+
+    from mandat.intake.case_loader import load_case_dir
+    from mandat.services.verify import verify_case
+
+    case = load_case_dir(Path(__file__).resolve().parents[1] / "examples" / "cases" / "01_ok")
+    case = replace(case, poas=tuple(replace(p, valid_until=date.max) for p in case.poas))
+    report = verify_case(case).as_dict()
+    assert report["chain"]["documents"][0]["effective_until"] == "9999-12-31"
+    cred = attestation.issue(report, Ed25519PrivateKey.generate(), now=NOW)
+    assert cred["validFrom"] == cred["validUntil"]

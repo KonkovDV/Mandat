@@ -31,6 +31,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -385,26 +386,43 @@ def bank_date(moment: datetime) -> date:
     return moment.astimezone(BANK_TZ).date()
 
 
+# Срок документа цепочки не прочитан: окно удостоверения нулевое, а не 30 дней (#126).
+_UNREADABLE_END = datetime.min.replace(tzinfo=UTC)
+
+
 def _authority_end(report: dict[str, Any]) -> datetime | None:
     """Конец самого раннего срока документов цепочки: день ``effective_until`` включительно.
 
     Берётся ``effective_until`` (срок по МЧД или год по ст. 186 ГК РФ), иначе ``valid_until``.
     Конец — начало следующих суток по Москве, чтобы день срока ещё входил в окно.
+
+    Срок, который не читается как дата ``ГГГГ-ММ-ДД``, и дата без следующих суток в календаре
+    (``9999-12-31``) окно не продлевают и выпуск не роняют: конец считается уже наступившим (#126).
+    Документ без срока окно не ограничивает, как и раньше.
     """
-    documents = (report.get("chain") or {}).get("documents") or []
-    if not isinstance(documents, list):
+    chain = report.get("chain") or {}
+    documents = chain.get("documents") if isinstance(chain, dict) else None
+    if documents is None:
         return None
+    if not isinstance(documents, list):
+        return _UNREADABLE_END
     ends: list[datetime] = []
     for doc in documents:
         if not isinstance(doc, dict):
+            return _UNREADABLE_END
+        raw = doc.get("effective_until")
+        if raw is None:
+            raw = doc.get("valid_until")
+        if raw is None:
             continue
-        raw = doc.get("effective_until") or doc.get("valid_until")
-        if not isinstance(raw, str) or len(raw) < 10:
-            continue
+        if not isinstance(raw, str) or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", raw) is None:
+            return _UNREADABLE_END
         try:
-            day = date.fromisoformat(raw[:10])
+            day = date.fromisoformat(raw)
         except ValueError:
-            continue
+            return _UNREADABLE_END
+        if day == date.max:
+            return _UNREADABLE_END
         ends.append(datetime.combine(day + timedelta(days=1), time.min, tzinfo=BANK_TZ))
     return min(ends) if ends else None
 
