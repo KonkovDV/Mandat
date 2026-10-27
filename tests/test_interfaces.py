@@ -146,6 +146,29 @@ def test_rules_doc_is_up_to_date(root: Path):
     )
 
 
+def test_rules_doc_profile_table_matches_the_profiles(root: Path):
+    """#111: ячейки demo и strict таблицы групп совпадают с mandatory и waived профиля."""
+    from mandat.domain.verdict import CHECK_LABEL_RU, PROFILES
+
+    labels = {label: check for check, label in CHECK_LABEL_RU.items()}
+    rows = {}
+    for line in (root / "docs" / "RULES.md").read_text(encoding="utf-8").splitlines():
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) == 4 and cells[0] in labels:
+            rows[labels[cells[0]]] = (cells[2], cells[3])
+    assert rows, "таблица групп не найдена"
+
+    def expected(name: str, check: str) -> str:
+        profile = PROFILES[name]
+        if check in profile.waived:
+            return "снята, если не проверялась"
+        return "обязательна" if check in profile.mandatory else "по ситуации"
+
+    for check, (demo, strict) in rows.items():
+        assert (demo, strict) == (expected("demo", check), expected("strict", check)), check
+    assert rows["bankruptcy"][0] == "снята, если не проверялась"
+
+
 def test_api_keeps_a_bounded_number_of_reports(monkeypatch):
     import fastapi  # noqa: F401  # защитный тест не пропускается без зависимости
     from fastapi.testclient import TestClient
