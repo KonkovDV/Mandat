@@ -1,0 +1,600 @@
+{
+  "demo": {
+    "cmd": "mandat demo",
+    "code": 0,
+    "out": "кейс                             ожидалось            получено\n01_ok                            needs_review         НА РАЗБОР\n02_director_without_poa          needs_review         НА РАЗБОР\n03_subdelegation_ok              needs_review         НА РАЗБОР\n04_subdelegation_forbidden       refuted              ОПРОВЕРГНУТО\n05_director_changed              needs_review         НА РАЗБОР\n06_text_authority                needs_review         НА РАЗБОР\n07_revoked                       refuted              ОПРОВЕРГНУТО\n08_registry_unavailable          insufficient_data    НЕДОСТАТОЧНО ДАННЫХ\n09_charter_limit                 needs_review         НА РАЗБОР\n10_old_director_poa              needs_review         НА РАЗБОР\n11_parent_revoked                refuted              ОПРОВЕРГНУТО\n12_no_term                       needs_review         НА РАЗБОР\n13_bankruptcy                    refuted              ОПРОВЕРГНУТО\n14_old_director_charter_cleared  confirmed            ПОДТВЕРЖДЕНО\nжурнал: 14 записей, целостность OK\nкорень дерева Меркла журнала: a5fd58b8ed66e4e8fd8fd74572151a2909abc7dded3746f46db681e5dd8e09ca\nотчёты: var/demo/*.html, удостоверения: var/demo/attestations/, списки статусов: var/demo/status/"
+  },
+  "verify_before": {
+    "cmd": "mandat attest-verify var/demo/attestations/01_ok.json --public-key-file var/demo/public_key.txt --status-dir var/demo/status",
+    "code": 0,
+    "out": "подпись верна\nвердикт в удостоверении: needs_review\nудостоверение подлинно; допуск операции — отдельно (authorize_operation)\nстатус удостоверения: действует"
+  },
+  "monitor_revoked": {
+    "cmd": "mandat monitor examples/events/poa_revoked.json --status-dir var/demo/status",
+    "code": 0,
+    "out": "{\n  \"alerts\": [\n    {\n      \"kind\": \"poa_invalidated\",\n      \"risk\": \"medium\",\n      \"org_inn\": \"7729985006\",\n      \"affected_rights\": [\n        \"R-003\"\n      ],\n      \"actions\": [\n        \"приостановить права, основанные на этой МЧД и её передоверии\",\n        \"запросить новую МЧД\"\n      ],\n      \"reasons\": [\n        \"МЧД ee2afcb0-9003-7ff0-ef03-8dad405558ea отменена\",\n        \"вместе с ней теряет силу передоверие (п. 3 ст. 188 ГК РФ)\"\n      ],\n      \"events\": [\n        \"0636a139f9c044cf\"\n      ],\n      \"attestation_action\": \"revocation\",\n      \"poa_number\": \"ee2afcb0-9003-7ff0-ef03-8dad405558ea\",\n      \"chain_kind\": null\n    }\n  ],\n  \"status_changes\": [\n    {\n      \"attestation\": \"attestations/03_subdelegation_ok.json\",\n      \"status\": \"revocation\"\n    }\n  ]\n}"
+  },
+  "verify_revoked": {
+    "cmd": "mandat attest-verify var/demo/attestations/03_subdelegation_ok.json --public-key-file var/demo/public_key.txt --status-dir var/demo/status",
+    "code": 3,
+    "out": "не принимается: статус удостоверения: отозвано"
+  },
+  "monitor_takeover": {
+    "cmd": "mandat monitor examples/events/takeover.json --status-dir var/demo/status",
+    "code": 0,
+    "out": "{\n  \"alerts\": [\n    {\n      \"kind\": \"possible_takeover\",\n      \"risk\": \"high\",\n      \"org_inn\": \"7729985006\",\n      \"affected_rights\": [\n        \"R-001\",\n        \"R-002\"\n      ],\n      \"actions\": [\n        \"приостановить автоматическую выдачу прав по организации\",\n        \"передать кейс в антифрод банка\",\n        \"уведомить прежних подписантов по известным каналам\",\n        \"перепроверить все выданные права по новой цепочке\"\n      ],\n      \"reasons\": [\n        \"за 72 ч: смена руководителя, новая МЧД и заявка на смену реквизитов\"\n      ],\n      \"events\": [\n        \"6d59f9cdbe34aca8\",\n        \"d841bfe20637729d\",\n        \"4fe1b39c0d647029\"\n      ],\n      \"attestation_action\": \"suspension\",\n      \"poa_number\": null,\n      \"chain_kind\": null\n    },\n    {\n      \"kind\": \"eio_changed\",\n      \"risk\": \"medium\",\n      \"org_inn\": \"7729985006\",\n      \"affected_rights\": [\n        \"R-001\"\n      ],\n      \"actions\": [\n        \"перепроверить права по новой цепочке\",\n        \"не отзывать автоматически: смена руководителя МЧД не прекращает\"\n      ],\n      \"reasons\": [\n        \"новая запись ЕГРЮЛ: ГРН 2267700999001\"\n      ],\n      \"events\": [\n        \"6d59f9cdbe34aca8\"\n      ],\n      \"attestation_action\": null,\n      \"poa_number\": null,\n      \"chain_kind\": null\n    },\n    {\n      \"kind\": \"eio_authority_ended\",\n      \"risk\": \"medium\",\n      \"org_inn\": \"7729985006\",\n      \"affected_rights\": [\n        \"R-002\"\n      ],\n      \"actions\": [\n        \"приостановить права прежнего руководителя, действовавшего без доверенности\",\n        \"проверить полномочия нового руководителя по свежей выписке ЕГРЮЛ\"\n      ],\n      \"reasons\": [\n        \"новая запись ЕГРЮЛ: ГРН 2267700999001\",\n        \"руководитель действовал без доверенности: с новой записью ЕГРЮЛ его полномочие кончилось (п. 1 ст. 53 ГК РФ)\"\n      ],\n      \"events\": [\n        \"6d59f9cdbe34aca8\"\n      ],\n      \"attestation_action\": \"revocation\",\n      \"poa_number\": null,\n      \"chain_kind\": \"eio_direct\"\n    }\n  ],\n  \"status_changes\": [\n    {\n      \"attestation\": \"attestations/14_old_director_charter_cleared.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/02_director_without_poa.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/06_text_authority.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/09_charter_limit.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/05_director_changed.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/03_subdelegation_ok.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/12_no_term.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/01_ok.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/08_registry_unavailable.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/10_old_director_poa.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/02_director_without_poa.json\",\n      \"status\": \"revocation\"\n    }\n  ]\n}"
+  },
+  "verify_after": {
+    "cmd": "mandat attest-verify var/demo/attestations/01_ok.json --public-key-file var/demo/public_key.txt --status-dir var/demo/status",
+    "code": 3,
+    "out": "не принимается: статус удостоверения: приостановлено"
+  },
+  "journal_verify": {
+    "cmd": "mandat journal-verify var/demo/journal.jsonl",
+    "code": 0,
+    "out": "{\"ok\": true, \"records\": 14, \"broken_at\": null, \"reason\": \"\", \"merkle_root\": \"a5fd58b8ed66e4e8fd8fd74572151a2909abc7dded3746f46db681e5dd8e09ca\"}"
+  },
+  "journal_proof": {
+    "cmd": "mandat journal-proof var/demo/journal.jsonl --seq 3",
+    "code": 0,
+    "out": "{\n  \"seq\": 3,\n  \"size\": 14,\n  \"record\": {\n    \"action\": \"verify\",\n    \"actor\": \"demo\",\n    \"at\": \"2026-10-28T15:59:43+00:00\",\n    \"case_id\": \"03_subdelegation_ok\",\n    \"details\": {\n      \"verdict\": \"needs_review\"\n    },\n    \"hash\": \"f66ee05715c16532c55d4dbf603d711c4a328176d40df50dc906646f0c8aa74d\",\n    \"payload_hash\": \"2cd49d10398686c146ba092c2e8b3c1fe6713ae052c3cd326241df928ae5fff6\",\n    \"prev\": \"48c95ad40e6021d209e3923e7613be9628dfb21d18257c5d5df3147c9b15fbda\",\n    \"reason\": \"\",\n    \"role\": \"operator\",\n    \"seq\": 3\n  },\n  \"leaf_hash\": \"2dd957ef9618dad497913dc45ddd790b50ac95dc451f110a93e9164decfa87ee\",\n  \"proof\": [\n    \"60ee41a2da36e6489c68bef0a69774084e99c55aae36adb45428536ba681c69d\",\n    \"15d202f496b1aa259d0b864ccfa650781af0a4e011dac767905c2bca88e1ee28\",\n    \"b0e32801125ae78120771c2a28324c8710ce8a59b0ebb2ac4b954ffb17f31778\",\n    \"040b75afe60a7c45228c0f0f050916747b09446f12bd9709f9542c7818c49157\"\n  ],\n  \"root\": \"a5fd58b8ed66e4e8fd8fd74572151a2909abc7dded3746f46db681e5dd8e09ca\",\n  \"verified\": true\n}"
+  },
+  "api": {
+    "cmd": "curl -s -X POST http://127.0.0.1:8000/v1/cases -H Authorization: Bearer $MANDAT_API_TOKEN -H Content-Type: application/json --data-binary @05_director_changed.json",
+    "code": 200,
+    "report": {
+      "engine": "mandat/0.3.0",
+      "case_id": "05_director_changed",
+      "verdict": "needs_review",
+      "verdict_label": "НА РАЗБОР",
+      "profile": "demo",
+      "operation": {
+        "code": "PAYMENT_SIGN",
+        "name": "Подписание платёжных документов в интернет-банке",
+        "date": "2026-10-20",
+        "amount_rub": 480000
+      },
+      "organization": {
+        "inn": "7729985006",
+        "ogrn": "1257700518756",
+        "name": "ООО «Ясная поляна»"
+      },
+      "requester": {
+        "full_name": "Лебедева Ирина Петровна",
+        "inn": "777588807322"
+      },
+      "chain": {
+        "kind": "poa",
+        "links": [
+          "МЧД 914279a9-81bb-e011-fc2e-53f6663176a7: Петров Пётр Петрович → Лебедева Ирина Петровна"
+        ],
+        "poa_numbers": [
+          "914279a9-81bb-e011-fc2e-53f6663176a7"
+        ],
+        "notes": [],
+        "documents": [
+          {
+            "number": "914279a9-81bb-e011-fc2e-53f6663176a7",
+            "issue_date": "2026-03-01",
+            "valid_until": "2027-02-28",
+            "effective_until": "2027-02-28",
+            "term_by_law": false,
+            "principal_inn": "7729985006",
+            "signer": "Петров Пётр Петрович",
+            "representatives": [
+              "Лебедева Ирина Петровна"
+            ],
+            "parent_number": null
+          }
+        ]
+      },
+      "checks": {
+        "format": {
+          "status": "ok",
+          "label": "Формат документа"
+        },
+        "identity": {
+          "status": "ok",
+          "label": "Реквизиты и стороны"
+        },
+        "registry": {
+          "status": "ok",
+          "label": "Реестр МЧД"
+        },
+        "term": {
+          "status": "ok",
+          "label": "Срок действия"
+        },
+        "eio": {
+          "status": "review",
+          "label": "Руководитель по ЕГРЮЛ"
+        },
+        "coverage": {
+          "status": "ok",
+          "label": "Покрытие операции"
+        },
+        "subdelegation": {
+          "status": "not_applicable",
+          "label": "Передоверие"
+        },
+        "charter": {
+          "status": "review",
+          "label": "Ограничения устава"
+        },
+        "signature": {
+          "status": "waived",
+          "label": "Электронная подпись"
+        },
+        "bankruptcy": {
+          "status": "waived",
+          "label": "Сведения о банкротстве"
+        }
+      },
+      "findings": [
+        {
+          "finding_id": "4afdd60608dc0699a5f97a39",
+          "rule_id": "R-BNK-001",
+          "check": "bankruptcy",
+          "effect": "not_verified",
+          "message": "Сведения о банкротстве не получены или не распознаны: Доверитель (ИНН 7729985006), Заявитель (ИНН 777588807322)",
+          "norm_ref": "ГК РФ, ст. 188 п. 1 подп. 7; 127-ФЗ. Отсутствие ответа ЕФРСБ не означает отсутствия процедуры",
+          "rule_status": "draft",
+          "next_step": "Получить сведения ЕФРСБ по доверителю и заявителю на дату операции",
+          "unit": "Сопровождение юрлиц",
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "source-trust",
+              "doc_sha256": "9932836317a1e4044a54d5aa112752999314ac8281b110ab3a8a4badc6c46177",
+              "locator": "efrsb:7729985006,777588807322",
+              "quote": null
+            }
+          ]
+        },
+        {
+          "finding_id": "896ac4885b9319945369adf2",
+          "rule_id": "R-SIG-001",
+          "check": "signature",
+          "effect": "not_verified",
+          "message": "Подпись МЧД 914279a9-81bb-e011-fc2e-53f6663176a7: проверка КЭП не подключена: в пилоте — через сертифицированные СКЗИ банка",
+          "norm_ref": "63-ФЗ, ст. 11; проверка КЭП — сертифицированными СКЗИ банка (в стенде не подключена)",
+          "rule_status": "draft",
+          "next_step": "Проверить КЭП через сертифицированные СКЗИ банка",
+          "unit": "Информационная безопасность",
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "signature:signature-not-connected",
+              "doc_sha256": "667f82916b28fd4e0f573dfa3279994fa99bed6ee33acd6116ce855e774f10c4",
+              "locator": "poa:914279a9-81bb-e011-fc2e-53f6663176a7",
+              "quote": "проверка КЭП не подключена: в пилоте — через сертифицированные СКЗИ банка"
+            }
+          ]
+        },
+        {
+          "finding_id": "8eb322a1b651b41a1a7b001e",
+          "rule_id": "R-CHR-002",
+          "check": "charter",
+          "effect": "needs_review",
+          "message": "Шаблоны не классифицировали устав: автоматического подтверждения нет",
+          "norm_ref": "ГК РФ, ст. 174",
+          "rule_status": "draft",
+          "next_step": "Запросить устав или выписку положений об ограничениях полномочий",
+          "unit": "Юридическая служба",
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "charter",
+              "doc_sha256": "9f31ea4ff4ba83230f36e6b238106835153d63454d6ff43f1ce636cdda2a7ca0",
+              "locator": "text",
+              "quote": null
+            }
+          ]
+        },
+        {
+          "finding_id": "f918a3f820b7610bbf3ee75d",
+          "rule_id": "R-EIO-002",
+          "check": "eio",
+          "effect": "needs_review",
+          "message": "После выдачи МЧД 914279a9-81bb-e011-fc2e-53f6663176a7 руководитель сменился: сейчас Петров Алексей Иванович (ГРН 2267700654321, с 01.10.2026). Смена руководителя доверенность не прекращает (п. 1 ст. 188 ГК РФ); смена свежая — не более 30 дн.: нужен разбор",
+          "norm_ref": "ГК РФ, ст. 188 п. 1 — смена руководителя не входит в исчерпывающий перечень оснований прекращения доверенности; разъяснения ФНС: ранее выданные МЧД действуют, пока их не отменили",
+          "rule_status": "draft",
+          "next_step": "Уточнить у нового руководителя, известна ли ему МЧД и не отменена ли она; при признаках захвата — в антифрод",
+          "unit": "Сопровождение юрлиц",
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "egrul",
+              "doc_sha256": "985a63c5261187799f1b2f1e4ac975aa774d9180c518c919568bd9383164c107",
+              "locator": "$.executives[1]",
+              "quote": "ГРН 2267700654321"
+            },
+            {
+              "doc_id": "poa-root",
+              "doc_sha256": "667f82916b28fd4e0f573dfa3279994fa99bed6ee33acd6116ce855e774f10c4",
+              "locator": "/Доверенность/Документ/Довер/СвДоверит/Доверит/РосОргДовер/ЛицоБезДов/СвФЛ/@ИННФЛ",
+              "quote": "779341418422"
+            }
+          ]
+        },
+        {
+          "finding_id": "938e253a668154286a133af7",
+          "rule_id": "R-COV-001",
+          "check": "coverage",
+          "effect": "supports",
+          "message": "Полномочие SYN-BANK-PAY-SIGN покрывает «Подписание платёжных документов в интернет-банке»",
+          "norm_ref": "ГК РФ, ст. 182, 185; единый классификатор полномочий (63-ФЗ в ред. 476-ФЗ; Приказ Минцифры № 856 от 18.08.2021)",
+          "rule_status": "draft",
+          "next_step": null,
+          "unit": null,
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "poa-root",
+              "doc_sha256": "667f82916b28fd4e0f573dfa3279994fa99bed6ee33acd6116ce855e774f10c4",
+              "locator": "/Доверенность/Документ/Довер/СвПолн/МашПолн[1]",
+              "quote": "Подписание платёжных документов в интернет-банке"
+            }
+          ]
+        },
+        {
+          "finding_id": "fe62625fd05e96dafd7c0edf",
+          "rule_id": "R-COV-002",
+          "check": "coverage",
+          "effect": "supports",
+          "message": "Код SYN-BANK-PAY-SIGN действует в классификаторе",
+          "norm_ref": "Единый классификатор полномочий (Приказ Минцифры № 856; справочник в ЕСНСИ с датами начала и исключения кода)",
+          "rule_status": "draft",
+          "next_step": null,
+          "unit": null,
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "poa-root",
+              "doc_sha256": "667f82916b28fd4e0f573dfa3279994fa99bed6ee33acd6116ce855e774f10c4",
+              "locator": "/Доверенность/Документ/Довер/СвПолн/МашПолн[1]",
+              "quote": "Подписание платёжных документов в интернет-банке"
+            },
+            {
+              "doc_id": "classifier:mandat-authority-classifier",
+              "doc_sha256": "5f08b73d574ac63ec8118545afe1a351a4b0e275019b2d7f25f886f5a3ef215c",
+              "locator": "code:SYN-BANK-PAY-SIGN",
+              "quote": null
+            }
+          ]
+        },
+        {
+          "finding_id": "b2cc3a0d0bd97c1633f5cb1f",
+          "rule_id": "R-EIO-001",
+          "check": "eio",
+          "effect": "supports",
+          "message": "МЧД 914279a9-81bb-e011-fc2e-53f6663176a7 подписал руководитель Петров Пётр Петрович (ГРН 2247700123456)",
+          "norm_ref": "ГК РФ, ст. 53, 185.1",
+          "rule_status": "draft",
+          "next_step": null,
+          "unit": null,
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "poa-root",
+              "doc_sha256": "667f82916b28fd4e0f573dfa3279994fa99bed6ee33acd6116ce855e774f10c4",
+              "locator": "/Доверенность/Документ/Довер/СвДоверит/Доверит/РосОргДовер/ЛицоБезДов/СвФЛ/@ИННФЛ",
+              "quote": "779341418422"
+            },
+            {
+              "doc_id": "egrul",
+              "doc_sha256": "985a63c5261187799f1b2f1e4ac975aa774d9180c518c919568bd9383164c107",
+              "locator": "$.executives[0]",
+              "quote": "ГРН 2247700123456"
+            }
+          ]
+        },
+        {
+          "finding_id": "edb30d95aaba76bd3b043d49",
+          "rule_id": "R-FMT-001",
+          "check": "format",
+          "effect": "supports",
+          "message": "МЧД 914279a9-81bb-e011-fc2e-53f6663176a7 разобрана, обязательные поля на месте",
+          "norm_ref": "63-ФЗ, ст. 17.2–17.5 в ред. 476-ФЗ (с 01.09.2024 представитель юрлица подписывает своей КЭП и МЧД); формат МЧД 003",
+          "rule_status": "draft",
+          "next_step": null,
+          "unit": null,
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "poa-root",
+              "doc_sha256": "667f82916b28fd4e0f573dfa3279994fa99bed6ee33acd6116ce855e774f10c4",
+              "locator": "/Доверенность/Документ/Довер/СвДов/@НомДовер",
+              "quote": "914279a9-81bb-e011-fc2e-53f6663176a7"
+            }
+          ]
+        },
+        {
+          "finding_id": "10205e13c1d296a52866488f",
+          "rule_id": "R-FMT-002",
+          "check": "format",
+          "effect": "supports",
+          "message": "МЧД 914279a9-81bb-e011-fc2e-53f6663176a7: единый формат 003",
+          "norm_ref": "Приказ Минцифры № 857 от 18.08.2021 (единые требования к формам МЧД); формат 003. Формат ФНС 5.0x — для налоговых отношений",
+          "rule_status": "draft",
+          "next_step": null,
+          "unit": null,
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "poa-root",
+              "doc_sha256": "667f82916b28fd4e0f573dfa3279994fa99bed6ee33acd6116ce855e774f10c4",
+              "locator": "/Доверенность/@ВерсФорм",
+              "quote": "EMCHD_1"
+            }
+          ]
+        },
+        {
+          "finding_id": "cecfbca9367e9625dd0daf0c",
+          "rule_id": "R-FMT-003",
+          "check": "format",
+          "effect": "supports",
+          "message": "МЧД 914279a9-81bb-e011-fc2e-53f6663176a7: реквизиты по единым требованиям в ред. Приказа № 1001 на месте",
+          "norm_ref": "Приказ Минцифры № 857 от 18.08.2021 в ред. Приказа № 1001 от 05.11.2025 (в силу с 01.02.2026): КПП доверителя, СНИЛС руководителя доверителя, наименование полномочия рядом с кодом",
+          "rule_status": "draft",
+          "next_step": null,
+          "unit": null,
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "poa-root",
+              "doc_sha256": "667f82916b28fd4e0f573dfa3279994fa99bed6ee33acd6116ce855e774f10c4",
+              "locator": "/Доверенность/Документ/Довер/СвДоверит/Доверит/РосОргДовер/СвРосОрг/@КПП",
+              "quote": "777401001"
+            }
+          ]
+        },
+        {
+          "finding_id": "0a3d33c407007d7d5f7aaa9e",
+          "rule_id": "R-ID-001",
+          "check": "identity",
+          "effect": "supports",
+          "message": "Контрольные числа сходятся (11 реквизитов)",
+          "norm_ref": "Алгоритмы контрольных чисел ИНН и ОГРН (ФНС), СНИЛС (СФР)",
+          "rule_status": "draft",
+          "next_step": null,
+          "unit": null,
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "case",
+              "doc_sha256": "c4e5a7792ee2bad00b299675a33dd4d4700f969bd77fd558ea8d61754f4ecd53",
+              "locator": "case.json",
+              "quote": null
+            }
+          ]
+        },
+        {
+          "finding_id": "547069a037461063715b92f9",
+          "rule_id": "R-ID-002",
+          "check": "identity",
+          "effect": "supports",
+          "message": "МЧД 914279a9-81bb-e011-fc2e-53f6663176a7 выдана организацией клиента",
+          "norm_ref": "ГК РФ, ст. 182, 185",
+          "rule_status": "draft",
+          "next_step": null,
+          "unit": null,
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "poa-root",
+              "doc_sha256": "667f82916b28fd4e0f573dfa3279994fa99bed6ee33acd6116ce855e774f10c4",
+              "locator": "/Доверенность/Документ/Довер/СвДоверит/Доверит/РосОргДовер/СвРосОрг/@ИННЮЛ",
+              "quote": "7729985006"
+            }
+          ]
+        },
+        {
+          "finding_id": "63cf03c2a1fa35b141df2fb6",
+          "rule_id": "R-ID-003",
+          "check": "identity",
+          "effect": "supports",
+          "message": "Представитель Лебедева Ирина Петровна совпадает с заявителем",
+          "norm_ref": "ГК РФ, ст. 182, 185; Приказ Минцифры № 857 в ред. № 1001 (с 01.02.2026): представитель указывается с СНИЛС и ИНН, паспорт не обязателен; идентификация (115-ФЗ, ст. 7; Требования к идентификации, приказ Росфинмониторинга № 74 от 23.04.2025, п. 8) — каналами банка",
+          "rule_status": "draft",
+          "next_step": null,
+          "unit": null,
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "poa-root",
+              "doc_sha256": "667f82916b28fd4e0f573dfa3279994fa99bed6ee33acd6116ce855e774f10c4",
+              "locator": "/Доверенность/Документ/Довер/СвУпПред/Пред[1]",
+              "quote": "Лебедева Ирина Петровна"
+            }
+          ]
+        },
+        {
+          "finding_id": "28336c506183d32b7d9f1b55",
+          "rule_id": "R-ID-004",
+          "check": "identity",
+          "effect": "supports",
+          "message": "Наименование доверителя в МЧД 914279a9-81bb-e011-fc2e-53f6663176a7 совпадает с ЕГРЮЛ",
+          "norm_ref": "Приказ Минцифры № 857 в ред. Приказа № 1001: наименование доверителя по ЕГРЮЛ",
+          "rule_status": "draft",
+          "next_step": null,
+          "unit": null,
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "poa-root",
+              "doc_sha256": "667f82916b28fd4e0f573dfa3279994fa99bed6ee33acd6116ce855e774f10c4",
+              "locator": "/Доверенность/Документ/Довер/СвДоверит/Доверит/РосОргДовер/СвРосОрг/@НаимОрг",
+              "quote": "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ «Ясная поляна»"
+            },
+            {
+              "doc_id": "egrul",
+              "doc_sha256": "985a63c5261187799f1b2f1e4ac975aa774d9180c518c919568bd9383164c107",
+              "locator": "$.full_name",
+              "quote": "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ «Ясная поляна»"
+            }
+          ]
+        },
+        {
+          "finding_id": "08d9d63534d4820d42354cdd",
+          "rule_id": "R-REG-001",
+          "check": "registry",
+          "effect": "supports",
+          "message": "МЧД 914279a9-81bb-e011-fc2e-53f6663176a7 действует в реестре",
+          "norm_ref": "ГК РФ, ст. 188, 189; 63-ФЗ в ред. 476-ФЗ (сведения о МЧД и её отмене в информационной системе — распределённый реестр ФНС)",
+          "rule_status": "draft",
+          "next_step": null,
+          "unit": null,
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "registry:fixture-registry",
+              "doc_sha256": "99f5bb0eb88127ab9dd59c7909dc89e583e6a3f3ee01b037d8556c6dddab76a0",
+              "locator": "registry:914279a9-81bb-e011-fc2e-53f6663176a7",
+              "quote": "active"
+            }
+          ]
+        },
+        {
+          "finding_id": "64b1c94237f4c3bad2e524d1",
+          "rule_id": "R-TERM-001",
+          "check": "term",
+          "effect": "supports",
+          "message": "МЧД 914279a9-81bb-e011-fc2e-53f6663176a7 действует до 28.02.2027",
+          "norm_ref": "ГК РФ, ст. 186 п. 1: если срок не указан, доверенность действует год со дня совершения, а доверенность без даты совершения ничтожна (МЧД без даты отклоняется при разборе); в описании схемы 003 срок (СрокДейст) — обязательный реквизит",
+          "rule_status": "draft",
+          "next_step": null,
+          "unit": null,
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "poa-root",
+              "doc_sha256": "667f82916b28fd4e0f573dfa3279994fa99bed6ee33acd6116ce855e774f10c4",
+              "locator": "/Доверенность/Документ/Довер/СвДов/@СрокДейст",
+              "quote": "2027-02-28"
+            }
+          ]
+        },
+        {
+          "finding_id": "760737e858234b7ac929b9c2",
+          "rule_id": "R-TERM-002",
+          "check": "term",
+          "effect": "supports",
+          "message": "Дата операции в сроке МЧД 914279a9-81bb-e011-fc2e-53f6663176a7",
+          "norm_ref": "ГК РФ, ст. 186 (в том числе срок по умолчанию — год); ст. 188 п. 1 (истечение срока)",
+          "rule_status": "draft",
+          "next_step": null,
+          "unit": null,
+          "origin": "deterministic",
+          "refs": [
+            {
+              "doc_id": "poa-root",
+              "doc_sha256": "667f82916b28fd4e0f573dfa3279994fa99bed6ee33acd6116ce855e774f10c4",
+              "locator": "/Доверенность/Документ/Довер/СвДов/@СрокДейст",
+              "quote": "2027-02-28"
+            }
+          ]
+        }
+      ],
+      "warnings": [
+        "Проверка «Сведения о банкротстве» не выполнялась (профиль demo)",
+        "Проверка «Электронная подпись» не выполнялась (профиль demo)"
+      ],
+      "next_steps": [
+        {
+          "action": "Запросить устав или выписку положений об ограничениях полномочий",
+          "unit": "Юридическая служба",
+          "because": [
+            {
+              "rule_id": "R-CHR-002",
+              "finding_id": "8eb322a1b651b41a1a7b001e",
+              "message": "Шаблоны не классифицировали устав: автоматического подтверждения нет"
+            }
+          ],
+          "effect": "needs_review"
+        },
+        {
+          "action": "Уточнить у нового руководителя, известна ли ему МЧД и не отменена ли она; при признаках захвата — в антифрод",
+          "unit": "Сопровождение юрлиц",
+          "because": [
+            {
+              "rule_id": "R-EIO-002",
+              "finding_id": "f918a3f820b7610bbf3ee75d",
+              "message": "После выдачи МЧД 914279a9-81bb-e011-fc2e-53f6663176a7 руководитель сменился: сейчас Петров Алексей Иванович (ГРН 2267700654321, с 01.10.2026). Смена руководителя доверенность не прекращает (п. 1 ст. 188 ГК РФ); смена свежая — не более 30 дн.: нужен разбор"
+            }
+          ],
+          "effect": "needs_review"
+        }
+      ],
+      "routing": {
+        "queue": "exceptions",
+        "priority": "P1",
+        "sla_hours": 4,
+        "units": [
+          "Информационная безопасность",
+          "Сопровождение юрлиц",
+          "Юридическая служба"
+        ]
+      },
+      "proposed_right": {
+        "status": "pending_review",
+        "mode": "shadow_recommendation",
+        "role": "DBO_PAYMENT_SIGNER",
+        "operation": "PAYMENT_SIGN",
+        "representative_inn": "777588807322",
+        "checked_amount_rub": 480000,
+        "valid_until": "2027-02-28",
+        "basis": [
+          "МЧД 914279a9-81bb-e011-fc2e-53f6663176a7"
+        ],
+        "high_risk_operation": false
+      },
+      "inputs": [
+        {
+          "doc_id": "poa-root",
+          "kind": "emchd_xml",
+          "sha256": "667f82916b28fd4e0f573dfa3279994fa99bed6ee33acd6116ce855e774f10c4"
+        },
+        {
+          "doc_id": "charter",
+          "kind": "charter_text",
+          "sha256": "9f31ea4ff4ba83230f36e6b238106835153d63454d6ff43f1ce636cdda2a7ca0"
+        },
+        {
+          "doc_id": "egrul",
+          "kind": "egrul_json",
+          "sha256": "985a63c5261187799f1b2f1e4ac975aa774d9180c518c919568bd9383164c107"
+        }
+      ],
+      "rule_pack": {
+        "pack_id": "mandat-rules-ru",
+        "version": "2026.10.2",
+        "status": "draft",
+        "sha256": "9da5ea4ecde9ddd8a89e94041d8f8072802d043259e6f35f9b51bd9fc2a13b99"
+      },
+      "catalog": {
+        "catalog_id": "mandat-operations",
+        "version": "2026.10.2",
+        "sha256": "6e433b8390c7132603140d80f9f078702e70280dd2033706e3f5254c7c51d880"
+      },
+      "classifier": {
+        "classifier_id": "mandat-authority-classifier",
+        "version": "2026.10.1",
+        "sha256": "5f08b73d574ac63ec8118545afe1a351a4b0e275019b2d7f25f886f5a3ef215c",
+        "synthetic": true,
+        "snapshot_at": null
+      },
+      "stand": [
+        "Реестр МЧД — заглушка: статусы взяты из пакета кейса, а не из реестра ФНС",
+        "КЭП не проверялась: СКЗИ не подключены. Подпись Ed25519 — не ГОСТ и не внешний контроль W3C",
+        "ЕГРЮЛ — сведения из пакета кейса в нормализованном JSON, а не ответ ФНС",
+        "Коды полномочий синтетические (SYN-…), а не коды классификатора из ЕСНСИ",
+        "Профиль demo считает результат на фикстурах кейса. Это не допуск к операции в банке"
+      ],
+      "objection": "R-EIO-002: После выдачи МЧД 914279a9-81bb-e011-fc2e-53f6663176a7 руководитель сменился: сейчас Петров Алексей Иванович (ГРН 2267700654321, с 01.10.2026). Смена руководителя доверенность не прекращает (п. 1 ст. 188 ГК РФ); смена свежая — не более 30 дн.: нужен разбор",
+      "signals": [],
+      "generated_at": "2026-10-28T15:59:45+00:00",
+      "reproducibility_hash": "673f92cbab7bdc5870bab77a549dc2d7bcfbc5712cd28f4063127296ba4ac6f7"
+    }
+  }
+}

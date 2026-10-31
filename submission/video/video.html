@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Мандат — кадры видео-демо</title>
+<style>
+  :root {
+    --navy: #0A2973; --navy-deep: #061A4A; --cobalt: #004CBC; --sky: #00AAFF; --ink: #0B1F44;
+    --text2: #42557A; --muted: #5E6D8C; --bg: #F3F6FB; --line: #DCE4F0; --ice: #CFE3FF;
+    --ok: #1A9F68; --no: #E5484D; --rv: #F5A300; --nd: #6B7A99;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); font-family: "Golos Text", sans-serif; color: var(--ink); }
+  #stage { position: absolute; inset: 0; }
+  .dark { background: url("../deck/assets/svg/background-dark.svg") center / cover no-repeat, var(--navy); color: #fff; }
+  .top { position: absolute; left: 72px; right: 72px; top: 44px; display: flex; align-items: center; justify-content: space-between; font-size: 24px; font-weight: 600; color: var(--text2); }
+  .dark .top { color: var(--ice); }
+  .top .brand { display: flex; align-items: center; gap: 14px; }
+  .top img { height: 38px; }
+  .kicker { position: absolute; left: 72px; top: 112px; font-size: 22px; font-weight: 700; letter-spacing: .14em; color: var(--cobalt); text-transform: uppercase; }
+  .title { position: absolute; left: 72px; right: 72px; top: 150px; font-size: 52px; line-height: 1.12; font-weight: 700; color: var(--navy); }
+  .caption { position: absolute; left: 0; right: 0; bottom: 0; min-height: 132px; padding: 26px 72px 30px; background: rgba(6, 26, 74, .94); color: #fff; font-size: 34px; line-height: 1.3; font-weight: 500; display: flex; align-items: center; }
+  .caption b { color: var(--sky); font-weight: 700; }
+  .fade { position: absolute; inset: 0; background: #061A4A; pointer-events: none; }
+  /* титул */
+  .hero { position: absolute; left: 120px; top: 250px; right: 120px; }
+  .hero .mark { height: 120px; }
+  .hero h1 { font-size: 132px; font-weight: 700; margin-top: 18px; letter-spacing: -.01em; }
+  .hero p { font-size: 46px; line-height: 1.25; margin-top: 18px; color: var(--ice); max-width: 1500px; }
+  .hero .meta { font-size: 28px; margin-top: 42px; color: var(--ice); opacity: .9; }
+  /* числа */
+  .tiles { position: absolute; left: 72px; right: 72px; top: 300px; display: grid; gap: 28px; }
+  .tile { background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 34px 36px; box-shadow: 0 6px 18px rgba(10,41,115,.08); }
+  .tile .v { font-size: 84px; font-weight: 700; color: var(--cobalt); line-height: 1; }
+  .tile .v.red { color: var(--no); } .tile .v.green { color: #0B6B44; }
+  .tile .t { font-size: 30px; line-height: 1.3; margin-top: 18px; color: var(--ink); }
+  .tile .s { font-size: 22px; margin-top: 14px; color: var(--muted); }
+  /* терминал */
+  .term { position: absolute; left: 72px; right: 72px; top: 150px; bottom: 170px; background: #0B1A3E; border-radius: 22px; box-shadow: 0 10px 30px rgba(6,26,74,.25); overflow: hidden; }
+  .term .bar { height: 56px; background: #13265A; display: flex; align-items: center; padding: 0 24px; gap: 12px; color: #9FB4E0; font-size: 22px; }
+  .term .bar i { width: 16px; height: 16px; border-radius: 50%; display: inline-block; }
+  .term pre { font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace; font-size: 21px; line-height: 1.45; color: #E6EEFF; padding: 22px 30px; white-space: pre; }
+  .term .cmd { color: #FFFFFF; font-weight: 700; } .term .ps { color: var(--sky); }
+  .term .ok { color: #4ADE9B; } .term .no { color: #FF7A7E; } .term .rv { color: #FFC24A; } .term .nd { color: #B6C2DA; } .term .dim { color: #8FA3CF; }
+  .cursor { display: inline-block; width: 14px; height: 28px; background: var(--sky); vertical-align: -5px; }
+  /* карточка */
+  .browser { position: absolute; left: 72px; top: 150px; width: 1240px; bottom: 170px; background: #fff; border: 1px solid var(--line); border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(10,41,115,.12); }
+  .browser .bar { height: 50px; background: #EEF2F8; display: flex; align-items: center; gap: 10px; padding: 0 18px; }
+  .browser .bar i { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+  .browser .url { margin-left: 18px; flex: 1; background: #fff; border-radius: 16px; height: 30px; font-size: 18px; color: var(--text2); display: flex; align-items: center; padding: 0 16px; }
+  .browser .shot { position: absolute; left: 0; right: 0; top: 50px; bottom: 0; overflow: hidden; background: #F4F6F9; }
+  .browser .shot img { position: absolute; left: 0; width: 100%; }
+  .side { position: absolute; left: 1350px; right: 72px; top: 150px; bottom: 170px; display: flex; flex-direction: column; gap: 22px; }
+  .pill { display: inline-flex; align-items: center; gap: 12px; padding: 12px 22px; border-radius: 40px; font-size: 26px; font-weight: 700; }
+  .pill i { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+  .pill.ok { background: #E2F4EB; color: #0B6B44; } .pill.ok i { background: var(--ok); }
+  .pill.no { background: #FDE6E7; color: #A3161B; } .pill.no i { background: var(--no); }
+  .pill.rv { background: #FFF1D4; color: #7A4E00; } .pill.rv i { background: var(--rv); }
+  .pill.nd { background: #E8ECF3; color: #3B4864; } .pill.nd i { background: var(--nd); }
+  .note { background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 26px 28px; font-size: 27px; line-height: 1.35; }
+  .note h3 { font-size: 30px; color: var(--navy); margin-bottom: 10px; }
+  .note .law { color: var(--cobalt); font-weight: 700; font-size: 25px; margin-top: 10px; }
+  /* json */
+  .json { position: absolute; left: 1050px; right: 72px; top: 150px; bottom: 170px; background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 26px 30px; }
+  .json pre { font-family: "JetBrains Mono", monospace; font-size: 22px; line-height: 1.45; color: var(--ink); white-space: pre-wrap; }
+  .json .k { color: var(--cobalt); } .json .s { color: #0B6B44; }
+  .term.left { right: 900px; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function paint(line) {
+  let h = esc(line);
+  h = h.replace(/(ПОДТВЕРЖДЕНО|целостность OK|действует|OK\b)/g, '<span class="ok">$1</span>');
+  h = h.replace(/(ОПРОВЕРГНУТО|отозвано|не принимается)/g, '<span class="no">$1</span>');
+  h = h.replace(/(НА РАЗБОР|приостановлено|possible_takeover|suspension)/g, '<span class="rv">$1</span>');
+  h = h.replace(/(НЕДОСТАТОЧНО ДАННЫХ)/g, '<span class="nd">$1</span>');
+  return h;
+}
+function header(s) {
+  const mark = s.dark ? "../deck/assets/svg/mandat-mark-on-dark.svg" : "../deck/assets/svg/mandat-mark.svg";
+  return `<div class="top"><div class="brand"><img src="${mark}" alt="">Мандат · видео-демо</div><div>${s.step || ""}</div></div>`;
+}
+function render(s) {
+  const st = document.getElementById("stage");
+  st.className = s.dark ? "dark" : "";
+  let body = header(s);
+  if (s.kicker) body += `<div class="kicker">${esc(s.kicker)}</div>`;
+  if (s.kind === "hero") {
+    body += `<div class="hero"><img class="mark" src="../deck/assets/svg/mandat-mark-on-dark.svg" alt=""><h1>${esc(s.h1)}</h1><p>${esc(s.p)}</p><div class="meta">${esc(s.meta)}</div></div>`;
+  } else if (s.kind === "tiles") {
+    body += `<div class="title" style="top:150px">${esc(s.title)}</div>`;
+    body += `<div class="tiles" style="grid-template-columns:repeat(${s.cols || 3},1fr);top:${s.top || 330}px">` +
+      s.tiles.map((t) => `<div class="tile"><div class="v ${t.cls || ""}">${esc(t.v)}</div><div class="t">${esc(t.t)}</div>${t.s ? `<div class="s">${esc(t.s)}</div>` : ""}</div>`).join("") + "</div>";
+  } else if (s.kind === "term") {
+    const lines = s.lines.map((l) => l.type === "cmd" ? `<span class="ps">$</span> <span class="cmd">${esc(l.text)}</span>${l.cursor ? '<span class="cursor"></span>' : ""}` : l.type === "dim" ? `<span class="dim">${esc(l.text)}</span>` : paint(l.text));
+    body += `<div class="term ${s.narrow ? "left" : ""}"><div class="bar"><i style="background:#FF6B6B"></i><i style="background:#FFC35A"></i><i style="background:#5FD39A"></i><span style="margin-left:16px">${esc(s.termTitle || "mandat — терминал")}</span></div><pre>${lines.join("\n")}</pre></div>`;
+    if (s.json) body += `<div class="json"><pre>${s.json}</pre></div>`;
+  } else if (s.kind === "card") {
+    body += `<div class="browser"><div class="bar"><i style="background:#FF6B6B"></i><i style="background:#FFC35A"></i><i style="background:#5FD39A"></i><div class="url">${esc(s.url)}</div></div><div class="shot"><img src="${s.img}" style="top:${-(s.offset || 0)}px" alt=""></div></div>`;
+    body += `<div class="side"><div><span class="pill ${s.v}"><i></i>${esc(s.verdict)}</span></div>` +
+      s.notes.map((n) => `<div class="note"><h3>${esc(n.h)}</h3>${esc(n.t)}${n.law ? `<div class="law">${esc(n.law)}</div>` : ""}</div>`).join("") + "</div>";
+  }
+  if (s.caption) body += `<div class="caption"><div>${s.caption}</div></div>`;
+  if (s.fade) body += `<div class="fade" style="opacity:${s.fade}"></div>`;
+  st.innerHTML = body;
+  return Promise.all([...st.querySelectorAll("img")].map((im) => im.complete ? 0 : new Promise((r) => { im.onload = r; im.onerror = r; })));
+}
+window.render = render;
+</script>
+</body>
+</html>

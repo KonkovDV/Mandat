@@ -16,6 +16,6 @@
 
 ## Куда сообщить
 
-Приватно владельцу репозитория [@KonkovDV](https://github.com/KonkovDV): через форму [Report a vulnerability](https://github.com/KonkovDV/Mandat/security/advisories/new) на вкладке Security, с пометкой «кодекс поведения». Нарушение правил самого GitHub — через «Report content». Жалоба рассматривается конфиденциально, её автор не раскрывается.
+Приватно владельцу репозитория [@KonkovDV](https://github.com/KonkovDV). Форма GitHub «Report a vulnerability» на 27.10.2026 постороннему недоступна: private vulnerability reporting выключен ([как сообщить](SECURITY.md#нашли-уязвимость)). Нарушение правил самого GitHub — через «Report content». Жалоба рассматривается конфиденциально, её автор не раскрывается.
 
 Меры — по лестнице из Contributor Covenant: исправление, предупреждение, временный и постоянный запрет на участие.
