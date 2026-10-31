@@ -221,9 +221,23 @@ def issue(
     return sign(credential, key, now=now)
 
 
+def _utf8(text: str) -> bytes:
+    """Байты строки для HMAC и сравнения. Одиночный суррогат не роняет кодирование: строка просто не совпадёт."""
+    return text.encode("utf-8", "surrogatepass")
+
+
+def _same_text(offered: str, expected: str) -> bool:
+    """Сравнение с постоянным временем для любых строк.
+
+    ``hmac.compare_digest`` на str принимает только ASCII и на кириллице бросает TypeError:
+    допуск падал исключением вместо отказа (аудит 31.10.2026, K-01).
+    """
+    return hmac.compare_digest(_utf8(offered), _utf8(expected))
+
+
 def representative_token(inn: str, key: bytes) -> str:
     """Токен представителя: HMAC-SHA256 на ключе издателя. Без ключа ИНН по токену не подобрать."""
-    return hmac.new(key, inn.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.new(key, _utf8(inn), hashlib.sha256).hexdigest()
 
 
 PSEUDONYM_KEY_MIN_BYTES = 32
@@ -477,7 +491,9 @@ def check_request(
     token = subject.get("representativeToken")
     if not token or not pseudonym_key:
         problems.append("представителя не сверить: нет токена в удостоверении или ключа HMAC")
-    elif not hmac.compare_digest(str(token), representative_token(request.representative_inn, pseudonym_key)):
+    elif not isinstance(request.representative_inn, str) or not request.representative_inn:
+        problems.append("в запросе не указан представитель")
+    elif not _same_text(str(token), representative_token(request.representative_inn, pseudonym_key)):
         problems.append("представитель в запросе не тот, для кого выпущено удостоверение")
     audience = subject.get("audience")
     if not isinstance(request.audience, str) or not request.audience:
@@ -487,7 +503,7 @@ def check_request(
     nonce = subject.get("nonce")
     if not isinstance(request.nonce, str) or len(request.nonce) < NONCE_MIN_CHARS:
         problems.append(f"nonce запроса короче {NONCE_MIN_CHARS} символов")
-    elif not nonce or not hmac.compare_digest(str(nonce), request.nonce):
+    elif not nonce or not _same_text(str(nonce), request.nonce):
         problems.append("nonce запроса не совпадает с удостоверением")
     elif consume_nonce is None:
         problems.append("нет хранилища nonce: повтор запроса не обнаружить")
@@ -558,10 +574,17 @@ def authorize_operation(
     return check_request(subject, request, pseudonym_key=pseudonym_key, consume_nonce=consume_nonce, now=now)
 
 
+# Подпись Ed25519 — 64 байта, в base58btc это не больше 88 знаков, ключ ed25519-pub в multibase — не больше 48.
+# Длинную строку не декодируем: перевод base58 квадратичен по длине, и удостоверение с мегабайтом в proofValue
+# занимало процессор до отказа (аудит 31.10.2026, K-05).
+MAX_PROOF_VALUE_CHARS = 100
+MAX_KEY_MULTIBASE_CHARS = 60
+
+
 def verify(credential: dict[str, Any], public_key: Ed25519PublicKey) -> bool:
     proof = dict(credential.get("proof") or {})
     value = proof.pop("proofValue", "")
-    if not isinstance(value, str) or not value.startswith("z"):
+    if not isinstance(value, str) or not value.startswith("z") or len(value) > MAX_PROOF_VALUE_CHARS:
         return False
     document = {k: v for k, v in credential.items() if k != "proof"}
     try:
@@ -572,6 +595,8 @@ def verify(credential: dict[str, Any], public_key: Ed25519PublicKey) -> bool:
 
 
 def public_key_from_multibase(value: str) -> Ed25519PublicKey:
+    if len(value) > MAX_KEY_MULTIBASE_CHARS:
+        raise ValueError("ожидался ключ ed25519-pub в multibase: строка длиннее ключа")
     raw = b58decode(value[1:])
     if not raw.startswith(b"\xed\x01"):
         raise ValueError("ожидался ключ ed25519-pub в multibase")

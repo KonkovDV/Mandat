@@ -38,7 +38,7 @@
       "properties": {
         "code": {"type": "string", "minLength": 1, "examples": ["PAYMENT_SIGN", "STATEMENT_VIEW", "REQUISITES_CHANGE", "USER_ADMIN"]},
         "date": {"type": "string", "format": "date", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
-        "amount_rub": {"type": "integer", "exclusiveMinimum": 0, "description": "Целые рубли; дробь и boolean не принимаются"},
+        "amount_rub": {"type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991, "description": "Целые рубли; дробь и boolean не принимаются; не больше 2**53 − 1 (RFC 7493)"},
         "counterparty_inn": {"$ref": "#/$defs/text"}
       }
     },

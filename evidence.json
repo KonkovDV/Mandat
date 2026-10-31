@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-10-28T15:45:26+00:00",
+  "generated_at": "2026-10-31T20:17:58+00:00",
   "engine": "mandat/0.3.0",
   "source": {
-    "base_commit": "d6cdfbf7afafbf2c7b737ee78a726d53c87b6759",
+    "base_commit": "d8ecd0f9136b6051ed1b1bd669a39d0180f7c2b5",
     "sources": [
       "src",
       "tests",
       "scripts",
       "examples"
     ],
-    "sha256": "4be67550a095e0ba9a7ed9b6e6abbcf7e9427e78af808fc9b95752a69318bc41",
+    "sha256": "745af5bc1e285619f1e143d1819b8e02eab2c792f377e487d4b46c42bd12d73a",
     "check": "python scripts/build_evidence.py --verify-source"
   },
-  "python": "3.13.17",
+  "python": "3.13.18",
   "rule_pack": {
     "pack_id": "mandat-rules-ru",
     "version": "2026.10.2",
@@ -157,17 +157,17 @@
   "latency": {
     "command": "python scripts/bench.py --rounds 20",
     "cases": 280,
-    "median_ms": 2.94,
-    "p95_ms": 5.73,
-    "machine": "x86_64, Python 3.13.17",
+    "median_ms": 2.63,
+    "p95_ms": 3.82,
+    "machine": "x86_64, Python 3.13.18",
     "scope": "разбор XML и JSON, 39 правил, свёртка, отчёт; без сети и без модели"
   },
   "tests": {
     "command": "python -m pytest -q",
     "returncode": 0,
-    "summary": "1600 passed in 238.56s (0:03:58)",
-    "passed": 1600,
-    "collected": 1600,
+    "summary": "1621 passed in 148.94s (0:02:28)",
+    "passed": 1621,
+    "collected": 1621,
     "coverage_percent": 95.7
   }
 }
