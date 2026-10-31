@@ -1,6 +1,6 @@
 PY ?= python
 
-.PHONY: install lint test claims rules-doc cedar check demo eval evidence serve doctor clean deck demo-cards
+.PHONY: install lint test claims rules-doc cedar check demo eval evidence serve doctor clean deck demo-cards analytics
 
 install:
 	$(PY) -m pip install --require-hashes -r requirements/pip.lock
@@ -50,6 +50,10 @@ deck:
 	$(PY) submission/deck/finish_deck.py submission/slides/Mandat_VTB.pptx
 	soffice --headless --convert-to pdf --outdir submission/slides submission/slides/Mandat_VTB.pptx
 	$(PY) submission/deck/finish_deck.py --pdf submission/slides/Mandat_VTB.pdf
+
+analytics:
+	$(PY) submission/analytics/build_model.py
+	$(PY) submission/analytics/build_docs.py
 
 clean:
 	rm -rf var build dist .pytest_cache .ruff_cache src/*.egg-info
