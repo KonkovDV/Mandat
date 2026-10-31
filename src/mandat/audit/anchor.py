@@ -45,6 +45,10 @@ from typing import Any, Protocol
 from mandat.audit import merkle, tlog
 from mandat.audit.revocation import RevocationChecker
 from mandat.audit.revocation import from_env as revocation_from_env
+from mandat.strictjson import strict_loads
+
+# Ответ read-back — одно утверждение о сегменте: килобайты. Больше мегабайта не читается и не разбирается.
+MAX_READBACK_BYTES = 1024 * 1024
 
 log = logging.getLogger("mandat.anchor")
 STATEMENT_TYPE = "mandat.journal.anchor/v1"
@@ -184,19 +188,24 @@ class WebhookSink:
             with self._open(request) as response:
                 status = int(getattr(response, "status", 200))
                 answer_headers = dict(response.headers.items()) if getattr(response, "headers", None) else {}
-                body = response.read()
+                body = response.read(MAX_READBACK_BYTES + 1)
         except Exception as exc:  # noqa: BLE001 - 404 и сетевые ошибки — не подтверждено
             return f"read-back недоступен: {type(exc).__name__}"
         if status != 200:
             return f"read-back ответил {status}"
+        if len(body) > MAX_READBACK_BYTES:
+            return f"ответ read-back больше {MAX_READBACK_BYTES} байт"
         # С ключом получателя (whpk_) принимается только его подпись v1a: общий секрет её не подделает.
         verify_with = self.readback_key or self.secret
         if not response_signature_ok(verify_with, answer_headers, body, datetime.now(UTC), request_id):
             return "подпись ответа read-back не сходится"
+        # Строгий разбор (#131): глубина больше 64, повтор ключа и NaN — «не разбирается», а не RecursionError.
         try:
-            row = json.loads(body)
+            row = strict_loads(body)
             stored = row["statement"]
         except (ValueError, KeyError, TypeError):
+            return "ответ read-back не разбирается"
+        if not isinstance(row, dict) or not isinstance(stored, dict):
             return "ответ read-back не разбирается"
         if row.get("sha256") != want or digest(stored) != want:
             return "получатель хранит другое утверждение"

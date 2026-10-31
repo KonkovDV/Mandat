@@ -133,6 +133,11 @@ def _subdelegation_forms(value: Any) -> dict[str, str]:
     return out
 
 
+# RFC 7493 (I-JSON) и каноническая запись RFC 8785 точны только для целых до 2**53 − 1. Большая сумма проходила
+# приём, а удостоверение на неё не выпускалось (#132): теперь это ошибка входа, как в JSON Schema манифеста.
+MAX_AMOUNT_RUB = 2**53 - 1
+
+
 def _rubles(value: Any) -> int | None:
     """Целые рубли. Дробь не усекается, boolean не считается деньгами."""
     if value is None:
@@ -141,6 +146,8 @@ def _rubles(value: Any) -> int | None:
         raise CaseError("amount_rub — целое число рублей; дробные значения и boolean не принимаются")
     if value <= 0:
         raise CaseError("amount_rub должен быть больше нуля")
+    if value > MAX_AMOUNT_RUB:
+        raise CaseError("amount_rub больше 2**53 − 1: такую сумму нельзя точно подписать в удостоверении (RFC 7493)")
     return value
 
 

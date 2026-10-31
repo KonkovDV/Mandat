@@ -91,6 +91,15 @@ def _sign(record_hash: str, key: str) -> str:
     return hmac.new(key.encode("utf-8"), record_hash.encode("ascii"), hashlib.sha256).hexdigest()
 
 
+def _same_mac(offered: str, expected: str) -> bool:
+    """HMAC из файла сверяется с постоянным временем и тогда, когда в нём чужие символы.
+
+    ``hmac.compare_digest`` на str с не-ASCII бросает TypeError: проверка журнала падала исключением,
+    а не сообщала о подмене подписи (аудит 31.10.2026, K-02).
+    """
+    return hmac.compare_digest(offered.encode("utf-8", "surrogatepass"), expected.encode("ascii"))
+
+
 def witness_path(path: Path) -> Path:
     return path.with_name(path.name + ".head")
 
@@ -606,14 +615,14 @@ def _catch_up(path: Path, signing: str | None) -> tuple[int, str] | None:
             return None
         if signing:
             sig = record.get("sig")
-            if not isinstance(sig, str) or not hmac.compare_digest(sig, _sign(record["hash"], signing)):
+            if not isinstance(sig, str) or not _same_mac(sig, _sign(record["hash"], signing)):
                 return None
         previous = record["hash"]
     if not isinstance(witness, dict) or witness.get("records") != count or witness.get("hash") != previous:
         return None
     if signing:
         mac = witness.get("mac")
-        if not isinstance(mac, str) or not hmac.compare_digest(mac, _witness_mac(count, previous, signing)):
+        if not isinstance(mac, str) or not _same_mac(mac, _witness_mac(count, previous, signing)):
             return None
     return count, previous
 
@@ -665,7 +674,7 @@ def verify_journal(
             return JournalCheck(False, len(records), index, "содержимое записи не совпадает с хешем")
         if signing:
             sig = record.get("sig")
-            if not isinstance(sig, str) or not hmac.compare_digest(sig, _sign(record["hash"], signing)):
+            if not isinstance(sig, str) or not _same_mac(sig, _sign(record["hash"], signing)):
                 return JournalCheck(False, len(records), index, "подпись записи не совпадает с ключом журнала")
         previous = record["hash"]
     head = records[-1]["hash"] if records else GENESIS
@@ -681,7 +690,7 @@ def verify_journal(
             return JournalCheck(False, len(records), None, "свидетель не совпадает: хвост удалён или файл подменён")
         if signing:
             mac = data.get("mac")
-            if not isinstance(mac, str) or not hmac.compare_digest(mac, _witness_mac(len(records), head, signing)):
+            if not isinstance(mac, str) or not _same_mac(mac, _witness_mac(len(records), head, signing)):
                 return JournalCheck(False, len(records), None, "подпись свидетеля .head не совпадает с ключом журнала")
     if anchor is not None and anchor != head:
         return JournalCheck(False, len(records), None, "внешний якорь не совпадает с последней записью")
