@@ -10,7 +10,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from mandat.audit import attestation
 from mandat.audit.status_list import StatusRegistry
 
-NOW = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)  # в прошлом относительно wall-clock CLI
+# CLI сверяет срок с часами машины, окно удостоверения — 30 дней. Фиксированная дата
+# выпадает из окна и даёт код 4 вместо ожидаемого статуса.
+NOW = datetime.now(UTC).replace(microsecond=0) - timedelta(days=1)
 
 
 def _report(**extra):

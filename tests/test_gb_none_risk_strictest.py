@@ -12,7 +12,9 @@ from mandat.audit import attestation
 from mandat.audit.status_list import StatusRegistry, _risk_age_mapping, check_status, status_max_age_for
 from mandat.cli import build_parser
 
-NOW = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
+# CLI сверяет срок с часами машины, окно удостоверения — 30 дней. Фиксированная дата
+# выпадает из окна и даёт код 4 вместо ожидаемого статуса.
+NOW = datetime.now(UTC).replace(microsecond=0) - timedelta(days=1)
 EXIT_STATUS_NOT_CHECKED = 1  # cmd_attest_verify: список не читается / не проверен
 
 
