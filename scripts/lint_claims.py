@@ -28,7 +28,8 @@ def pptx_text(path: Path) -> str:
     with zipfile.ZipFile(path) as z:
         parts = [n for n in z.namelist() if re.match(r"ppt/(slides|notesSlides)/[^/]+\.xml$", n)]
         xml = " ".join(z.read(n).decode("utf-8", errors="ignore") for n in sorted(parts))
-    return " ".join(re.findall(r"<a:t>([^<]*)</a:t>", xml))
+    # Неразрывные пробел и дефис типографики заменяются обычными, чтобы фразы и числа сравнивались как в документах.
+    return " ".join(re.findall(r"<a:t>([^<]*)</a:t>", xml)).replace("\u00a0", " ").replace("\u2011", "-")
 
 
 # Число правил в текстах должно совпадать с пакетом. История (CHANGELOG, записи аудитов) не проверяется.

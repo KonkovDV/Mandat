@@ -1,0 +1,5 @@
+# Промежуточные файлы сборки видео; в git — только итоговый MP4 и вывод команд.
+out/frames/
+out/cards/
+out/frames.ffconcat
+out/05_director_changed.json

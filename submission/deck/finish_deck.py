@@ -1,11 +1,12 @@
-"""Доводит презентацию после build_deck.js: цвета темы, alt-текст, метаданные, проверки.
+"""Доводит презентацию после build_deck.js: цвета темы, язык текста, alt-текст, метаданные, проверки.
 
     python finish_deck.py ../slides/Mandat_VTB.pptx
     python finish_deck.py --pdf ../slides/Mandat_VTB.pdf   # после экспорта в PDF
 
 pptxgenjs записывает в тему стандартную палитру Office и подставляет имя файла
 картинки в alt-текст, если он не задан. Здесь палитра заменяется цветами из
-theme.json, у декоративных значков alt-текст очищается и ставится признак
+theme.json, язык текста ставится русским (проверка орфографии в PowerPoint),
+у декоративных значков alt-текст очищается и ставится признак
 «декоративный», автор и последний редактор — команда. В конце файл проверяется:
 нет путей в alt-тексте, нет цветов не в шестнадцатеричном виде, нет запрещённых
 формулировок из BANNED_CLAIMS.txt. Имя программы-генератора в docProps/app.xml и в метаданных PDF
@@ -75,6 +76,10 @@ def _alt_text(xml: str) -> str:
     return re.sub(r'(<p:cNvPr\b[^>]*?)descr="([^"]*)"([^>]*>)', fix, xml)
 
 
+def _lang(xml: str) -> str:
+    return re.sub(r'\b(lang|altLang)="en-US"', r'\1="ru-RU"', xml)
+
+
 def _core(xml: str) -> str:
     for tag in ("dc:creator", "cp:lastModifiedBy"):
         xml = re.sub(rf"<{tag}>.*?</{tag}>", f"<{tag}>{AUTHOR}</{tag}>", xml, flags=re.DOTALL)
@@ -142,7 +147,8 @@ def _check(parts: dict[str, bytes]) -> list[str]:
                 problems.append(f"{name}: alt-текст похож на путь: {descr}")
         if re.match(r"ppt/(slides|notesSlides)/\w+\d+\.xml$", name):
             slide_text.append(re.sub(r"<[^>]+>", " ", xml))
-    text = " ".join(slide_text).casefold()
+    # Неразрывные пробел и дефис типографики не должны прятать запрещённые формулировки от проверки.
+    text = " ".join(slide_text).replace("\u00a0", " ").replace("\u2011", "-").casefold()
     problems += [f"запрещённая формулировка: «{phrase}»" for phrase in banned if phrase in text]
     traces = re.findall(
         "clau" + "de|anthr" + "opic|/t" + "mp/|iva" + "n ivanov",
@@ -168,6 +174,8 @@ def main(deck: Path) -> int:
     for name in list(parts):
         if re.match(r"ppt/(slides|slideLayouts|slideMasters)/\w+\d+\.xml$", name):
             parts[name] = _alt_text(parts[name].decode("utf-8")).encode("utf-8")
+        if re.match(r"ppt/(slides|notesSlides|slideLayouts|slideMasters)/\w+\d+\.xml$", name):
+            parts[name] = _lang(parts[name].decode("utf-8")).encode("utf-8")
     problems = _check(parts)
     if problems:
         sys.stderr.write("презентация не прошла проверку:\n" + "\n".join(problems) + "\n")
@@ -177,7 +185,7 @@ def main(deck: Path) -> int:
         for info in infos:
             archive.writestr(info.filename, parts[info.filename])
     tmp.replace(deck)
-    print(f"готово: {deck} — тема, alt-текст и метаданные приведены, проверки пройдены")
+    print(f"готово: {deck} — тема, язык, alt-текст и метаданные приведены, проверки пройдены")
     return 0
 
 
