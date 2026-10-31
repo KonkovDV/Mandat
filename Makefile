@@ -1,6 +1,6 @@
 PY ?= python
 
-.PHONY: install lint test claims rules-doc cedar check demo eval evidence serve doctor clean deck demo-cards analytics
+.PHONY: install lint test claims rules-doc cedar check demo eval evidence serve doctor clean deck demo-cards analytics video submission
 
 install:
 	$(PY) -m pip install --require-hashes -r requirements/pip.lock
@@ -54,6 +54,16 @@ deck:
 analytics:
 	$(PY) submission/analytics/build_model.py
 	$(PY) submission/analytics/build_docs.py
+
+video:
+	$(PY) submission/video/capture.py
+	node submission/video/build_video.js
+
+# Полная сдача: модель → колода → видео → документы и папка для облачного диска в var/submission.
+submission:
+	$(PY) submission/analytics/build_model.py
+	$(MAKE) deck video
+	$(PY) submission/analytics/build_docs.py --package var/submission
 
 clean:
 	rm -rf var build dist .pytest_cache .ruff_cache src/*.egg-info
