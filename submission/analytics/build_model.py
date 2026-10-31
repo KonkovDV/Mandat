@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,21 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+
+
+def registry_values() -> dict[str, list[int]]:
+    """Эталон листа «Проверки»: ставки и ущерб из строк C-15 и C-16 реестра утверждений."""
+    text = (ROOT / "CLAIMS_REGISTRY.md").read_text(encoding="utf-8")
+    out: dict[str, list[int]] = {}
+    for key, row in (("fte_round", "C-15"), ("prevented_round", "C-16")):
+        line = next(ln for ln in text.splitlines() if ln.startswith(f"| {row} |"))
+        found = re.search(r"(\d+) / (\d+) / (\d+)", line)
+        if found is None:
+            raise SystemExit(f"в строке {row} реестра утверждений нет трёх сценариев «a / b / c»")
+        out[key] = [int(x) for x in found.groups()]
+    return out
+
+
 OUT = HERE / "out"
 XLSX = OUT / "Mandat_financial_model.xlsx"
 VALUES = OUT / "model_values.json"
@@ -115,9 +131,9 @@ def load() -> tuple[dict, dict]:
                 "name": "Клиенты ВТБ — предприятия и предприниматели",
                 "unit": "млн",
                 "values": [effect["clients"] / 1e6] * 3,
-                "type": "вторичный",
+                "type": "факт",
                 "key": True,
-                "source": "Пресс-релиз ВТБ к МСФО за I полугодие 2026 в пересказе altapress.ru и kp.ru (M-09, S05)",
+                "source": "Пресс-релиз Группы ВТБ к МСФО за I полугодие 2026, 29.07.2026 (M-09, S05)",
                 "check": "внутренняя цифра банка",
             },
             {
@@ -151,20 +167,20 @@ def load() -> tuple[dict, dict]:
             },
             {
                 "id": "incidents_q",
-                "name": "Операций без согласия у юрлиц за квартал",
+                "name": "Операций без согласия у юрлиц в среднем за квартал I полугодия 2026",
                 "unit": "операций",
                 "values": three(effect["incidentsPerQuarter"]),
                 "type": "факт",
-                "source": "Банк России, I кв. 2026 (M-07, S03)",
+                "source": "Банк России: I кв. — 818, II кв. — 780 операций (M-07, M-15, S03, S04)",
                 "check": "—",
             },
             {
                 "id": "loss_q",
-                "name": "Объём таких операций за квартал",
+                "name": "Объём таких операций в среднем за квартал I полугодия 2026",
                 "unit": "млн ₽",
                 "values": three(effect["lossPerQuarterMln"]),
                 "type": "факт",
-                "source": "Банк России, I кв. 2026 (M-07, S03)",
+                "source": "Банк России: I кв. — 573, II кв. — 831,4 млн ₽ (M-07, M-15, S03, S04)",
                 "check": "—",
             },
             {
@@ -2097,7 +2113,7 @@ def checks_sheet(wb: Workbook, blocks: list[Block], bank: Columns, market: Colum
     n = 0
     integrity: list[str] = []
     warnings: list[str] = []
-    registry = {"fte_round": [33, 75, 167], "prevented_round": [34, 115, 229]}
+    registry = registry_values()
 
     def add(
         label: str, scen: str, expected: str, actual: str, cond: str, note: str, kind: str = "integrity", fmt: str = MLN

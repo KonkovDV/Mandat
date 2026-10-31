@@ -222,7 +222,8 @@ def cp(k: int, stem: str) -> str:
 def months(x: float | str) -> str:
     if isinstance(x, str):
         return x
-    v = round(x) if x >= 3 else round(x, 1)
+    # До года — с десятыми, как подписи графика окупаемости: «7,5 месяца», а не «7 месяцев» рядом с «7,5 мес.».
+    v = round(x) if x >= 12 else round(x, 1)
     return f"{ch.ru(v, 0 if float(v).is_integer() else 1)} {pl(v, 'месяц', 'месяца', 'месяцев')}"
 
 
@@ -543,7 +544,7 @@ RISKS = [
         3,
         4,
         "к неделе 1 нет пакетов и тестового контура",
-        "синтетический корпус и разметка экспертами банка; запрос с первого созвона",
+        "готовый корпус из 49 видов ситуаций и разметка экспертами банка; запрос данных с первого созвона",
         "капитан",
     ),
     (
@@ -638,8 +639,8 @@ LETTER = "А-Яа-яЁёA-Za-z"
 
 def typo(s: str) -> str:
     """Неразрывные пробелы и дефисы, как в презентации (build_deck.js, typo)."""
-    for _ in range(2):
-        s = re.sub(rf"(^|[\s«„(/])([{LETTER}]{{1,2}})\s+(?=[{LETTER}0-9«„(№])", rf"\1\2{NB}", s)
+    # Просмотр назад, а не захват: цепочка коротких слов («и с доказательством») связывается за один проход.
+    s = re.sub(rf"(?:^|(?<=[\s«„(/]))([{LETTER}]{{1,2}})\s+(?=[{LETTER}0-9«„(№])", rf"\1{NB}", s)
     s = re.sub(r"[ \t]+—", f"{NB}—", s)
     s = re.sub(r"(?<![\d.])(\d+(?:,\d+)?)[ \t]+(?=[а-яё₽%]|ФЗ|МЧД)", rf"\1{NB}", s)
     s = re.sub(r"[ \t]+(?=₽)", NB, s)
@@ -660,6 +661,10 @@ def typo(s: str) -> str:
     s = re.sub(rf"(?<![{LETTER}])(ст|п|подп|ч|гл|г|кв)\.[ \t]+(?=[0-9IVX])", rf"\1.{NB}", s)
     s = re.sub(r"([А-ЯЁ]\.)[ \t]+(?=[А-ЯЁ]\.)", rf"\1{NB}", s)
     s = re.sub(r"ГК[ \t]+РФ", f"ГК{NB}РФ", s)
+    # Коды строк реестра («M-07», «C-15»), номера судебных дел и стандартов не рвутся на дефисе.
+    s = re.sub(r"(?<![\w-])([MCRS])-(\d{2,3})(?![\w-])", "\\1‑\\2", s)
+    s = re.sub(r"(\d{3})-([А-ЯЁ]{2}\d{2})-(\d+)", "\\1‑\\2‑\\3", s)
+    s = re.sub(r"((?:ISO|ГОСТ Р)\s\d+)-(\d+)", "\\1‑\\2", s)
     s = re.sub(r"(?<![A-Za-zА-Яа-яЁё])([IVX]{1,4})[ \t]+(?=кв\.|квартал|полугод)", rf"\1{NB}", s)
     return s
 
@@ -867,6 +872,37 @@ def pdf_fonts(path: Path) -> set[str]:
 # ---------------------------------------------------------------- сборка
 
 
+# Банк России, операции без согласия у юрлиц (M-07, M-15); те же числа — в колоде (build_deck.js, CBR).
+CBR = {
+    "q1_ops": 818,
+    "q1_loss": 573.0,
+    "q2_ops": 780,
+    "q2_accounts": 707,
+    "q2_sbp": 73,
+    "q2_loss": 831.4,
+    "q2_refund_accounts": 0.195,
+    "q2_refund_sbp": 0.005,
+    "q2_all_ops": 458655,
+    "q2_all_loss": 7350.7,
+    "share_q1": 0.078,
+    "share_q2": 0.113,
+}
+
+
+def cbr(inp: dict) -> SimpleNamespace:
+    """Производные числа обзоров Банка России; база эффекта в модели — среднее за квартал I полугодия."""
+    c = dict(CBR)
+    c["h1_ops"] = c["q1_ops"] + c["q2_ops"]
+    c["h1_loss"] = c["q1_loss"] + c["q2_loss"]
+    c["q2_avg"] = c["q2_loss"] / c["q2_ops"]
+    c["h1_avg"] = c["h1_loss"] / c["h1_ops"]
+    c["q2_ratio"] = round(c["q2_avg"] * 1000 / (c["q2_all_loss"] * 1000 / c["q2_all_ops"]))
+    c["growth"] = (c["q2_loss"] - c["q1_loss"]) / c["q1_loss"]
+    if c["h1_ops"] / 2 != inp["incidents_q"]["values"][0] or abs(c["h1_loss"] / 2 - inp["loss_q"]["values"][0]) > 0.05:
+        raise SystemExit("effect_scenarios.json расходится с данными Банка России за I полугодие 2026")
+    return SimpleNamespace(**c)
+
+
 def context() -> dict:
     m = model()
     ev = evidence()
@@ -876,6 +912,7 @@ def context() -> dict:
     inp = {k: SimpleNamespace(**v) for k, v in m["inputs"].items()}
     return {
         "ev": ev,
+        "cbr": cbr(m["inputs"]),
         "S": S,
         "sc": sc,
         "cons": sc[0],
@@ -989,6 +1026,12 @@ def make_package(target: Path, rendered: dict[str, Path]) -> None:
     shutil.copyfile(slides / "Mandat_VTB.pdf", folder / "05_Презентация_Мандат_ВТБ.pdf")
     shutil.copyfile(slides / "Mandat_VTB.pptx", folder / "05_Презентация_Мандат_ВТБ.pptx")
     shutil.copyfile(OUT / "Mandat_analytics_all.pdf", folder / "Весь_пакет_одним_файлом.pdf")
+    # Видео-демо собирает submission/video/build_video.py; в git его нет, поэтому оно добавляется, если собрано.
+    video = ROOT / "submission" / "video" / "out" / "Mandat_demo.mp4"
+    if video.exists():
+        shutil.copyfile(video, folder / "06_Видео-демо_Мандат.mp4")
+    else:
+        print("видео-демо не собрано: node submission/video/build_video.js — пакет без 06_Видео-демо_Мандат.mp4")
     archive = target / f"{folder.name}.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(folder.iterdir()):
