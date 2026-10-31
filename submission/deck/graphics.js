@@ -162,7 +162,34 @@ function accentBand() {
 </svg>`;
 }
 
-async function buildGraphics() {
+// Окно терминала с настоящим выводом `./run-demo.sh` и команд демо; строки размечены ролью.
+const TERM_COLORS = { prompt: "#7FD3FF", cmd: "#FFFFFF", out: "#C9D6EE", ok: "#5FD39A", warn: "#FFC35A", err: "#FF8A8E", dim: "#7F8FB0" };
+function esc(t) {
+  return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function terminal(lines, title) {
+  const w = 900, lh = 33, top = 78, pad = 30;
+  const h = top + lines.length * lh + 30;
+  let body = "";
+  lines.forEach(([role, text], i) => {
+    const y = top + 24 + i * lh;
+    if (role === "cmd") {
+      body += `<text x="${pad}" y="${y}" font-family="DejaVu Sans Mono" font-size="22" xml:space="preserve"><tspan fill="${TERM_COLORS.prompt}">$ </tspan><tspan fill="${TERM_COLORS.cmd}" font-weight="bold">${esc(text)}</tspan></text>`;
+    } else {
+      body += `<text x="${pad}" y="${y}" font-family="DejaVu Sans Mono" font-size="22" fill="${TERM_COLORS[role]}" xml:space="preserve">${esc(text)}</text>`;
+    }
+  });
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <rect x="0" y="0" width="${w}" height="${h}" rx="22" fill="#081B4D"/>
+  <path d="M22 0 H${w - 22} A22 22 0 0 1 ${w} 22 V52 H0 V22 A22 22 0 0 1 22 0 Z" fill="#0E2A6B"/>
+  <circle cx="34" cy="26" r="8" fill="#FF6B6B"/><circle cx="62" cy="26" r="8" fill="#FFC35A"/><circle cx="90" cy="26" r="8" fill="#5FD39A"/>
+  <text x="${w / 2}" y="34" text-anchor="middle" font-family="${FONT}" font-size="21" fill="#C9D6EE">${esc(title)}</text>
+  ${body}
+</svg>`;
+  return { svg, w, h };
+}
+
+async function buildGraphics(opts = {}) {
   const out = {};
   const bg = bgDark();
   save("background-dark", bg);
@@ -178,9 +205,24 @@ async function buildGraphics() {
   out.mark = await png(mark(false), 400, 360);
   out.markDark = await png(mark(true), 400, 360);
 
+  // Прозрачная заглушка для зон-ссылок на слайдах.
+  out.clear = await sharp({ create: { width: 4, height: 4, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 0 } } }).png().toBuffer().then((b) => "image/png;base64," + b.toString("base64"));
+
   const band = accentBand();
   save("accent-band", band);
   out.band = await png(band, 2400, 200);
+
+  if (opts.terminal) {
+    const term = terminal(opts.terminal.lines, opts.terminal.title);
+    save("demo-terminal", term.svg);
+    out.terminal = await png(term.svg, term.w, term.h);
+    out.terminalRatio = term.h / term.w;
+  }
+  if (opts.qrSvg) {
+    const qr = fs.readFileSync(opts.qrSvg, "utf8");
+    save("qr-github", qr);
+    out.qr = await png(qr, 600, 600);
+  }
 
   // Значки Lucide в два цвета: кобальт на светлой плитке и белый на тёмной или цветной.
   const names = [
