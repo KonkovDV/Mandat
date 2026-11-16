@@ -105,6 +105,12 @@ def count_mismatch(name: str, found: int, expected: int | None, *, deck: bool) -
     return found != expected
 
 
+# Сданные тексты — запись того, что ушло жюри, с датой среза. Числа автотестов, демо-кейсов и мутаций в них
+# не догоняют evidence.json: иначе каждый новый тест переписывал бы сданную форму. Запрещённые формулировки,
+# число правил и согласование слов проверяются и здесь. Каждый файл обязан назвать дату среза в первых строках.
+DATED_RECORDS = {"submission/FORM_SPRINT1.md": "31.10.2026"}
+
+
 def evidence_count_hits() -> list[str]:
     import json
 
@@ -119,11 +125,17 @@ def evidence_count_hits() -> list[str]:
         "мутаци": fuzz_runs(),
     }
     hits = []
+    for rel, day in DATED_RECORDS.items():
+        head = "\n".join((ROOT / rel).read_text(encoding="utf-8").splitlines()[:5])
+        if f"срез на {day}" not in head.casefold():
+            hits.append(f"{rel}: в первых строках нет «срез на {day}»: без даты файл проверяется как текущий")
     for path in sorted(ROOT.rglob("*.md")):
         rel = path.relative_to(ROOT).as_posix()
         if path.name in RULE_COUNT_SKIP or rel.startswith(RULE_COUNT_SKIP_PREFIXES):
             continue
         if any(part in SKIP_DIRS or part.endswith(".egg-info") for part in path.relative_to(ROOT).parts):
+            continue
+        if rel in DATED_RECORDS and not any(h.startswith(rel + ":") for h in hits):
             continue
         for i, text in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
             for name, pattern in EVIDENCE_COUNTS.items():
