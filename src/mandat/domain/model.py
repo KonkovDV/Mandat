@@ -259,6 +259,8 @@ class Case:
     # Форма передоверия (п. 3 ст. 187 ГК РФ) со слов клиента: номер дочерней МЧД -> форма
     subdelegation_forms: dict[str, str] = field(default_factory=dict)
     duplicates: tuple[tuple[str, str], ...] = ()  # (doc_id, kind) второго документа вида, который должен быть один
+    # Стенд: поля манифеста вне контракта, которые загрузчик не прочитал. В защищённом режиме это ошибка входа.
+    manifest_notes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

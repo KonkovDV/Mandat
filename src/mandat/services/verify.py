@@ -263,6 +263,7 @@ def verify_case(
     if any(f.message.startswith("Внутренняя ошибка правила") for f in findings):
         warnings.insert(0, "Внутренняя ошибка правила: проверка не завершена, нужен разбор")
     warnings.extend(chain.notes)
+    warnings.extend(case.manifest_notes)
     objection = strongest_objection(verdict, findings, warnings)
     # Проверки, которые профиль не выполняет, не попадают в список действий: они уже названы в предупреждениях.
     next_steps = build_next_steps([f for f in findings if f.check not in prof.waived], verdict)

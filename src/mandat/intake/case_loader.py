@@ -22,6 +22,7 @@ from mandat.intake.egrul import EgrulError, parse_egrul
 from mandat.intake.emchd import EmchdError
 from mandat.intake.formats import parse_poa
 from mandat.intake.xml_safety import XmlRejected
+from mandat.services.env_policy import protected
 from mandat.strictjson import strict_loads
 
 KINDS = {"emchd_xml", "egrul_json", "charter_text", "paper_poa_text"}
@@ -31,6 +32,60 @@ MAX_DOC_BYTES = 4 * 1024 * 1024
 
 class CaseError(ValueError):
     pass
+
+
+# Поля манифеста по docs/api/case-manifest.schema.json. Совпадение списков со схемой держит
+# tests/test_b5_manifest_unknown_fields.py: правка одного без другого валит тест.
+MANIFEST_FIELDS = frozenset(
+    {
+        "case_id",
+        "title",
+        "expected_verdict",
+        "charter_disposition_note",
+        "organization",
+        "requester",
+        "operation",
+        "documents",
+        "registry",
+        "bankruptcy",
+        "charter_disposition",
+        "subdelegation_forms",
+    }
+)
+SECTION_FIELDS = {
+    "organization": frozenset({"inn", "ogrn", "kpp", "name"}),
+    "requester": frozenset({"full_name", "inn", "snils", "position"}),
+    "operation": frozenset({"code", "date", "amount_rub", "counterparty_inn"}),
+}
+DOCUMENT_FIELDS = frozenset({"id", "kind", "path", "content"})
+MAX_NAMED_FIELDS = 10
+MAX_FIELD_NAME = 60
+
+
+def unknown_fields(manifest: dict[str, Any]) -> tuple[str, ...]:
+    """Пути полей, которых нет в контракте манифеста: ``registy``, ``operation.amout_rub``, ``documents[0].pth``.
+
+    Загрузчик такие поля не читает. Опечатка ``registy`` делала реестр недоступным без единого слова (#105).
+    Поля записи реестра проверяет ``_registry_entries``: там лишнее поле — ошибка в любом режиме.
+    """
+    found = [str(key) for key in manifest if key not in MANIFEST_FIELDS]
+    for section, allowed in SECTION_FIELDS.items():
+        value = manifest.get(section)
+        if isinstance(value, dict):
+            found += [f"{section}.{key}" for key in value if key not in allowed]
+    documents = manifest.get("documents")
+    if isinstance(documents, list):
+        for index, doc in enumerate(documents[:MAX_DOCUMENTS]):
+            if isinstance(doc, dict):
+                found += [f"documents[{index}].{key}" for key in doc if key not in DOCUMENT_FIELDS]
+    return tuple(found)
+
+
+def _named(fields: tuple[str, ...]) -> str:
+    """Имена для сообщения: поле приходит от клиента, поэтому длина и число имён ограничены."""
+    shown = ", ".join(repr(name[:MAX_FIELD_NAME]) for name in fields[:MAX_NAMED_FIELDS])
+    rest = len(fields) - MAX_NAMED_FIELDS
+    return shown + (f" и ещё {rest}" if rest > 0 else "")
 
 
 def _object(value: Any, name: str) -> dict[str, Any]:
@@ -167,6 +222,10 @@ def _person(raw: dict[str, Any] | None) -> Person:
 def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, Any]], bytes]) -> Case:
     if not isinstance(manifest, dict):
         raise CaseError("манифест должен быть объектом JSON")
+    unknown = unknown_fields(manifest)
+    if unknown and protected():
+        # В pilot, prod и любом защищённом режиме вход сверяется с контрактом так же, как это делает схема.
+        raise CaseError(f"манифест: неизвестные поля {_named(unknown)}; контракт — docs/api/case-manifest.schema.json")
     try:
         op = _object(manifest.get("operation"), "operation")
         operation = Operation(
@@ -252,6 +311,9 @@ def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, 
         charter_disposition=_disposition(manifest.get("charter_disposition")),
         subdelegation_forms=_subdelegation_forms(manifest.get("subdelegation_forms")),
         duplicates=tuple(duplicates),
+        manifest_notes=(
+            (f"Манифест: не прочитано {_named(unknown)}. Проверьте имя поля по контракту манифеста",) if unknown else ()
+        ),
     )
 
 
