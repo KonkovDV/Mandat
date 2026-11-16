@@ -85,9 +85,21 @@ INVALID = {
 # Дубли id схема JSON выразить не может (uniqueItems сравнивает объекты целиком): их ловит только загрузчик.
 SCHEMA_CANNOT = {"duplicate document id"}
 
+# Неизвестные поля (#105): схема отвергает их всегда, загрузчик — в защищённом режиме; на стенде он предупреждает.
+UNKNOWN_FIELDS = {
+    "unknown top-level field": lambda m: (m.__setitem__("registy", m.pop("registry")), m)[1],
+    "unknown operation field": _set(("operation", "amout_rub"), 100),
+    "unknown organization field": _set(("organization", "orgn"), "1027700000000"),
+    "unknown requester field": _set(("requester", "snlis"), "00000000000"),
+    "unknown document field": _set(("documents", 0, "sha256"), "0" * 64),
+}
+INVALID.update(UNKNOWN_FIELDS)
+
 
 @pytest.mark.parametrize("name", sorted(INVALID))
-def test_loader_and_schema_reject_the_same_defects(name):
+def test_loader_and_schema_reject_the_same_defects(name, monkeypatch):
+    if name in UNKNOWN_FIELDS:
+        monkeypatch.setenv("MANDAT_ENV", "pilot")
     manifest = INVALID[name](copy.deepcopy(_inline()))
     with pytest.raises(CaseError):
         load_case_inline(manifest)
@@ -95,13 +107,15 @@ def test_loader_and_schema_reject_the_same_defects(name):
         assert list(VALIDATOR.iter_errors(manifest)), f"схема пропустила: {name}"
 
 
-def test_unknown_top_level_key_is_a_schema_error_but_not_a_loader_error():
-    """Опечатка «registy» в схеме видна сразу; загрузчик её игнорирует, и реестр считается недоступным."""
+def test_unknown_top_level_key_is_a_schema_error_and_a_stand_warning():
+    """Опечатка «registy» в схеме видна сразу. На стенде загрузчик её не читает и называет в отчёте;
+    в защищённом режиме это ошибка входа (tests/test_b5_manifest_unknown_fields.py)."""
     manifest = _inline()
     manifest["registy"] = manifest.pop("registry")
     assert list(VALIDATOR.iter_errors(manifest))
     case = load_case_inline(manifest)
     assert case.registry == {}
+    assert case.manifest_notes and "registy" in case.manifest_notes[0]
 
 
 CONFIRMED = "14_old_director_charter_cleared"  # единственный «подтверждено» в демо
