@@ -8,8 +8,11 @@ Cedar (CNCF Sandbox, спецификация проверена в Lean) отв
 Экспортируется подмножество правил: покрытие операции (R-COV-001), срок и реестр
 (R-TERM-002, R-REG-001), право передоверия (R-SUB-001), сужение (R-SUB-002),
 срок передоверия (R-SUB-003), каскад (R-SUB-006), подписант передоверия — представитель
-по родительской МЧД (R-SUB-009), порядок дат звена (R-SUB-004) и совместные полномочия
-(R-JNT-001: при них автоматического «да» нет). Цепочка — до двух звеньев.
+по родительской МЧД (R-SUB-009), порядок дат звена (R-SUB-004), форма передоверия (R-SUB-010:
+нотариальное удостоверение или передоверитель — юрлицо, руководитель филиала или представительства)
+и совместные полномочия (R-JNT-001: при них автоматического «да» нет). Цепочка — до двух звеньев.
+Признаки формы приходят в контексте уже разобранными: удостоверение — по реквизитам ``СвНотУд`` дочерней
+МЧД, вид передоверителя — по МЧД, отметка кейса — только если её принимает профиль.
 Тест ``tests/test_cedar.py`` сравнивает решения Cedar и «Мандата» на полном переборе.
 """
 
@@ -38,6 +41,7 @@ SCHEMA_TEMPLATE = """namespace Mandat {{
     context: {{
       day: Long, hasParent: Bool, leaf: Link, parent: Link,
       signerIsParentRepresentative: Bool, joint: Bool,
+      leafNotarized: Bool, formMarked: Bool, subdelegatorKind: String,
     }},
   }};
 }}
@@ -70,6 +74,15 @@ when { context.hasParent && !context.signerIsParentRepresentative };
 // R-SUB-004: передоверие выдано не раньше родительской МЧД.
 forbid (principal, action, resource)
 when { context.hasParent && context.leaf.validFrom < context.parent.validFrom };
+
+// R-SUB-010: передоверие нотариально удостоверено, или передоверитель — юрлицо, руководитель филиала
+// или представительства (п. 3 ст. 187 ГК РФ).
+forbid (principal, action, resource)
+when {
+  context.hasParent &&
+  !(context.leafNotarized || context.formMarked ||
+    context.subdelegatorKind == "legal_entity" || context.subdelegatorKind == "branch")
+};
 
 // R-JNT-001: совместные полномочия — автоматического «да» нет.
 forbid (principal, action, resource)

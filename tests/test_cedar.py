@@ -16,6 +16,16 @@ from mandat.rules.cedar_export import day_number, export_policies, export_schema
 cedarpy = pytest.importorskip("cedarpy")
 
 
+# Форма передоверия по отметке кейса: профиль demo её принимает, так в сценариях матрицы и звена.
+MARKED_FORM = {"leafNotarized": False, "formMarked": True, "subdelegatorKind": "individual"}
+
+NOTARY = (
+    '<СвНотУд МестоДовер="г. Москва" УплНотДейст="1000"><СвНотДейств Должность="1" РегНомНот="77/000-н/77"/>'
+    "<ПодпРукопис>Образцов</ПодпРукопис></СвНотУд>"
+)
+KIND_TAG = {"individual": "СведФизЛ", "legal_entity": "СведОрг", "branch": "СведФилиал"}
+
+
 def _link(codes: frozenset[str], until: date, issue: date, flag: int) -> dict:
     return {
         "codes": sorted(codes),
@@ -50,6 +60,7 @@ def test_cedar_and_engine_agree_on_every_chain():
                 "parent": _link(parent, root_until, root_issue, int(flag)),
                 "signerIsParentRepresentative": True,
                 "joint": False,
+                **MARKED_FORM,
             },
         }
         allowed = cedarpy.is_authorized(request, policies, []).allowed
@@ -74,7 +85,7 @@ def _link_scenario(*, bad_signer: bool, early: bool, joint: bool):
     sc.manifest["charter_disposition"] = "no_applicable_restriction"
     root = parse_emchd(sc.files["poa-root.xml"], doc_id="poa-root")
     leaf = parse_emchd(sc.files["poa-child.xml"], doc_id="poa-child")
-    # Форма передоверия по отметке кейса: в Cedar её нет, сравниваются правила звена.
+    # Форма передоверия — по отметке кейса (MARKED_FORM): здесь сравниваются правила звена.
     sc.manifest["subdelegation_forms"] = {leaf.number: "notarized"}
     issue = root.issue_date - timedelta(days=10) if early else leaf.issue_date
     sc.files["poa-child.xml"] = build_emchd_xml(
@@ -111,9 +122,66 @@ def test_cedar_and_engine_agree_on_link_rules(bad_signer, early, joint):
             "parent": _link(_codes(root), root.valid_until, root.issue_date, 2),
             "signerIsParentRepresentative": not bad_signer,
             "joint": joint,
+            **MARKED_FORM,
         },
     }
     allowed = cedarpy.is_authorized(request, export_policies(on=OP_DATE), []).allowed
     confirmed = verify_scenario(sc).verdict.value == "confirmed"
     assert allowed == confirmed, (bad_signer, early, joint, allowed, confirmed)
     assert allowed == (not bad_signer and not early and not joint)
+
+
+@pytest.mark.parametrize("kind", ["individual", "legal_entity", "branch"])
+@pytest.mark.parametrize("notarized", [False, True])
+@pytest.mark.parametrize("marked", [False, True])
+@pytest.mark.parametrize("profile", ["demo", "strict"])
+def test_cedar_and_engine_agree_on_subdelegation_form(kind, notarized, marked, profile):
+    """R-SUB-010: нотариальное удостоверение, вид передоверителя и отметка кейса — Cedar и «Мандат» решают одинаково.
+
+    Сравнивается решение правила: вид передоверителя-юрлица задаётся только тегом представителя в родительской МЧД,
+    и такой синтетический кейс не проходит другие правила (формат, подписант звена). Для передоверителя-физлица
+    остальные правила проходят, и сравнивается ещё и итоговый вердикт.
+    """
+    from mandat.eval.synth import build
+    from mandat.intake.emchd import parse_emchd
+
+    sc = build("ok_subdelegation", seed=17)
+    sc.manifest["charter_disposition"] = "no_applicable_restriction"
+    root_xml = sc.files["poa-root.xml"].decode()
+    child_xml = sc.files["poa-child.xml"].decode()
+    assert "<СведФизЛ" in root_xml and "</Довер>" in child_xml
+    tag = KIND_TAG[kind]
+    sc.files["poa-root.xml"] = root_xml.replace("<СведФизЛ", f"<{tag}").replace("</СведФизЛ>", f"</{tag}>").encode()
+    if notarized:
+        sc.files["poa-child.xml"] = child_xml.replace("</Довер>", NOTARY + "</Довер>").encode()
+    root = parse_emchd(sc.files["poa-root.xml"], doc_id="poa-root")
+    leaf = parse_emchd(sc.files["poa-child.xml"], doc_id="poa-child")
+    if marked:
+        sc.manifest["subdelegation_forms"] = {leaf.number: "notarized"}
+    else:
+        sc.manifest.pop("subdelegation_forms", None)
+    assert leaf.notarized == notarized
+    request = {
+        "principal": 'Mandat::Representative::"accountant"',
+        "action": 'Mandat::Action::"PAYMENT_SIGN"',
+        "resource": 'Mandat::Organization::"client"',
+        "context": {
+            "day": day_number(OP_DATE),
+            "hasParent": True,
+            "leaf": _link(_codes(leaf), leaf.valid_until, leaf.issue_date, 1),
+            "parent": _link(_codes(root), root.valid_until, root.issue_date, 2),
+            "signerIsParentRepresentative": True,
+            "joint": False,
+            "leafNotarized": notarized,
+            # Отметку кейса принимает только профиль demo: у неё нет документа-основания.
+            "formMarked": marked and profile == "demo",
+            "subdelegatorKind": kind,
+        },
+    }
+    allowed = cedarpy.is_authorized(request, export_policies(on=OP_DATE), []).allowed
+    report = verify_scenario(sc, profile)
+    form_ok = not any(f.rule_id == "R-SUB-010" and f.effect.value == "needs_review" for f in report.findings)
+    assert allowed == form_ok, (kind, notarized, marked, profile, allowed, form_ok)
+    assert allowed == (notarized or (marked and profile == "demo") or kind != "individual")
+    if kind == "individual" and profile == "demo":
+        assert allowed == (report.verdict.value == "confirmed"), (notarized, marked, report.verdict.value)
