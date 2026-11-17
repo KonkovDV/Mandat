@@ -718,6 +718,8 @@ def create_app(
         """Допуск одной операции по удостоверению: подлинность, статус, вердикт confirmed и привязка к запросу.
 
         200 — решение: ``allowed`` и причины отказа. Отказ тоже 200: это ответ, а не ошибка запроса.
+        ``already_admitted`` — этот же запрос уже допущен в ``admitted_at``, например ответ потерялся в сети;
+        второго допуска нет, операцию по первому допуску ДБО проводит один раз.
         503 — допуск не настроен или в защищённом режиме нет общего хранилища nonce и журнала.
         """
         if admit is None:
@@ -739,7 +741,7 @@ def create_app(
             raise ApiProblem(422, "запрос операции не соответствует схеме", str(exc)) from exc
         moment = datetime.now(UTC)
         try:
-            problems = admission.decide(
+            decision = admission.decide_detailed(
                 admission.AdmissionRequest(body.credential, operation, body.operation_risk),
                 admit,
                 shared,
@@ -748,6 +750,7 @@ def create_app(
             )
         except Exception as exc:
             raise ApiProblem(503, "хранилище недоступно, допуск не выдан", f"store: {type(exc).__name__}") from exc
+        problems = decision.problems
         allowed = not problems
         subject = body.credential.get("credentialSubject")
         report_sha = subject.get("reportSha256") if isinstance(subject, dict) else None
@@ -774,16 +777,25 @@ def create_app(
                         "operation": fields.operation,
                         "audience": fields.audience,
                         "problems": len(problems),
+                        "already_admitted": decision.already_admitted,
                         "via": "api",
                     },
                 )
             except (ValueError, OSError, journal.JournalKeyMissing) as exc:
                 # Допуск без записи в журнал не выдаётся: в защищённом режиме решение должно быть доказуемо.
+                # nonce, который занял этот допуск, освобождается: иначе повтор получил бы «уже допущен» (B6).
                 cause = f"journal: {type(exc).__name__}"
+                if allowed:
+                    try:
+                        shared.release(admission.nonce_key(fields.audience, fields.nonce))
+                    except Exception:  # noqa: BLE001 — недоступное хранилище: повтор получит отказ
+                        cause += "; nonce не освобождён"
                 raise ApiProblem(503, "журнал аудита недоступен, допуск не выдан", cause) from exc
         return {
             "allowed": allowed,
             "problems": problems,
+            "already_admitted": decision.already_admitted,
+            "admitted_at": decision.admitted_at,
             "operation": fields.operation,
             "audience": fields.audience,
             "checked_at": moment.isoformat(timespec="seconds"),

@@ -329,3 +329,137 @@ def test_moment_is_the_server_clock_not_a_request_field(issuer, tmp_path):
     )
     assert answer["allowed"] is False
     assert any("дата операции" in p for p in answer["problems"]), answer
+
+
+# --- B6 (#160): повтор после потерянного ответа ---------------------------------------------------------
+
+URL = "/v1/operations/authorize"
+
+
+def test_same_request_after_a_lost_answer_is_refused_as_already_admitted(issuer, tmp_path):
+    """Ответ на допуск потерялся, ДБО повторил тот же запрос: отказ с признаком и временем первого допуска."""
+    nonce = "n-" + "a" * 20
+    client = _client(issuer, tmp_path)
+    body = _body(issuer.issue(nonce), nonce)
+    first = client.post(URL, json=body, headers=HEADERS).json()
+    assert first["allowed"] is True and first["already_admitted"] is False and first["admitted_at"] is None
+    again = client.post(URL, json=body, headers=HEADERS).json()
+    assert again["allowed"] is False
+    assert again["already_admitted"] is True
+    assert again["admitted_at"] == first["checked_at"]
+    assert again["problems"] == [attestation.NONCE_USED]
+
+
+def test_other_request_with_the_same_nonce_is_refused_without_the_flag(issuer, tmp_path):
+    nonce = "n-" + "b" * 20
+    client = _client(issuer, tmp_path)
+    cred = issuer.issue(nonce)
+    assert client.post(URL, json=_body(cred, nonce), headers=HEADERS).json()["allowed"] is True
+    other = client.post(URL, json=_body(cred, nonce, amount_rub=400_000), headers=HEADERS).json()
+    assert other["allowed"] is False and other["already_admitted"] is False
+    assert other["problems"] == [admission.NONCE_OTHER_REQUEST]
+
+
+@pytest.mark.parametrize("kind", ["memory", "sqlite", "redis"])
+def test_concurrent_identical_requests_give_one_admission_and_flagged_replays(issuer, tmp_path, kind):
+    store = {
+        "memory": lambda: MemoryStore(),
+        "sqlite": lambda: SQLiteStore(tmp_path / "replay.db"),
+        "redis": lambda: RedisStore(fakeredis.FakeStrictRedis()),
+    }[kind]()
+    nonce = "n-" + "c" * 20
+    client = _client(issuer, tmp_path, store=store)
+    body = _body(issuer.issue(nonce), nonce)
+    answers: list[dict] = []
+    lock = threading.Lock()
+    barrier = threading.Barrier(8)
+
+    def worker() -> None:
+        barrier.wait()
+        answer = client.post(URL, json=body, headers=HEADERS).json()
+        with lock:
+            answers.append(answer)
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert [a["allowed"] for a in answers].count(True) == 1, answers
+    assert all(a["already_admitted"] for a in answers if not a["allowed"]), answers
+
+
+def test_replay_is_journaled_with_the_flag_and_without_the_inn(issuer, tmp_path):
+    nonce = "n-" + "d" * 20
+    log = tmp_path / "journal.jsonl"
+    client = _client(issuer, tmp_path, journal_path=log)
+    body = _body(issuer.issue(nonce), nonce)
+    client.post(URL, json=body, headers=HEADERS)
+    client.post(URL, json=body, headers=HEADERS)
+    records = journal.read_journal(log)
+    assert [r["details"]["already_admitted"] for r in records] == [False, True]
+    assert [r["details"]["allowed"] for r in records] == [True, False]
+    assert REP_INN not in log.read_text(encoding="utf-8")
+
+
+def test_nonce_spent_before_the_upgrade_stays_spent(issuer, tmp_path):
+    """Ключ, занятый first_seen до B6, — повтор без признака, а не новый допуск."""
+    nonce = "n-" + "e" * 20
+    store = SQLiteStore(tmp_path / "legacy.db")
+    assert store.first_seen(admission.nonce_key(AUDIENCE, nonce), 3600)
+    answer = _client(issuer, tmp_path, store=store).post(URL, json=_body(issuer.issue(nonce), nonce), headers=HEADERS)
+    assert answer.json()["allowed"] is False and answer.json()["already_admitted"] is False
+    assert answer.json()["problems"] == [attestation.NONCE_USED]
+
+
+def test_replay_after_revocation_is_refused_by_status_without_the_flag(issuer, tmp_path):
+    """После отзыва удостоверения повтор не узнаёт о допуске: отказ по статусу, проводить нечего."""
+    nonce = "n-" + "f" * 20
+    client = _client(issuer, tmp_path)
+    cred = issuer.issue(nonce)
+    assert client.post(URL, json=_body(cred, nonce), headers=HEADERS).json()["allowed"] is True
+    issuer.registry.mark(int(cred["credentialStatus"][0]["statusListIndex"]), "revocation", "МЧД отменена")
+    issuer.registry.save(issuer.key)
+    again = client.post(URL, json=_body(cred, nonce), headers=HEADERS).json()
+    assert again["allowed"] is False and again["already_admitted"] is False
+    assert any("отозвано" in p for p in again["problems"]), again
+
+
+def test_fingerprint_hides_the_representative_inn(issuer):
+    """С ключом представителя отпечаток — HMAC: ИНН по нему перебором не подобрать без ключа."""
+    nonce = "n-" + "g" * 20
+    body = _body(issuer.issue(nonce), nonce)
+    request = admission.AdmissionRequest(
+        body["credential"],
+        attestation.OperationRequest(
+            operation="PAYMENT_SIGN",
+            amount_rub=500_000,
+            representative_inn=REP_INN,
+            audience=AUDIENCE,
+            nonce=nonce,
+            organization_inn=ORG_INN,
+            operation_date=admission.parse_day(_today()),
+        ),
+        "payment",
+    )
+    keyed = admission.request_fingerprint(request, PSEUDONYM_KEY)
+    assert keyed == admission.request_fingerprint(request, PSEUDONYM_KEY)
+    assert keyed != admission.request_fingerprint(request, b"x" * 32)
+    assert keyed != admission.request_fingerprint(request, None)
+
+
+def test_admission_without_a_journal_releases_the_nonce(issuer, tmp_path, monkeypatch):
+    """503 из-за журнала: допуск не выдан, и повтор того же запроса проверяется заново, а не «уже допущен»."""
+    nonce = "n-" + "h" * 20
+    client = _client(issuer, tmp_path)
+    body = _body(issuer.issue(nonce), nonce)
+    real = journal.append
+
+    def broken(*args, **kwargs):
+        raise OSError("журнал недоступен")
+
+    monkeypatch.setattr(journal, "append", broken)
+    assert client.post(URL, json=body, headers=HEADERS).status_code == 503
+    monkeypatch.setattr(journal, "append", real)
+    again = client.post(URL, json=body, headers=HEADERS).json()
+    assert again["allowed"] is True and again["already_admitted"] is False
