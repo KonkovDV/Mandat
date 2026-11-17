@@ -68,11 +68,34 @@ def test_hash_on_the_card_is_what_an_approval_record_signs():
     assert f"`{record['rule_sha256']}`" in (CARDS / "R-TERM-002.md").read_text(encoding="utf-8")
 
 
-def test_repository_quotes_file_is_empty_until_primary_texts_are_read():
+B3_RULES = {"R-FMT-003", "R-ID-003", "R-ID-004", "R-COV-001", "R-COV-002"}
+B3_DOCUMENTS = {"0001202110080020", "0001202601210006", "0001202110080021"}  # № 857, № 1001, № 856
+
+
+def test_repository_quotes_are_the_b3_orders_from_official_publication():
+    """B3 (#103): цитаты есть у пяти правил, все — из официального опубликования приказов № 857, № 1001, № 856."""
     payload = json.loads((ROOT / "docs" / "legal" / "quotes.json").read_text(encoding="utf-8"))
-    assert payload["schema"] == 1 and payload["quotes"] == []
+    rows = payload["quotes"]
+    assert payload["schema"] == 1 and {row["rule_id"] for row in rows} == B3_RULES
+    assert {row["url"].rsplit("/", 1)[1] for row in rows} == B3_DOCUMENTS
     for path in CARDS.glob("*.md"):
-        assert "Цитаты из официальной публикации с адресом и датой сверки нет." in path.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8")
+        if path.stem in B3_RULES:
+            assert "сверено 2026-11-17" in text and "Цитаты из официальной публикации" not in text, path.name
+        else:
+            assert "Цитаты из официальной публикации с адресом и датой сверки нет." in text, path.name
+
+
+@pytest.mark.parametrize(
+    ("text", "shown"), [("3) сведения", "> 3\\) сведения"), ("7. Классификатор", "> 7\\. Классификатор")]
+)
+def test_quote_that_starts_with_an_item_number_stays_verbatim(tmp_path, monkeypatch, text, shown):
+    quotes = tmp_path / "quotes.json"
+    quotes.write_text(json.dumps({"schema": 1, "quotes": [_quote(text=text)]}, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(gen, "QUOTES", quotes)
+    loaded = gen.load_quotes(list(PACK.rules))
+    card = gen.render_card(PACK.rules["R-TERM-002"], PACK, [], [], loaded["R-TERM-002"], {})
+    assert shown in card
 
 
 def _quote(**over) -> dict:
