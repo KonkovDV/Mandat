@@ -44,6 +44,15 @@ when { context.hasParent && !context.signerIsParentRepresentative };
 forbid (principal, action, resource)
 when { context.hasParent && context.leaf.validFrom < context.parent.validFrom };
 
+// R-SUB-010: передоверие нотариально удостоверено, или передоверитель — юрлицо, руководитель филиала
+// или представительства (п. 3 ст. 187 ГК РФ).
+forbid (principal, action, resource)
+when {
+  context.hasParent &&
+  !(context.leafNotarized || context.formMarked ||
+    context.subdelegatorKind == "legal_entity" || context.subdelegatorKind == "branch")
+};
+
 // R-JNT-001: совместные полномочия — автоматического «да» нет.
 forbid (principal, action, resource)
 when { context.joint };
