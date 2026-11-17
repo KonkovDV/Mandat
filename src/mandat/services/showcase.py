@@ -290,6 +290,6 @@ def render_text(show: Showcase) -> str:
         f"Журнал: {show.journal_records} записей, цепочка {'цела' if show.journal_ok else 'НАРУШЕНА'}; "
         f"включение записи об отказе {'доказано' if show.proof_ok else 'НЕ ДОКАЗАНО'} "
         f"(дерево Меркла, корень {show.merkle_root[:16]}…)",
-        f"Сценарий занял {show.seconds:.2f} с.",
+        f"Сценарий занял {show.seconds:.2f} с.".replace(".", ",", 1),
     ]
     return "\n".join(lines)

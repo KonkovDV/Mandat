@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from conftest import ROOT
@@ -18,7 +19,7 @@ def test_takeover_is_stopped_before_the_payment(tmp_path):
     show = showcase.run(ROOT, tmp_path)
     assert [s.outcome for s in show.steps] == EXPECTED
     assert "nonce уже использован" in show.steps[3].detail
-    assert "больше проверенной" in show.steps[4].detail
+    assert "сумма 1 920 000 ₽ больше проверенной 480 000 ₽" in show.steps[4].detail
     assert "possible_takeover" in show.steps[5].detail
     assert "приостановлено" in show.steps[6].detail
     assert show.journal_ok and show.proof_ok
@@ -49,6 +50,8 @@ def test_cli_prints_the_story_and_exits_zero(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "захват компании останавливается до платежа" in out
     assert "доказано" in out and "цела" in out
+    duration = next(line for line in out.splitlines() if line.startswith("Сценарий занял"))
+    assert re.fullmatch(r"Сценарий занял \d+,\d\d с\.", duration)
 
 
 @pytest.mark.parametrize("mode", ["pilot", "prod"])

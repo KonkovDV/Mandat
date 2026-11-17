@@ -221,6 +221,11 @@ def issue(
     return sign(credential, key, now=now)
 
 
+def _rubles(amount: int) -> str:
+    """1920000 → «1 920 000 ₽»: разряды и знак рубля через неразрывный пробел, как в карточке и показе."""
+    return f"{amount:,}".replace(",", " ") + " ₽"
+
+
 def _utf8(text: str) -> bytes:
     """Байты строки для HMAC и сравнения. Одиночный суррогат не роняет кодирование: строка просто не совпадёт."""
     return text.encode("utf-8", "surrogatepass")
@@ -485,7 +490,7 @@ def check_request(
         elif amount is None:
             problems.append("в запросе нет суммы, а удостоверение выпущено на сумму")
         elif amount > bound:
-            problems.append(f"сумма {amount} больше проверенной {bound}")
+            problems.append(f"сумма {_rubles(amount)} больше проверенной {_rubles(bound)}")
     elif amount is not None:
         problems.append("в удостоверении нет суммы: операцию с суммой по нему не допустить")
     token = subject.get("representativeToken")
