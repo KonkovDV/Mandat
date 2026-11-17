@@ -727,7 +727,7 @@ def cover(doc: tuple, ctx: dict) -> str:
 <div class="title">{html.escape(title)}</div>
 <div class="subtitle">{html.escape(subtitle)}</div>
 <div class="meta">
-<div><b>Версия {ctx["version"]}</b>{ctx["as_of"]}<br>к этапу «Спринт 1»</div>
+<div><b>Версия {ctx["version"]}</b>{ctx["as_of"]}<br>к этапу «Спринт 2»</div>
 <div><b>Трек ВТБ «Финтех без границ»</b>«Академия Финтеха 2026»,<br>задача «Онбординг и проверка полномочий»</div>
 <div><b>{AUTHOR}</b>Коньков Дмитрий<br>Конькова Елена<br>github.com/KonkovDV/Mandat</div>
 </div>
