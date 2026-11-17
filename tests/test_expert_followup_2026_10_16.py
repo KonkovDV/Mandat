@@ -130,7 +130,6 @@ def test_unreadable_journal_lock_is_not_stolen(tmp_path: Path, monkeypatch: pyte
 
 
 def test_protected_status_without_now_is_not_valid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    pytest.importorskip("fcntl")
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     from mandat.audit import attestation

@@ -15,12 +15,12 @@ GZIP и кодируется multibase base64url без выравнивания
 from __future__ import annotations
 
 import base64
-import fcntl
 import gzip
 import json
 import math
 import os
 import secrets
+import sys
 import zlib
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -161,8 +161,36 @@ def _lock_path(directory: Path) -> Path:
     return directory / ".registry.lock"
 
 
+# Блокировка файла за одной парой функций (A4, #99): flock на POSIX, msvcrt.locking на Windows.
+if sys.platform == "win32":  # pragma: no cover — проверяется задачей CI windows
+    import msvcrt
+
+    def _lock_file(fh: Any) -> None:
+        """Первый байт файла; LK_LOCK ждёт около 10 секунд и бросает OSError — тогда ждём снова."""
+        fh.seek(0)
+        while True:
+            try:
+                msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+                return
+            except OSError:
+                continue
+
+    def _unlock_file(fh: Any) -> None:
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+
+else:
+    import fcntl
+
+    def _lock_file(fh: Any) -> None:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+
+    def _unlock_file(fh: Any) -> None:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
 class _RegistryLock:
-    """Межпроцессная блокировка каталога статусов (fcntl Exclusive)."""
+    """Межпроцессная блокировка каталога статусов: flock на POSIX, msvcrt.locking на Windows."""
 
     def __init__(self, directory: Path) -> None:
         directory.mkdir(parents=True, exist_ok=True)
@@ -171,12 +199,12 @@ class _RegistryLock:
 
     def __enter__(self) -> _RegistryLock:
         self._fh = open(self._path, "a+", encoding="utf-8")
-        fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX)
+        _lock_file(self._fh)
         return self
 
     def __exit__(self, *exc: object) -> None:
         assert self._fh is not None
-        fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
+        _unlock_file(self._fh)
         self._fh.close()
         self._fh = None
 

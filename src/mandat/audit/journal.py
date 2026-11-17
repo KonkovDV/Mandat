@@ -271,6 +271,9 @@ def _write_witness(path: Path, records: int, head: str, key: str | None = None) 
 
 
 LOCK_WAIT_SECONDS = 5.0
+# В Windows файл, который открыт другим писателем, не удаляется (WinError 32), а файл, который ещё удаляется,
+# нельзя создать заново (PermissionError). Для файла lock это «занято», а не отказ в правах.
+_WINDOWS = os.name == "nt"
 
 
 def _lock_owner_pid(lock: Path) -> int | None:
@@ -347,6 +350,10 @@ def _reclaim_dead_lock(lock: Path) -> bool:
         lock.unlink()
     except FileNotFoundError:
         return True
+    except PermissionError:
+        if not _WINDOWS:
+            raise
+        return False  # файл в этот миг читает другой писатель: следующая попытка
     return True
 
 
@@ -366,13 +373,30 @@ def _acquire_lock(path: Path) -> tuple[int, Path]:
         except FileExistsError:
             if _reclaim_dead_lock(lock):
                 continue
-            if time.monotonic() >= deadline:
-                raise ValueError("журнал занят другой записью") from None
-            time.sleep(delay)
-            delay = min(delay * 2, 0.05)
-            continue
-        os.write(fd, f"{os.getpid()}\n".encode("ascii"))
-        return fd, lock
+        except PermissionError:
+            if not _WINDOWS:
+                raise
+        else:
+            os.write(fd, f"{os.getpid()}\n".encode("ascii"))
+            return fd, lock
+        if time.monotonic() >= deadline:
+            raise ValueError("журнал занят другой записью") from None
+        time.sleep(delay)
+        delay = min(delay * 2, 0.05)
+
+
+def _release_lock(lock: Path) -> None:
+    """Снять свой lock. В Windows файл, который другой писатель в этот миг читает (проверка pid), не удаляется:
+    попытка повторяется. Оставленный lock с живым pid остановил бы журнал этого процесса до перезапуска."""
+    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+    while True:
+        try:
+            lock.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            if not _WINDOWS or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.001)
 
 
 def append(
@@ -497,7 +521,7 @@ def append(
         return record
     finally:
         os.close(fd)
-        lock.unlink(missing_ok=True)
+        _release_lock(lock)
 
 
 # Хвост журнала, проверенный этим процессом: SHA-256 всего файла, свидетель и ключ → (seq, hash).

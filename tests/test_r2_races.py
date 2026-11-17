@@ -381,23 +381,24 @@ def test_journal_segment_tamper_and_removal_detected(tmp_path, monkeypatch):
     path = tmp_path / "j.jsonl"
     _seg_append(path, 8)
     first, second = j.sealed_segments(path)
-    assert second.stat().st_mode & 0o777 == 0o400
+    # Закрытый сегмент — только чтение: 0o400 в POSIX, атрибут «только чтение» (0o444) в Windows.
+    assert second.stat().st_mode & 0o777 == (0o400 if os.name == "posix" else 0o444)
     first.chmod(0o600)
     second.chmod(0o600)
-    original = second.read_text()
-    second.write_text(original.replace('"c4"', '"cX"'))  # та же длина
+    original = second.read_bytes()  # байты: текстовый режим Windows записал бы CRLF
+    second.write_bytes(original.replace(b'"c4"', b'"cX"'))  # та же длина
     assert not j.verify_journal(path).ok
-    second.write_text(original.replace('"c4"', '"cXY"'))  # другой размер: растяжка stat срабатывает
+    second.write_bytes(original.replace(b'"c4"', b'"cXY"'))  # другой размер: растяжка stat срабатывает
     with pytest.raises(j.JournalError):
         _seg_append(path, 1)
-    second.write_text(original)
+    second.write_bytes(original)
     j._TAILS.clear()
     assert j.verify_journal(path).ok
     second.unlink()
     check = j.verify_journal(path)
     assert not check.ok and check.broken_at == 4
     first.rename(tmp_path / "keep")
-    second.write_text(original)
+    second.write_bytes(original)
     assert not j.verify_journal(path).ok
 
 
@@ -408,7 +409,9 @@ def test_journal_last_segment_removal_caught_by_witness(tmp_path, monkeypatch):
     path = tmp_path / "j.jsonl"
     _seg_append(path, 6)
     assert not path.exists() or path.read_text() == ""
-    j.sealed_segments(path)[-1].unlink()
+    last = j.sealed_segments(path)[-1]
+    last.chmod(0o600)  # Windows не удаляет файл «только чтение»; в POSIX удаление решают права каталога
+    last.unlink()
     assert not j.verify_journal(path).ok
 
 

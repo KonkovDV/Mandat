@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -393,20 +394,34 @@ def test_concurrent_toggle_never_serves_revoked_token_after_revocation(tmp_path)
         except BaseException as exc:  # noqa: BLE001
             errors.append(exc)
 
+    def replace(text: str) -> None:
+        """Внешний администратор меняет файл атомарно. В Windows замена файла, открытого читателем, на миг
+        отказывает (WinError 5) — администратор повторяет, как делают инструменты развёртывания."""
+        tmp = tmp_path / "u.tmp"
+        tmp.write_text(text, encoding="utf-8")
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:
+                if time.monotonic() > deadline:
+                    raise
+                time.sleep(0.002)
+
     threads = [threading.Thread(target=reader) for _ in range(8)]
     for t in threads:
         t.start()
-    for _ in range(20):
-        tmp = tmp_path / "u.tmp"
-        tmp.write_text(dead, encoding="utf-8")
-        os.replace(tmp, path)
-        assert d.find(TOKEN) is None  # сразу после отзыва — ни одного допуска
-        tmp.write_text(live, encoding="utf-8")
-        os.replace(tmp, path)
-        assert d.find(TOKEN) is not None
-    stop.set()
-    for t in threads:
-        t.join()
+    try:
+        for _ in range(20):
+            replace(dead)
+            assert d.find(TOKEN) is None  # сразу после отзыва — ни одного допуска
+            replace(live)
+            assert d.find(TOKEN) is not None
+    finally:
+        stop.set()  # и при падении проверки читатели останавливаются: процесс тестов не зависает
+        for t in threads:
+            t.join()
     assert errors == []
 
 
