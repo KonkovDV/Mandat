@@ -160,6 +160,14 @@ Docker поднимает API только на localhost: `docker compose up --
 | `MANDAT_LLM_ALLOWED_HOSTS` | хосты модели через запятую; другой хост — ошибка | `127.0.0.1,localhost` |
 | `MANDAT_LLM_ALLOW_INSECURE_LOOPBACK` | `1` разрешает в `pilot` и `prod` `http` к модели на `127.0.0.1`, `localhost` или `::1` | выключено: в `pilot` и `prod` только `https` |
 
+## Календарь норм
+
+```bash
+mandat law-calendar --on 2027-08-01 --days 240
+```
+
+Показывает акты из каталога пакета правил: состояние на дату, что вступает в силу и что утрачивает её в окне, на какие правила это влияет. Код 1 — на дату есть акт, утративший силу, а правила на нём не пересверены: команду удобно ставить в планировщик ([ADR-010](adr/ADR-010-norm-validity.md), [календарь изменений](REGULATORY.md#календарь-изменений)).
+
 ## Перед сдачей
 
 `make check` на Linux, в WSL или Docker. По шагам — как в CI: `python -m ruff check src tests scripts tools`, `python -m ruff format --check src tests scripts tools`, `python -m mypy`, `python -m pytest --cov=mandat`, `python scripts/lint_claims.py`, `python scripts/check_links.py`, `python scripts/build_evidence.py --verify-source`. Числа для слайдов пересобирает `make evidence` на Linux.

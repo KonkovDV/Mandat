@@ -178,6 +178,10 @@ def observed_fields(pack: RulePack) -> dict[str, dict[str, set[str]]]:
     return out
 
 
+def _day(value: date | None) -> str:
+    return f"{value:%d.%m.%Y}" if value is not None else "—"
+
+
 def _md(text: str | None) -> str:
     return (text or "—").replace("|", "\\|").replace("\n", " ")
 
@@ -235,6 +239,16 @@ def render_card(
         ]
     else:
         lines += ["В трассировке норм для этого правила отдельный источник не выделен.", ""]
+    acts = [n for n in pack.norms if spec.id in n.rules]
+    if acts:
+        lines += [
+            "Сроки актов из каталога пакета правил (`norms`): после утраты силы правило «подтверждено» не даёт.",
+            "",
+            "| Акт | Вступает в силу | Действует до |",
+            "|---|---|---|",
+            *(f"| [{_md(n.title)}]({n.url}) | {_day(n.in_force_from)} | {_day(n.in_force_until)} |" for n in acts),
+            "",
+        ]
     lines += ["## Дословная цитата нормы", ""]
     if quotes:
         for q in quotes:
