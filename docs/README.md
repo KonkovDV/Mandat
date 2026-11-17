@@ -11,8 +11,7 @@
 | ИБ (информационная безопасность) банка | [модель угроз](THREAT_MODEL.md), [аудит октября 2026](audit/AUDIT.md) | [защита данных](DATA_PROTECTION.md), [риски модели](AI_RISKS.md), [ключи](KEYS.md), [SECURITY](../SECURITY.md) |
 | Владелец процесса | [пилот](PILOT.md) | [экономика](ECONOMICS.md), [дорожная карта](ROADMAP.md) |
 | Инженер | [запуск и API](RUN.md) | [архитектура](ARCHITECTURE.md), [каркас MVP](MVP.md), [ключи](KEYS.md), [перенос идей](PORTING.md) |
-| Участник проекта | [CONTRIBUTING](../CONTRIBUTING.md) | [кодекс поведения](../CODE_OF_CONDUCT.md), [SECURITY](../SECURITY.md), [история изменений](../CHANGELOG.md) |
-| Исполнитель | [AGENTS.md](../AGENTS.md), [план работы](HANDOFF_NEXT_QUOTA.md) | [план исправлений](audit/FIX_PLAN.md), [реестр утверждений](../CLAIMS_REGISTRY.md), [границы](../LIMITS.md) |
+| Участник проекта | [CONTRIBUTING](../CONTRIBUTING.md), [план работ](WORKPLAN.md) | [кодекс поведения](../CODE_OF_CONDUCT.md), [SECURITY](../SECURITY.md), [история изменений](../CHANGELOG.md) |
 
 ## По типу
 
@@ -46,7 +45,7 @@
 | Почему Cedar, а не OpenFGA | [передовые решения](SOTA.md) |
 | Насколько проект готов | [ступени готовности](audit/READINESS_GATES.md) |
 | Что требуют от банка за рубежом и где у банка болит | [практика банков](research/BANK-PRACTICE-2026-10-20.md) |
-| Что и когда сдаём | [сдача](../submission/README.md) |
+| Что и когда сдаём | [сдача](../submission/README.md), [критерии спринта 2](../submission/README.md#критерии-спринта-2), [тексты формы спринта 2](../submission/FORM_SPRINT2.md) |
 | Откуда источники | [источники](SOURCES.md), [реестр источников](audit/SOURCE_LEDGER.md), [литература](LITERATURE.md) |
 | Как говорить с пользователями | [discovery](discovery/) |
 

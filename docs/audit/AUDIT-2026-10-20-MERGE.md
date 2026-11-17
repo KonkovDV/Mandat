@@ -45,7 +45,7 @@
 | # | Находка | Сер. | Куда |
 |---|---|---|---|
 | 1 | Ответ жюри и строка модели угроз говорили «не длиннее срока МЧД». Код режет окно самым ранним сроком любого документа цепочки и только если срок записан | В | исправлено в этом коммите: `docs/JURY.md`, `docs/THREAT_MODEL.md` |
-| 2 | План работы описывал A1–A3 и [#114](https://github.com/KonkovDV/Mandat/issues/114) как ещё не сделанные | В | исправлено в этом коммите: `docs/HANDOFF_NEXT_QUOTA.md` |
+| 2 | План работы описывал A1–A3 и [#114](https://github.com/KonkovDV/Mandat/issues/114) как ещё не сделанные | В | исправлено в этом коммите: `docs/WORKPLAN.md` |
 | 3 | `1e309` проходит строгий разбор | С | [#122](https://github.com/KonkovDV/Mandat/issues/122), в этот коммит код не входил |
 | 4 | `RULES.md` помечает банкротство обязательным в `demo`, профиль его снимает | С | [#111](https://github.com/KonkovDV/Mandat/issues/111), без изменений |
 | 5 | `MANDAT_REQUIRE_ATTESTATION_STATUS=0` выключает проверку статуса в `validate_attestation`; `authorize_operation` по-прежнему требует статус | С | [#112](https://github.com/KonkovDV/Mandat/issues/112), без изменений |
