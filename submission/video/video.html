@@ -73,9 +73,9 @@
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 function paint(line) {
   let h = esc(line);
-  h = h.replace(/(ПОДТВЕРЖДЕНО|целостность OK|действует|OK\b)/g, '<span class="ok">$1</span>');
-  h = h.replace(/(ОПРОВЕРГНУТО|отозвано|не принимается)/g, '<span class="no">$1</span>');
-  h = h.replace(/(НА РАЗБОР|приостановлено|possible_takeover|suspension)/g, '<span class="rv">$1</span>');
+  h = h.replace(/(ПОДТВЕРЖДЕНО|ВЫПУЩЕНО|ДОПУЩЕНО|целостность OK|цепочка цела|доказано|действует|OK\b)/g, '<span class="ok">$1</span>');
+  h = h.replace(/(ОПРОВЕРГНУТО|ОТКАЗ|отозвано|не принимается)/g, '<span class="no">$1</span>');
+  h = h.replace(/(НА РАЗБОР|ПРИЗНАКИ ЗАХВАТА|приостановлено|possible_takeover|suspension)/g, '<span class="rv">$1</span>');
   h = h.replace(/(НЕДОСТАТОЧНО ДАННЫХ)/g, '<span class="nd">$1</span>');
   return h;
 }
