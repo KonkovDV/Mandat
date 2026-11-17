@@ -152,3 +152,55 @@ def test_redis_backend_matches_env(redis_store):
     marker = f"{redis_store.prefix}marker"
     redis_store.r.set(marker, "1")
     assert redis_store.r.get(marker) == b"1"
+
+
+# --- B6 (#160): claim — атомарный nonce с отпечатком запроса ---------------------------------------------
+
+
+def test_claim_takes_a_free_key_and_reports_the_holder(store):
+    assert store.claim("n", "fp1 2026-11-17T10:00:00+00:00", 10, now=1000.0) is None
+    assert store.claim("n", "fp2 2026-11-17T10:00:05+00:00", 10, now=1005.0) == "fp1 2026-11-17T10:00:00+00:00"
+    if not isinstance(store, RedisStore):  # у Redis срок считает сам сервер
+        assert store.claim("n", "fp3 x", 10, now=1011.0) is None
+
+
+def test_claim_respects_a_key_taken_by_first_seen(store):
+    """nonce, израсходованный до claim, остаётся израсходованным: claim его не перезаписывает."""
+    assert store.first_seen("old", 10, now=1000.0)
+    assert store.claim("old", "fp x", 10, now=1001.0) in ("", "1")
+    assert not store.first_seen("old", 10, now=1002.0)
+
+
+def test_claim_is_atomic_under_threads(store):
+    import threading
+
+    barrier = threading.Barrier(8)
+    lock = threading.Lock()
+    results: list[str | None] = []
+
+    def worker(i: int) -> None:
+        barrier.wait()
+        got = store.claim("race", f"fp{i} t", 60)
+        with lock:
+            results.append(got)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert results.count(None) == 1, results
+    assert len({r for r in results if r is not None}) == 1, results
+
+
+def test_sqlite_store_adds_the_value_column_to_an_old_seen_table(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE seen (key TEXT PRIMARY KEY, until REAL NOT NULL)")
+        db.execute("INSERT INTO seen VALUES ('old', 9e12)")
+    store = SQLiteStore(path)
+    assert store.claim("old", "fp x", 10) == ""
+    assert store.claim("new", "fp y", 10) is None
+    assert store.claim("new", "fp z", 10) == "fp y"

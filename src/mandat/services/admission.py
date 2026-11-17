@@ -5,8 +5,11 @@
 по спискам, вердикт ``confirmed``, организация, день операции по Москве, операция, сумма не больше проверенной,
 представитель, получатель (``audience``) и одноразовый ``nonce``. Момент проверки — часы сервера, не поле запроса.
 
-Одноразовость ``nonce`` держит общее хранилище: ``first_seen`` атомарен в памяти, SQLite и Redis, поэтому из
-двух одновременных запросов с одним ``nonce`` проходит один. High-watermark списков статусов тоже живёт в
+Одноразовость ``nonce`` держит общее хранилище: ``claim`` атомарен в памяти, SQLite и Redis, поэтому из
+двух одновременных запросов с одним ``nonce`` проходит один. Вместе с ``nonce`` хранится отпечаток запроса и время
+допуска (B6, #160): если ответ ДБО потерялся и тот же запрос пришёл снова, он получает отказ с признаком
+``already_admitted`` и временем первого допуска. Второго допуска нет никогда; другой запрос с тем же ``nonce`` —
+отказ без признака. High-watermark списков статусов тоже живёт в
 хранилище и только растёт: подложенный после отзыва старый, но правильно подписанный список не принимается.
 
 Идентификация клиента, антифрод и договор ДБО остаются процессами банка: ответ — допуск по удостоверению
@@ -16,10 +19,12 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
+import json
 import os
 from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from dataclasses import asdict, dataclass
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +38,7 @@ STATUS_DIR_ENV = "MANDAT_STATUS_DIR"
 REPRESENTATIVE_KEY_ENV = "MANDAT_REPRESENTATIVE_KEY_FILE"
 # Удостоверение действует не дольше VALID_FOR: после этого его отвергает проверка срока, и nonce помнить не нужно.
 NONCE_TTL_SECONDS = (attestation.VALID_FOR + timedelta(days=1)).total_seconds()
+NONCE_OTHER_REQUEST = "nonce уже использован другим запросом"
 
 
 class AdmissionConfigError(ValueError):
@@ -103,6 +109,36 @@ class AdmissionRequest:
     operation_risk: str | None
 
 
+@dataclass(frozen=True)
+class AdmissionDecision:
+    """Решение о допуске. ``already_admitted`` — этот же запрос уже допущен в ``admitted_at``; допуск не повторяется."""
+
+    problems: list[str]
+    already_admitted: bool = False
+    admitted_at: str | None = None
+
+
+def request_fingerprint(request: AdmissionRequest, key: bytes | None) -> str:
+    """Отпечаток удостоверения и запроса: тот же запрос даёт тот же отпечаток.
+
+    С ключом представителя — HMAC: ИНН представителя из отпечатка в хранилище не подобрать перебором.
+    """
+    payload = json.dumps(
+        {"credential": request.credential, "request": asdict(request.operation), "risk": request.operation_risk},
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8", "surrogatepass")
+    if key:
+        return hmac.new(key, payload, hashlib.sha256).hexdigest()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _is_fingerprint(text: str) -> bool:
+    return len(text) == 64 and all(c in "0123456789abcdef" for c in text)
+
+
 def decide(
     request: AdmissionRequest,
     config: AdmissionConfig,
@@ -113,11 +149,31 @@ def decide(
     consume: Callable[[str], bool] | None = None,
 ) -> list[str]:
     """Причины отказа; пустой список — допуск. Нечитаемое удостоверение — отказ, а не исключение."""
+    return decide_detailed(request, config, store, now=now, protected=protected, consume=consume).problems
+
+
+def decide_detailed(
+    request: AdmissionRequest,
+    config: AdmissionConfig,
+    store: Store,
+    *,
+    now: datetime,
+    protected: bool,
+    consume: Callable[[str], bool] | None = None,
+) -> AdmissionDecision:
+    """То же решение, что ``decide``, и признак повтора уже допущенного запроса."""
     audience = request.operation.audience
     seen = StoreWatermarks(store)
+    fingerprint = request_fingerprint(request, config.pseudonym_key)
+    stamp = now.astimezone(UTC).isoformat(timespec="seconds")
+    held: list[str] = []
 
     def consume_nonce(nonce: str) -> bool:
-        return store.first_seen(nonce_key(audience, nonce), NONCE_TTL_SECONDS)
+        existing = store.claim(nonce_key(audience, nonce), f"{fingerprint} {stamp}", NONCE_TTL_SECONDS)
+        if existing is None:
+            return True
+        held.append(existing)
+        return False
 
     try:
         problems = attestation.authorize_operation(
@@ -133,9 +189,15 @@ def decide(
             consume_nonce=consume or consume_nonce,
         )
     except (KeyError, TypeError, ValueError, OSError) as exc:
-        return [f"удостоверение не проверить: {type(exc).__name__}"]
+        return AdmissionDecision([f"удостоверение не проверить: {type(exc).__name__}"])
     seen.save()
-    return problems
+    if held and attestation.NONCE_USED in problems:
+        prior, _, prior_at = held[0].partition(" ")
+        if _is_fingerprint(prior) and hmac.compare_digest(prior, fingerprint):
+            return AdmissionDecision(problems, already_admitted=True, admitted_at=prior_at or None)
+        if _is_fingerprint(prior):
+            problems = [NONCE_OTHER_REQUEST if p == attestation.NONCE_USED else p for p in problems]
+    return AdmissionDecision(problems)
 
 
 def parse_day(value: str) -> date:

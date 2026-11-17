@@ -72,6 +72,14 @@ class Store(Protocol):
     def first_seen(self, key: str, ttl: float, now: float | None = None) -> bool:
         """True ровно один раз за ``ttl`` секунд для данного ключа (защита от повтора вебхука)."""
 
+    def claim(self, key: str, value: str, ttl: float, now: float | None = None) -> str | None:
+        """Атомарно занять ключ ``first_seen`` значением ``value`` на ``ttl`` секунд.
+
+        ``None`` — ключ был свободен и теперь занят этим значением. Иначе — чем он уже занят: значение
+        прежнего ``claim`` или пустая строка, если ключ занял ``first_seen`` без значения. Ключи общие
+        с ``first_seen``: ``nonce``, израсходованный до появления ``claim``, остаётся израсходованным.
+        """
+
     def release(self, key: str) -> None:
         """Снять ключ ``first_seen`` раньше срока: заявка на создание кейса завершена."""
 
@@ -140,6 +148,7 @@ class MemoryStore:
         self._hits: dict[str, deque[float]] = {}
         self._reports: OrderedDict[str, tuple[dict[str, Any], str]] = OrderedDict()
         self._seen: dict[str, float] = {}
+        self._seen_values: dict[str, str] = {}
         self._pending: dict[str, Pending] = {}
         self._idem: dict[tuple[str, str], tuple[str, str, float]] = {}
         self._reviews: dict[str, tuple[dict[str, Any], int]] = {}
@@ -182,17 +191,33 @@ class MemoryStore:
     def first_seen(self, key: str, ttl: float, now: float | None = None) -> bool:
         now = time.time() if now is None else now
         with self._lock:
-            if len(self._seen) > MAX_CLIENTS:
-                for stale in [k for k, until in self._seen.items() if until <= now]:
-                    del self._seen[stale]
+            self._drop_stale(now)
             if self._seen.get(key, 0.0) > now:
                 return False
             self._seen[key] = now + ttl
+            self._seen_values.pop(key, None)
             return True
+
+    def claim(self, key: str, value: str, ttl: float, now: float | None = None) -> str | None:
+        now = time.time() if now is None else now
+        with self._lock:
+            self._drop_stale(now)
+            if self._seen.get(key, 0.0) > now:
+                return self._seen_values.get(key, "")
+            self._seen[key] = now + ttl
+            self._seen_values[key] = value
+            return None
+
+    def _drop_stale(self, now: float) -> None:
+        if len(self._seen) > MAX_CLIENTS:
+            for stale in [k for k, until in self._seen.items() if until <= now]:
+                del self._seen[stale]
+                self._seen_values.pop(stale, None)
 
     def release(self, key: str) -> None:
         with self._lock:
             self._seen.pop(key, None)
+            self._seen_values.pop(key, None)
 
     def stage(
         self,
@@ -313,6 +338,10 @@ class SQLiteStore:
             CREATE TABLE IF NOT EXISTS watermarks (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
             """
         )
+        # Файлы до B6 (#160): у таблицы seen нет столбца value. Строки first_seen остаются со значением NULL.
+        columns = {row[1] for row in self._db().execute("PRAGMA table_info(seen)")}
+        if "value" not in columns:
+            self._db().execute("ALTER TABLE seen ADD COLUMN value TEXT")
 
     def ping(self) -> None:
         self._db().execute("SELECT 1 FROM reports LIMIT 1").fetchall()
@@ -384,6 +413,16 @@ class SQLiteStore:
             db.execute("DELETE FROM seen WHERE until <= ?", (now,))
             cur = db.execute("INSERT OR IGNORE INTO seen (key, until) VALUES (?, ?)", (key, now + ttl))
             return cur.rowcount == 1
+
+    def claim(self, key: str, value: str, ttl: float, now: float | None = None) -> str | None:
+        now = time.time() if now is None else now
+        with self._tx() as db:
+            db.execute("DELETE FROM seen WHERE until <= ?", (now,))
+            cur = db.execute("INSERT OR IGNORE INTO seen (key, until, value) VALUES (?, ?, ?)", (key, now + ttl, value))
+            if cur.rowcount == 1:
+                return None
+            row = db.execute("SELECT value FROM seen WHERE key = ?", (key,)).fetchone()
+            return "" if row is None or row[0] is None else str(row[0])
 
     def release(self, key: str) -> None:
         with self._tx() as db:
@@ -604,9 +643,17 @@ class RedisStore:
     return value
     """
 
+    # Занять ключ значением или узнать, чем он занят: SET NX и GET в одном скрипте. Ключ — тот же, что у
+    # first_seen, поэтому nonce, израсходованный раньше, остаётся израсходованным (значение «1»).
+    _CLAIM = """
+    if redis.call('SET', KEYS[1], ARGV[1], 'NX', 'EX', ARGV[2]) then return false end
+    return redis.call('GET', KEYS[1]) or ''
+    """
+
     def __init__(self, client: Any, prefix: str = "mandat:") -> None:
         self.r = client
         self.prefix = prefix
+        self._claim = client.register_script(self._CLAIM)
         self._watermark = client.register_script(self._WATERMARK)
         self._allow = client.register_script(self._ALLOW)
         self._put = client.register_script(self._PUT)
@@ -633,6 +680,12 @@ class RedisStore:
 
     def first_seen(self, key: str, ttl: float, now: float | None = None) -> bool:
         return bool(self.r.set(f"{self.prefix}seen:{key}", "1", nx=True, ex=max(1, int(ttl))))
+
+    def claim(self, key: str, value: str, ttl: float, now: float | None = None) -> str | None:
+        held = self._claim(keys=[f"{self.prefix}seen:{key}"], args=[value, max(1, int(ttl))])
+        if held is None:
+            return None
+        return held.decode("utf-8") if isinstance(held, bytes) else str(held)
 
     def release(self, key: str) -> None:
         self.r.delete(f"{self.prefix}seen:{key}")

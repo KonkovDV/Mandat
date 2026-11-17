@@ -387,6 +387,8 @@ def validate_attestation(
 
 
 NONCE_MIN_CHARS = 16
+# Причина отказа повторному запросу: допуск по ней ищет повтор того же запроса (services/admission.py).
+NONCE_USED = "nonce уже использован: повтор запроса"
 
 
 @dataclass(frozen=True)
@@ -520,7 +522,7 @@ def check_request(
             problems.append("хранилище nonce недоступно: допуск невозможен")
         else:
             if not fresh:
-                problems.append("nonce уже использован: повтор запроса")
+                problems.append(NONCE_USED)
     return problems
 
 
