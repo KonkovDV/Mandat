@@ -21,6 +21,7 @@ claims:
 
 rules-doc:
 	$(PY) scripts/gen_rules_doc.py
+	$(PY) scripts/gen_norm_cards.py
 
 cedar:
 	$(PY) scripts/export_cedar.py
