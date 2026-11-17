@@ -3,7 +3,8 @@
     python submission/video/capture.py      # из корня репозитория, пакет установлен (make install)
 
 Пишет submission/video/out/outputs.json: команда, код выхода и вывод каждого шага. Порядок шагов —
-как в сценарии показа docs/DEMO.md: демо-кейсы, отмена основной МЧД, захват, журнал, допуск через API.
+как в сценарии показа docs/DEMO.md: демо-кейсы, отмена основной МЧД, захват, журнал, захват до платежа
+(mandat showcase), запрос через API.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ STEPS = [
     ("verify_after", ["mandat", "attest-verify", "var/demo/attestations/01_ok.json", *STATUS]),
     ("journal_verify", ["mandat", "journal-verify", "var/demo/journal.jsonl"]),
     ("journal_proof", ["mandat", "journal-proof", "var/demo/journal.jsonl", "--seq", "3"]),
+    ("showcase", ["mandat", "showcase", "--out", "var/showcase"]),
 ]
 
 

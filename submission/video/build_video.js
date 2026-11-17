@@ -58,6 +58,10 @@ const CBR = { h1Ops: 818 + 780, h1LossBln: (573 + 831.4) / 1000, q2AvgMln: 831.4
 // ---------- Строки терминала из настоящего вывода ----------
 const short = (s) => s.replace(/\b([0-9a-f]{16})[0-9a-f]{48}\b/g, "$1…");
 const outLines = (key) => run[key].out.split("\n").map((t) => ({ type: "out", text: short(t) }));
+// Вывод mandat showcase без строки с путями файлов; длинная строка обрезается с «…», чтобы не уйти за край окна.
+const showcaseLines = () =>
+  run.showcase.out.split("\n").filter((t) => !t.startsWith("Шаги и решения:"))
+    .map((t) => ({ type: "out", text: short(t.length > 128 ? `${t.slice(0, 126)} …` : t) }));
 // Выбирает строки по образцам в порядке появления; между несмежными строками ставит «…».
 function pick(key, patterns) {
   const lines = run[key].out.split("\n");
@@ -161,13 +165,16 @@ function scenes(cardInfo) {
         { cmd: cmdOf("verify_after"), out: [...outLines("verify_after"), code("verify_after")] },
       ],
       caption: "Смена директора, новая МЧД и смена реквизитов за 72 часа — <b>удостоверения приостановлены до платежа</b>" },
-    { kind: "term", step: "9 · журнал решений", hold: 4, termTitle: "mandat · журнал",
+    { kind: "term", step: "9 · захват до платежа", hold: 8, termTitle: "mandat showcase · ДБО спрашивает «Мандат» перед каждым платежом",
+      steps: [{ cmd: run.showcase.cmd, out: showcaseLines() }],
+      caption: "Повтор и завышенная сумма — отказ; после признаков захвата <b>следующий платёж не проходит до списания денег</b>" },
+    { kind: "term", step: "10 · журнал решений", hold: 4, termTitle: "mandat · журнал",
       steps: [
         { cmd: cmdOf("journal_verify"), out: outLines("journal_verify") },
         { cmd: cmdOf("journal_proof"), out: pick("journal_proof", ['"seq": 3', '"size": 14', '"case_id"', '"verdict"', '"leaf_hash"', '"root"', '"verified": true']) },
       ],
       caption: "Журнал решений: правку записи видно, <b>аудитор получает доказательство одной записи</b> без всего журнала" },
-    { kind: "term", step: "10 · HTTP API", hold: 6, narrow: true, termTitle: "ДБО или АБС банка → «Мандат»", json: apiJson,
+    { kind: "term", step: "11 · HTTP API", hold: 6, narrow: true, termTitle: "ДБО или АБС банка → «Мандат»", json: apiJson,
       steps: [
         { cmd: "curl -s -X POST http://127.0.0.1:8000/v1/cases \\", out: [
           { type: "out", text: '    -H "Authorization: Bearer $MANDAT_API_TOKEN" \\' },
