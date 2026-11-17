@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://github.com/KonkovDV/Mandat/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/KonkovDV/Mandat/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/KonkovDV/Mandat"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/KonkovDV/Mandat/badge"></a>
-  <img alt="Python 3.11–3.14" src="https://img.shields.io/badge/Python-3.11%E2%80%933.14-3776AB?logo=python&logoColor=white">
+  <img alt="Python 3.11–3.15" src="https://img.shields.io/badge/Python-3.11%E2%80%933.15-3776AB?logo=python&logoColor=white">
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/License-MIT-green"></a>
   <a href="docker-compose.yml"><img alt="Docker" src="https://img.shields.io/badge/Docker-localhost-2496ED?logo=docker&logoColor=white"></a>
   <img alt="ВТБ Финтех без границ 2026" src="https://img.shields.io/badge/%D0%92%D0%A2%D0%91-Fintech_2026-0A2896">
@@ -301,7 +301,7 @@ curl http://127.0.0.1:8000/readyz   # 200 только если журнал, х
 
 ## Стек
 
-- Python 3.11–3.14. У ядра две зависимости: `defusedxml` разбирает XML без внешних сущностей, `cryptography` подписывает Ed25519.
+- Python 3.11–3.15, образ Docker — на 3.15. У ядра две зависимости: `defusedxml` разбирает XML без внешних сущностей, `cryptography` подписывает Ed25519.
 - Каноническая запись JSON по RFC 8785, удостоверение по модели W3C VC 2.0, статусы по Bitstring Status List. Запись и подпись совпадают с векторами eddsa-jcs-2022 и с независимой реализацией RFC 8785 (C-10, C-19).
 - Внешний JSON читается по I-JSON (RFC 7493): повтор ключа, NaN, бесконечность, одиночный суррогат и вложенность глубже 64 — ошибка входа, в API это 422.
 - Журнал на диске: хеш-цепочка, HMAC, дерево Меркла по RFC 9162; по настройке — внешний якорь сегментов.

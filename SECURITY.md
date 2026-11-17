@@ -78,7 +78,7 @@ gh attestation verify dist/mandat-0.3.0-py3-none-any.whl --repo KonkovDV/Mandat 
 
 - Secret scanning и push protection включены. Dependabot security updates выключены: версии двигает еженедельный Dependabot и пересборка lock-файлов.
 - Private vulnerability reporting выключен. Куда писать — [выше](#нашли-уязвимость).
-- Защита `main` требует свежие проверки (`strict`): `analysis` (OpenSSF Scorecard), `docker`, `package`, `test (3.11)`, `test (3.12)`, `test (3.13)`. Не обязательны `test (3.14)`, `redis`, `compose-pilot` и CodeQL `analyze`. Задача `package` запускается только при push в `main`, на PR её нет: пакет собирается после влития.
+- Защита `main` требует свежие проверки (`strict`): `analysis` (OpenSSF Scorecard), `docker`, `package`, `test (3.11)`, `test (3.12)`, `test (3.13)`. Не обязательны `test (3.14)`, `test (3.15)`, `redis`, `compose-pilot` и CodeQL `analyze`. Задача `package` запускается только при push в `main`, на PR её нет: пакет собирается после влития.
 - Обязательного ревью нет. Правило не распространяется на администраторов: администратор может влить изменение в обход проверок. Force-push и удаление ветки `main` запрещены.
 
 ## Журнал и внешний якорь
