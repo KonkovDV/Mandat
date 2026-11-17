@@ -17,6 +17,7 @@ from mandat.domain.model import Case, EvidenceRef, Finding, PowerOfAttorney
 from mandat.domain.verdict import CHECK_LABEL_RU, VERDICT_LABEL_RU, LegalEffect, Verdict, fold, get_profile
 from mandat.domain.verdict_oracle import oracle_verdict
 from mandat.ports import FixtureBankruptcy, FixtureRegistry, NotConnectedSignature, Ports
+from mandat.rules.approvals import effective_pack
 from mandat.rules.checks import RuleContext, run_rules
 from mandat.rules.classifier import Classifier, default_classifier
 from mandat.rules.pack import OperationCatalog, RulePack, default_catalog, default_pack
@@ -224,7 +225,8 @@ def verify_case(
     """``advisory`` — находки модели: попадают в отчёт как справка и не влияют на вердикт (ADR-001)."""
     # Профиль проверяется серверной политикой: в pilot/prod demo недоступен ни явно, ни по умолчанию.
     prof = get_profile(resolve_profile(profile))
-    pack = pack or default_pack()
+    # Статус «approved» — только по действующей подписанной записи юриста (rules/approvals.py), в любом профиле.
+    pack, approval_notes = effective_pack(pack or default_pack(), now or datetime.now(UTC))
     catalog = catalog or default_catalog()
     classifier = classifier or default_classifier()
     ports = ports or default_ports(case)
@@ -264,6 +266,7 @@ def verify_case(
         warnings.insert(0, "Внутренняя ошибка правила: проверка не завершена, нужен разбор")
     warnings.extend(chain.notes)
     warnings.extend(case.manifest_notes)
+    warnings.extend(approval_notes)
     objection = strongest_objection(verdict, findings, warnings)
     # Проверки, которые профиль не выполняет, не попадают в список действий: они уже названы в предупреждениях.
     next_steps = build_next_steps([f for f in findings if f.check not in prof.waived], verdict)

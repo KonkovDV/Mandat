@@ -101,6 +101,7 @@ Docker поднимает API только на localhost: `docker compose up --
 | `MANDAT_JOURNAL_SEGMENT_RECORDS` | записей в сегменте журнала; при заданном якоре закрытый сегмент уходит наружу | 1000 |
 | `MANDAT_PII_KEY` | ключ псевдонимизации ПДн | пусто: на стенде ключ разработки, в `pilot` и `prod` без ключа псевдонимизация отказывает |
 | `MANDAT_SIGNER`, `MANDAT_SIGNING_KEY_FILE`, `MANDAT_SIGNING_KEY_PASSPHRASE` и настройки PKCS#11, Vault, KMS | ключ подписи удостоверений | `file`; подробно — [подписант удостоверений](KEYS.md#подписант-удостоверений) |
+| `MANDAT_APPROVALS`, `MANDAT_APPROVAL_KEYS` | файл подписанных утверждений правил и связка открытых ключей юристов; проверка — `mandat approvals-verify` ([ADR-009](adr/ADR-009-rule-approval-records.md)) | пустой файл пакета, связки нет: все правила — черновики |
 | `MANDAT_JOURNAL_ANCHOR`, `MANDAT_JOURNAL_ANCHOR_*`, `MANDAT_SIGSTORE_*` | внешний якорь журнала: приёмники, доверие к TSA и Rekor, свидетели | якорь не задан; подробно — [внешний якорь](KEYS.md#внешний-якорь-журнала) |
 
 ### Удостоверения, события и разбор

@@ -20,6 +20,7 @@ import json
 import os
 import secrets
 import sys
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,7 @@ from mandat.audit import attestation, journal, merkle
 from mandat.audit.status_list import StatusRegistry, check_status
 from mandat.intake.case_loader import CaseError, load_case_dir
 from mandat.report.html import render
+from mandat.rules.pack import default_pack
 from mandat.services.monitoring import evaluate, parse_events
 from mandat.services.verify import verify_case
 from mandat.services.webhooks import delivery
@@ -260,7 +262,6 @@ def cmd_formats(args: argparse.Namespace) -> int:
 
 def _attest_verify_keyring(args: argparse.Namespace, cred: dict[str, Any]) -> int:
     """Проверка по связке ключей издателя: ключ выбирается по kid из подписанного доказательства."""
-    from datetime import UTC, datetime
 
     from mandat.audit.signing import Keyring
     from mandat.services.env_policy import protected, require_attestation_status
@@ -332,7 +333,6 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
         print("подпись НЕ верна", file=sys.stderr)
         return 1
     # «подпись верна» печатаем только после всех проверок, чтобы exit 2/4 не читался как успех.
-    from datetime import UTC, datetime
 
     from mandat.services.env_policy import protected, require_attestation_status
 
@@ -409,6 +409,67 @@ def cmd_attest_verify(args: argparse.Namespace) -> int:
         print("предупреждение: статус не проверялся, передайте --status-dir", file=sys.stderr)
     if status_state is not None:
         print(f"статус удостоверения: {status_state}")
+    return 0
+
+
+def cmd_approvals_verify(args: argparse.Namespace) -> int:
+    """Проверить файл утверждений правил: каждая запись — действует или почему нет."""
+    from mandat.rules.approvals import ApprovalError, check_record, load_approvals
+
+    try:
+        loaded = load_approvals(Path(args.file) if args.file else None, Path(args.keys) if args.keys else None)
+        moment = datetime.fromisoformat(args.at) if args.at else datetime.now(UTC)
+        if moment.tzinfo is None:
+            raise ApprovalError("--at: дата и время с часовым поясом")
+    except (ApprovalError, ValueError) as exc:
+        print(f"ошибка: {exc}", file=sys.stderr)
+        return 2
+    pack = default_pack()
+    rejected = 0
+    for index, record in enumerate(loaded.records):
+        reason = check_record(record, pack, loaded.keyring, moment)
+        rule = record.get("rule_id") if isinstance(record, dict) else None
+        print(f"{index}: {str(rule)[:40] if rule else '?'}: {'действует' if reason is None else reason}")
+        rejected += reason is not None
+    print(f"записей: {len(loaded.records)}, действуют: {len(loaded.records) - rejected}; источник: {loaded.source}")
+    return 1 if rejected else 0
+
+
+def cmd_approvals_sign(args: argparse.Namespace) -> int:
+    """Стенд: подписать запись утверждения ключом PEM. В банке запись подписывает КЭП юриста через СКЗИ."""
+    from mandat.audit.signing import SignerError, load_pem_signer
+    from mandat.rules.approvals import sign_record
+
+    pack = default_pack()
+    if args.rule not in pack.rules:
+        print(f"ошибка: правила {args.rule} нет в пакете", file=sys.stderr)
+        return 2
+    try:
+        signer = load_pem_signer(Path(args.key), create=False)
+        record = sign_record(
+            pack.rules[args.rule],
+            pack.pack_id,
+            signer,
+            approver_role=args.role,
+            norm_edition=args.norm_edition,
+            norm_checked_on=date.fromisoformat(args.checked_on),
+            valid_until=date.fromisoformat(args.valid_until),
+        )
+    except (SignerError, ValueError) as exc:
+        print(f"ошибка: {exc}", file=sys.stderr)
+        return 2
+    print(f"ключ утверждающего: {signer.key_id}", file=sys.stderr)
+    if not args.file:
+        print(json.dumps(record, ensure_ascii=False, indent=2))
+        return 0
+    target = Path(args.file)
+    payload = strict_loads(target.read_bytes()) if target.exists() else {"schema": 1, "approvals": []}
+    if not isinstance(payload, dict) or not isinstance(payload.get("approvals"), list):
+        print(f"ошибка: {target} — не файл утверждений", file=sys.stderr)
+        return 2
+    payload["approvals"].append(record)
+    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"запись добавлена в {target}", file=sys.stderr)
     return 0
 
 
@@ -589,6 +650,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="риск операции для окна свежести списка (payment/archive_receipt/…); см. status_max_age_for",
     )
     a.set_defaults(func=cmd_attest_verify)
+
+    av = sub.add_parser("approvals-verify", help="проверить подписанные записи утверждения правил")
+    av.add_argument("--file", help="файл утверждений; по умолчанию MANDAT_APPROVALS или пустой файл пакета")
+    av.add_argument("--keys", help="связка ключей утверждающих; по умолчанию MANDAT_APPROVAL_KEYS")
+    av.add_argument("--at", help="момент проверки с часовым поясом; по умолчанию сейчас")
+    av.set_defaults(func=cmd_approvals_verify)
+
+    asg = sub.add_parser("approvals-sign", help="стенд: подписать утверждение правила ключом PEM")
+    asg.add_argument("--rule", required=True, help="id правила, например R-TERM-002")
+    asg.add_argument("--key", required=True, help="закрытый ключ Ed25519 утверждающего (PEM PKCS#8)")
+    asg.add_argument("--role", required=True, help="роль утверждающего, без ФИО")
+    asg.add_argument("--norm-edition", required=True, help="редакция нормы, по которой сверено правило")
+    asg.add_argument("--checked-on", required=True, help="дата сверки нормы, ГГГГ-ММ-ДД")
+    asg.add_argument("--valid-until", required=True, help="последний день действия записи, не дальше года")
+    asg.add_argument("--file", help="добавить запись в этот файл утверждений; без него — вывести")
+    asg.set_defaults(func=cmd_approvals_sign)
 
     x = sub.add_parser("examples", help="пересобрать демо-кейсы")
     x.add_argument("--out", default="examples/cases")
