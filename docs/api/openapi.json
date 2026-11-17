@@ -1,6 +1,105 @@
 {
   "components": {
     "schemas": {
+      "AdmissionBody": {
+        "additionalProperties": false,
+        "description": "Тело POST /v1/operations/authorize: удостоверение «Мандата» и запрос операции.",
+        "properties": {
+          "credential": {
+            "additionalProperties": true,
+            "title": "Credential",
+            "type": "object"
+          },
+          "operation_risk": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "уровень риска: payment, high, low…",
+            "title": "Operation Risk"
+          },
+          "request": {
+            "$ref": "#/components/schemas/AdmissionOperation"
+          }
+        },
+        "required": [
+          "credential",
+          "request"
+        ],
+        "title": "AdmissionBody",
+        "type": "object"
+      },
+      "AdmissionOperation": {
+        "additionalProperties": false,
+        "description": "Запрос одной операции, к которому привязано удостоверение (M-04). ИНН представителя в журнал не пишется.",
+        "properties": {
+          "amount_rub": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "целые рубли",
+            "title": "Amount Rub"
+          },
+          "audience": {
+            "description": "система банка, для которой выпущено удостоверение",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Audience",
+            "type": "string"
+          },
+          "nonce": {
+            "description": "одноразовый номер запроса",
+            "maxLength": 200,
+            "minLength": 16,
+            "title": "Nonce",
+            "type": "string"
+          },
+          "operation": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Operation",
+            "type": "string"
+          },
+          "operation_date": {
+            "description": "день операции по Москве",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "title": "Operation Date",
+            "type": "string"
+          },
+          "organization_inn": {
+            "pattern": "^\\d{10}(\\d{2})?$",
+            "title": "Organization Inn",
+            "type": "string"
+          },
+          "representative_inn": {
+            "pattern": "^\\d{10}(\\d{2})?$",
+            "title": "Representative Inn",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organization_inn",
+          "operation",
+          "operation_date",
+          "representative_inn",
+          "audience",
+          "nonce"
+        ],
+        "title": "AdmissionOperation",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -513,6 +612,59 @@
           }
         },
         "summary": "Post Events"
+      }
+    },
+    "/v1/operations/authorize": {
+      "post": {
+        "description": "Допуск одной операции по удостоверению: подлинность, статус, вердикт confirmed и привязка к запросу.\n\n200 — решение: ``allowed`` и причины отказа. Отказ тоже 200: это ответ, а не ошибка запроса.\n503 — допуск не настроен или в защищённом режиме нет общего хранилища nonce и журнала.",
+        "operationId": "authorize_operation_v1_operations_authorize_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdmissionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Authorize Operation V1 Operations Authorize Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Authorize Operation"
       }
     },
     "/v1/review/queue": {

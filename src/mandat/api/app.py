@@ -34,13 +34,14 @@ from typing import Any
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from mandat import ENGINE, __version__
 from mandat.api import review as review_api
 from mandat.api.principals import Directory, Principal, load_users
 from mandat.api.storage import Idem, Pending, ReviewVersionConflict, Store, open_store
 from mandat.audit import journal
+from mandat.audit.attestation import NONCE_MIN_CHARS, OperationRequest
 from mandat.intake.case_loader import CaseError, load_case_inline
 from mandat.report.html import render
 from mandat.review.state_machine import (
@@ -51,6 +52,7 @@ from mandat.review.state_machine import (
     ReviewInvalid,
     ReviewState,
 )
+from mandat.services import admission
 from mandat.services.env_policy import PROFILES, ProfileNotAllowed, protected, resolve_profile
 from mandat.services.monitoring import evaluate, parse_events
 from mandat.services.next_steps import check_sla
@@ -102,6 +104,30 @@ def problem(request: Request, status: int, detail: str, cause: str) -> JSONRespo
     headers = {k.decode(): v.decode() for k, v in [*SECURITY_HEADERS, DEFAULT_CSP]}
     headers[REQUEST_ID_HEADER.decode()] = rid
     return JSONResponse({"detail": detail, "request_id": rid}, status_code=status, headers=headers)
+
+
+class AdmissionOperation(BaseModel):
+    """Запрос одной операции, к которому привязано удостоверение (M-04). ИНН представителя в журнал не пишется."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    organization_inn: str = Field(pattern=r"^\d{10}(\d{2})?$")
+    operation: str = Field(min_length=1, max_length=64)
+    operation_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$", description="день операции по Москве")
+    amount_rub: StrictInt | None = Field(default=None, ge=0, le=2**53 - 1, description="целые рубли")
+    representative_inn: str = Field(pattern=r"^\d{10}(\d{2})?$")
+    audience: str = Field(min_length=1, max_length=200, description="система банка, для которой выпущено удостоверение")
+    nonce: str = Field(min_length=NONCE_MIN_CHARS, max_length=200, description="одноразовый номер запроса")
+
+
+class AdmissionBody(BaseModel):
+    """Тело POST /v1/operations/authorize: удостоверение «Мандата» и запрос операции."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    credential: dict[str, Any]
+    request: AdmissionOperation
+    operation_risk: str | None = Field(default=None, max_length=32, description="уровень риска: payment, high, low…")
 
 
 class ReviewAction(BaseModel):
@@ -264,6 +290,7 @@ def create_app(
     rate_per_min: int | None = None,
     store: Store | None = None,
     journal_path: Path | None = None,
+    admission_config: admission.AdmissionConfig | None = None,
 ) -> FastAPI:
     expected = token if token is not None else os.environ.get("MANDAT_API_TOKEN", "")
     raw_users = (users if users is not None else os.environ.get("MANDAT_API_USERS", "")).strip()
@@ -282,6 +309,8 @@ def create_app(
     shared = store if store is not None else open_store()
     env_journal = os.environ.get("MANDAT_API_JOURNAL", "").strip()
     audit_log = journal_path if journal_path is not None else (Path(env_journal) if env_journal else None)
+    # Допуск операции включается связкой ключей издателя; настроенный не полностью — ошибка старта, а не 500.
+    admit = admission_config or admission.AdmissionConfig.from_env(protected=protected())
 
     app.add_middleware(Guard, directory=directory, limit=limit, store=shared)
 
@@ -683,5 +712,81 @@ def create_app(
             raise ApiProblem(422, "события не разобраны", f"{type(exc).__name__}: {exc}") from exc
         alerts = [a.as_dict() for a in evaluate(rights, events, window_hours=window_hours)]
         return {"alerts": alerts, "warnings": warnings}
+
+    @app.post("/v1/operations/authorize", dependencies=[Depends(strict_json_object)])
+    def authorize_operation(body: AdmissionBody, principal: Principal = Depends(writer)) -> dict[str, Any]:
+        """Допуск одной операции по удостоверению: подлинность, статус, вердикт confirmed и привязка к запросу.
+
+        200 — решение: ``allowed`` и причины отказа. Отказ тоже 200: это ответ, а не ошибка запроса.
+        503 — допуск не настроен или в защищённом режиме нет общего хранилища nonce и журнала.
+        """
+        if admit is None:
+            raise HTTPException(503, "допуск не настроен: задайте MANDAT_ATTESTATION_KEYRING и MANDAT_STATUS_DIR")
+        if protected() and (shared.name == "memory" or audit_log is None):
+            raise HTTPException(503, "в защищённом режиме допуск требует общего хранилища и журнала аудита")
+        fields = body.request
+        try:
+            operation = OperationRequest(
+                operation=fields.operation,
+                amount_rub=fields.amount_rub,
+                representative_inn=fields.representative_inn,
+                audience=fields.audience,
+                nonce=fields.nonce,
+                organization_inn=fields.organization_inn,
+                operation_date=admission.parse_day(fields.operation_date),
+            )
+        except ValueError as exc:
+            raise ApiProblem(422, "запрос операции не соответствует схеме", str(exc)) from exc
+        moment = datetime.now(UTC)
+        try:
+            problems = admission.decide(
+                admission.AdmissionRequest(body.credential, operation, body.operation_risk),
+                admit,
+                shared,
+                now=moment,
+                protected=protected(),
+            )
+        except Exception as exc:
+            raise ApiProblem(503, "хранилище недоступно, допуск не выдан", f"store: {type(exc).__name__}") from exc
+        allowed = not problems
+        subject = body.credential.get("credentialSubject")
+        report_sha = subject.get("reportSha256") if isinstance(subject, dict) else None
+        if audit_log is not None:
+            try:
+                journal.append(
+                    audit_log,
+                    action="authorize_operation",
+                    actor=principal.name,
+                    role=principal.role,
+                    case_id=str(report_sha)[:64] if isinstance(report_sha, str) else "unknown",
+                    payload_hash=hashlib.sha256(
+                        json.dumps(
+                            {
+                                "credential": body.credential,
+                                "request": fields.model_dump(exclude={"representative_inn"}),
+                            },
+                            sort_keys=True,
+                            ensure_ascii=False,
+                        ).encode("utf-8")
+                    ).hexdigest(),
+                    details={
+                        "allowed": allowed,
+                        "operation": fields.operation,
+                        "audience": fields.audience,
+                        "problems": len(problems),
+                        "via": "api",
+                    },
+                )
+            except (ValueError, OSError, journal.JournalKeyMissing) as exc:
+                # Допуск без записи в журнал не выдаётся: в защищённом режиме решение должно быть доказуемо.
+                cause = f"journal: {type(exc).__name__}"
+                raise ApiProblem(503, "журнал аудита недоступен, допуск не выдан", cause) from exc
+        return {
+            "allowed": allowed,
+            "problems": problems,
+            "operation": fields.operation,
+            "audience": fields.audience,
+            "checked_at": moment.isoformat(timespec="seconds"),
+        }
 
     return app

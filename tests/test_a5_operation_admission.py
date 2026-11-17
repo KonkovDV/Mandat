@@ -1,0 +1,331 @@
+"""A5 (#100): допуск операции через HTTP — контракт для ДБО.
+
+POST /v1/operations/authorize передаёт удостоверение и запрос в ``authorize_operation`` и ничего не ослабляет.
+Повтор ``nonce``, в том числе одновременный, даёт ровно один допуск; вердикт не confirmed, чужая сумма или
+получатель допуска не дают; отказ не расходует ``nonce``; решение пишется в журнал без ИНН представителя.
+"""
+
+from __future__ import annotations
+
+import json
+import threading
+from datetime import UTC, datetime, timedelta
+
+import fakeredis
+import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from fastapi.testclient import TestClient
+
+from mandat.api.app import create_app
+from mandat.api.storage import MemoryStore, RedisStore, SQLiteStore
+from mandat.audit import attestation, journal
+from mandat.audit.attestation import BANK_TZ
+from mandat.audit.signing import Keyring
+from mandat.audit.status_list import StatusRegistry
+from mandat.services import admission
+
+TOKEN = "t" * 40
+PSEUDONYM_KEY = b"k" * 32
+REP_INN = "123456789012"
+ORG_INN = "7707083893"
+AUDIENCE = "bank-dbo-msb"
+HEADERS = {"Authorization": f"Bearer {TOKEN}"}
+
+
+def _today() -> str:
+    return datetime.now(UTC).astimezone(BANK_TZ).date().isoformat()
+
+
+def _report(verdict: str = "confirmed") -> dict:
+    return {
+        "verdict": verdict,
+        "profile": "strict",
+        "organization": {"inn": ORG_INN},
+        "requester": {"inn": REP_INN},
+        "operation": {"code": "PAYMENT_SIGN", "date": _today(), "amount_rub": 500_000},
+        "chain": {"poa_numbers": ["poc"]},
+        "rule_pack": {"sha256": "a" * 64},
+        "reproducibility_hash": "b" * 64,
+    }
+
+
+class Issuer:
+    """Издатель стенда: ключ, реестр статусов, удостоверения на запрос."""
+
+    def __init__(self, tmp_path) -> None:
+        self.key = Ed25519PrivateKey.generate()
+        self.status_dir = tmp_path / "status"
+        self.registry = StatusRegistry.open(self.status_dir)
+        self.count = 0
+
+    def issue(self, nonce: str, verdict: str = "confirmed") -> dict:
+        index = self.registry.allocate({"org_inn": ORG_INN, "verdict": verdict, "poa_numbers": ["poc"]})
+        cred = attestation.issue(
+            _report(verdict),
+            self.key,
+            status=self.registry.credential_status(index),
+            pseudonym_key=PSEUDONYM_KEY,
+            audience=AUDIENCE,
+            nonce=nonce,
+        )
+        self.registry.save(self.key)
+        self.count += 1
+        return cred
+
+    def config(self) -> admission.AdmissionConfig:
+        return admission.AdmissionConfig(Keyring.of([self.key.public_key()]), self.status_dir, PSEUDONYM_KEY)
+
+
+def _body(cred: dict, nonce: str, **changes) -> dict:
+    request = {
+        "organization_inn": ORG_INN,
+        "operation": "PAYMENT_SIGN",
+        "operation_date": _today(),
+        "amount_rub": 500_000,
+        "representative_inn": REP_INN,
+        "audience": AUDIENCE,
+        "nonce": nonce,
+        **changes,
+    }
+    return {"credential": cred, "request": request, "operation_risk": "payment"}
+
+
+@pytest.fixture
+def issuer(tmp_path) -> Issuer:
+    return Issuer(tmp_path)
+
+
+def _client(issuer: Issuer, tmp_path, store=None, journal_path=None) -> TestClient:
+    app = create_app(
+        token=TOKEN,
+        store=store or SQLiteStore(tmp_path / "store.db"),
+        journal_path=journal_path or tmp_path / "journal.jsonl",
+        admission_config=issuer.config(),
+    )
+    return TestClient(app)
+
+
+def test_confirmed_credential_and_matching_request_are_admitted_once(issuer, tmp_path):
+    nonce = "n-" + "1" * 20
+    client = _client(issuer, tmp_path)
+    body = _body(issuer.issue(nonce), nonce)
+    first = client.post("/v1/operations/authorize", json=body, headers=HEADERS)
+    assert first.status_code == 200, first.text
+    assert first.json()["allowed"] is True, first.json()
+    assert first.json()["problems"] == []
+    again = client.post("/v1/operations/authorize", json=body, headers=HEADERS)
+    assert again.status_code == 200
+    assert again.json()["allowed"] is False
+    assert any("nonce уже использован" in p for p in again.json()["problems"])
+
+
+@pytest.mark.parametrize("verdict", ["refuted", "needs_review", "insufficient_data"])
+def test_verdict_other_than_confirmed_is_not_admitted(issuer, tmp_path, verdict):
+    nonce = "n-" + verdict.ljust(20, "x")
+    answer = _client(issuer, tmp_path).post(
+        "/v1/operations/authorize", json=_body(issuer.issue(nonce, verdict), nonce), headers=HEADERS
+    )
+    assert answer.status_code == 200
+    assert answer.json()["allowed"] is False
+    assert any("нужен confirmed" in p for p in answer.json()["problems"])
+
+
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        ({"amount_rub": 500_001}, "больше проверенной"),
+        ({"audience": "other-system"}, "выпущено не для"),
+        ({"organization_inn": "7728168971"}, "организация"),
+        ({"representative_inn": "500100732259"}, "представитель в запросе не тот"),
+        ({"operation": "USER_ADMIN"}, "операция"),
+    ],
+)
+def test_mismatched_request_is_refused_and_does_not_burn_the_nonce(issuer, tmp_path, change, reason):
+    nonce = "n-" + "2" * 20
+    client = _client(issuer, tmp_path)
+    cred = issuer.issue(nonce)
+    wrong = client.post("/v1/operations/authorize", json=_body(cred, nonce, **change), headers=HEADERS).json()
+    assert wrong["allowed"] is False
+    assert any(reason in p for p in wrong["problems"]), wrong["problems"]
+    right = client.post("/v1/operations/authorize", json=_body(cred, nonce), headers=HEADERS).json()
+    assert right["allowed"] is True, right
+
+
+def _race(client: TestClient, body: dict, n: int = 8) -> list[bool]:
+    results: list[bool] = []
+    lock = threading.Lock()
+    barrier = threading.Barrier(n)
+
+    def worker() -> None:
+        barrier.wait()
+        answer = client.post("/v1/operations/authorize", json=body, headers=HEADERS).json()
+        with lock:
+            results.append(answer["allowed"])
+
+    threads = [threading.Thread(target=worker) for _ in range(n)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    return results
+
+
+@pytest.mark.parametrize("kind", ["memory", "sqlite", "redis"])
+def test_concurrent_requests_with_one_nonce_give_exactly_one_admission(issuer, tmp_path, kind):
+    store = {
+        "memory": lambda: MemoryStore(),
+        "sqlite": lambda: SQLiteStore(tmp_path / "race.db"),
+        "redis": lambda: RedisStore(fakeredis.FakeStrictRedis()),
+    }[kind]()
+    nonce = "n-" + "3" * 20
+    client = _client(issuer, tmp_path, store=store)
+    results = _race(client, _body(issuer.issue(nonce), nonce))
+    assert results.count(True) == 1, results
+
+
+def test_decision_is_journaled_without_the_representative_inn(issuer, tmp_path):
+    nonce = "n-" + "4" * 20
+    log = tmp_path / "journal.jsonl"
+    client = _client(issuer, tmp_path, journal_path=log)
+    client.post("/v1/operations/authorize", json=_body(issuer.issue(nonce), nonce), headers=HEADERS)
+    records = journal.read_journal(log)
+    assert [r["action"] for r in records] == ["authorize_operation"]
+    assert records[0]["details"]["allowed"] is True
+    assert REP_INN not in log.read_text(encoding="utf-8")
+    assert journal.verify_journal(log).ok
+
+
+def test_revoked_credential_is_refused(issuer, tmp_path):
+    nonce = "n-" + "5" * 20
+    cred = issuer.issue(nonce)
+    index = int(cred["credentialStatus"][0]["statusListIndex"])
+    issuer.registry.mark(index, "revocation", "МЧД отменена")
+    issuer.registry.save(issuer.key)
+    answer = _client(issuer, tmp_path).post("/v1/operations/authorize", json=_body(cred, nonce), headers=HEADERS)
+    assert answer.json()["allowed"] is False
+    assert any("отозвано" in p for p in answer.json()["problems"]), answer.json()
+
+
+def test_forged_signature_and_garbage_credential_are_refusals_not_errors(issuer, tmp_path):
+    nonce = "n-" + "6" * 20
+    client = _client(issuer, tmp_path)
+    cred = issuer.issue(nonce)
+    cred["credentialSubject"]["amountRub"] = 900_000_000
+    forged = client.post("/v1/operations/authorize", json=_body(cred, nonce, amount_rub=900_000_000), headers=HEADERS)
+    assert forged.status_code == 200 and forged.json()["allowed"] is False
+    assert any("подпись не верна" in p for p in forged.json()["problems"]), forged.json()
+    garbage = client.post("/v1/operations/authorize", json=_body({"credentialStatus": [{}]}, nonce), headers=HEADERS)
+    assert garbage.status_code == 200 and garbage.json()["allowed"] is False
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"amount_rub": True},
+        {"amount_rub": 10.5},
+        {"operation_date": "17.11.2026"},
+        {"nonce": "short"},
+        {"representative_inn": "12345"},
+        {"extra": "field"},
+    ],
+)
+def test_malformed_request_is_422(issuer, tmp_path, change):
+    nonce = "n-" + "7" * 20
+    body = _body(issuer.issue(nonce), nonce)
+    body["request"].update(change)
+    answer = _client(issuer, tmp_path).post("/v1/operations/authorize", json=body, headers=HEADERS)
+    assert answer.status_code == 422, answer.text
+
+
+def test_route_answers_503_when_admission_is_not_configured(tmp_path, monkeypatch):
+    monkeypatch.delenv("MANDAT_ATTESTATION_KEYRING", raising=False)
+    app = create_app(token=TOKEN, store=MemoryStore(), journal_path=tmp_path / "j.jsonl")
+    answer = TestClient(app).post("/v1/operations/authorize", json=_body({}, "n-" + "8" * 20), headers=HEADERS)
+    assert answer.status_code == 503
+
+
+def test_protected_mode_needs_a_shared_store_and_a_journal(issuer, tmp_path, monkeypatch):
+    monkeypatch.setenv("MANDAT_ENV", "pilot")
+    monkeypatch.setenv("MANDAT_JOURNAL_KEY", "j" * 40)
+    monkeypatch.setenv("MANDAT_PII_KEY", "p" * 40)
+    nonce = "n-" + "9" * 20
+    body = _body(issuer.issue(nonce), nonce)
+    memory = TestClient(
+        create_app(
+            token=TOKEN, store=MemoryStore(), journal_path=tmp_path / "j.jsonl", admission_config=issuer.config()
+        )
+    )
+    assert memory.post("/v1/operations/authorize", json=body, headers=HEADERS).status_code == 503
+    no_journal = TestClient(
+        create_app(token=TOKEN, store=SQLiteStore(tmp_path / "s.db"), admission_config=issuer.config())
+    )
+    assert no_journal.post("/v1/operations/authorize", json=body, headers=HEADERS).status_code == 503
+
+
+def test_config_from_environment(issuer, tmp_path, monkeypatch):
+    keyring = tmp_path / "keyring.json"
+    keyring.write_text(json.dumps({"keys": [{"kid": attestation.public_key_multibase(issuer.key)}]}))
+    key_file = tmp_path / "representative_hmac.key"
+    key_file.write_bytes(PSEUDONYM_KEY)
+    key_file.chmod(0o600)
+    monkeypatch.setenv("MANDAT_ATTESTATION_KEYRING", str(keyring))
+    monkeypatch.setenv("MANDAT_STATUS_DIR", str(issuer.status_dir))
+    monkeypatch.setenv("MANDAT_REPRESENTATIVE_KEY_FILE", str(key_file))
+    config = admission.AdmissionConfig.from_env(protected=True)
+    assert config is not None and config.pseudonym_key == PSEUDONYM_KEY
+    monkeypatch.delenv("MANDAT_STATUS_DIR")
+    with pytest.raises(admission.AdmissionConfigError, match="MANDAT_STATUS_DIR"):
+        admission.AdmissionConfig.from_env(protected=False)
+    monkeypatch.setenv("MANDAT_STATUS_DIR", str(issuer.status_dir))
+    monkeypatch.delenv("MANDAT_REPRESENTATIVE_KEY_FILE")
+    with pytest.raises(admission.AdmissionConfigError, match="HMAC"):
+        admission.AdmissionConfig.from_env(protected=True)
+    assert admission.AdmissionConfig.from_env(protected=False).pseudonym_key is None
+
+
+@pytest.mark.parametrize("kind", ["memory", "sqlite", "redis"])
+def test_store_watermark_only_grows(tmp_path, kind):
+    store = {
+        "memory": lambda: MemoryStore(),
+        "sqlite": lambda: SQLiteStore(tmp_path / "wm.db"),
+        "redis": lambda: RedisStore(fakeredis.FakeStrictRedis()),
+    }[kind]()
+    assert store.watermark_get("list#1") is None
+    assert store.watermark_raise("list#1", 5) == 5
+    assert store.watermark_raise("list#1", 3) == 5
+    assert store.watermark_raise("list#1", 7) == 7
+    assert store.watermark_get("list#1") == 7
+
+
+def test_status_list_rollback_is_refused_through_the_store(issuer, tmp_path):
+    """Сервис видел новый список, ему подложили старый, правильно подписанный: допуска нет."""
+    store = SQLiteStore(tmp_path / "rb.db")
+    client = _client(issuer, tmp_path, store=store)
+    old_nonce, new_nonce = "n-" + "a" * 20, "n-" + "b" * 20
+    old_cred = issuer.issue(old_nonce)
+    snapshot = {p.name: p.read_bytes() for p in issuer.status_dir.rglob("*.json")}
+    new_cred = issuer.issue(new_nonce)
+    assert client.post("/v1/operations/authorize", json=_body(new_cred, new_nonce), headers=HEADERS).json()["allowed"]
+    for path in issuer.status_dir.rglob("*.json"):
+        if path.name in snapshot:
+            path.write_bytes(snapshot[path.name])
+    answer = client.post("/v1/operations/authorize", json=_body(old_cred, old_nonce), headers=HEADERS).json()
+    assert answer["allowed"] is False, answer
+    assert any("старше" in p for p in answer["problems"]), answer["problems"]
+
+
+def test_moment_is_the_server_clock_not_a_request_field(issuer, tmp_path):
+    """Дата в запросе вчерашняя: удостоверение выпущено на сегодня, допуска нет, хотя поле подделать легко."""
+    nonce = "n-" + "c" * 20
+    yesterday = (datetime.now(UTC).astimezone(BANK_TZ).date() - timedelta(days=1)).isoformat()
+    answer = (
+        _client(issuer, tmp_path)
+        .post(
+            "/v1/operations/authorize",
+            json=_body(issuer.issue(nonce), nonce, operation_date=yesterday),
+            headers=HEADERS,
+        )
+        .json()
+    )
+    assert answer["allowed"] is False
+    assert any("дата операции" in p for p in answer["problems"]), answer

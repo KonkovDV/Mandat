@@ -69,7 +69,7 @@
 | A2 | [#97](https://github.com/KonkovDV/Mandat/issues/97) | M | сделано в `2736422`: строгий JSON на входах, перечисленных в журнале изменений |
 | A3 | [#98](https://github.com/KonkovDV/Mandat/issues/98) | M | сделано в `2736422`: векторы eddsa-jcs-2022 |
 | A4 | [#99](https://github.com/KonkovDV/Mandat/issues/99) | M | реестр статусов и полный `pytest` на Windows |
-| A5 | [#100](https://github.com/KonkovDV/Mandat/issues/100) | M | допуск операции через HTTP и контракт для ДБО |
+| A5 | [#100](https://github.com/KonkovDV/Mandat/issues/100) | M | сделано 17.11: допуск операции через HTTP и контракт для ДБО ([RUN](RUN.md#допуск-операции-для-дбо)) |
 
 **A1, A2, A3.** Влиты в `main` коммитом `2736422` ([#121](https://github.com/KonkovDV/Mandat/pull/121)): сверка документов ([#108](https://github.com/KonkovDV/Mandat/pull/108)), строгий JSON ([#109](https://github.com/KonkovDV/Mandat/pull/109)), векторы eddsa-jcs-2022 ([#110](https://github.com/KonkovDV/Mandat/pull/110)). Повторный разбор этого дерева — [аудит 20.10](audit/AUDIT-2026-10-20-MERGE.md). `1e309` строгий разбор отвергает с 27.10 ([#122](https://github.com/KonkovDV/Mandat/issues/122)).
 

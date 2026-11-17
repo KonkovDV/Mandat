@@ -121,6 +121,13 @@ class Store(Protocol):
     def review_list(self) -> list[tuple[str, dict[str, Any], int]]:
         """Все разборы: (case_id, состояние, версия), по case_id. Для очереди разбора."""
 
+    # --- High-watermark списков статусов для допуска операции: значение только растёт. ---
+    def watermark_get(self, key: str) -> int | None:
+        """Наибольший виденный номер списка статусов ``key`` или None."""
+
+    def watermark_raise(self, key: str, value: int) -> int:
+        """Атомарно поднять watermark до ``value``, если он меньше; вернуть значение после записи."""
+
 
 class MemoryStore:
     name = "memory"
@@ -136,6 +143,16 @@ class MemoryStore:
         self._pending: dict[str, Pending] = {}
         self._idem: dict[tuple[str, str], tuple[str, str, float]] = {}
         self._reviews: dict[str, tuple[dict[str, Any], int]] = {}
+        self._watermarks: dict[str, int] = {}
+
+    def watermark_get(self, key: str) -> int | None:
+        with self._lock:
+            return self._watermarks.get(key)
+
+    def watermark_raise(self, key: str, value: int) -> int:
+        with self._lock:
+            self._watermarks[key] = max(value, self._watermarks.get(key, value))
+            return self._watermarks[key]
 
     def allow(self, client: str, limit: int, now: float | None = None) -> bool:
         now = time.time() if now is None else now
@@ -293,6 +310,7 @@ class SQLiteStore:
             CREATE TABLE IF NOT EXISTS reviews (
                 case_id TEXT PRIMARY KEY, version INTEGER NOT NULL, body TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS watermarks (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
             """
         )
 
@@ -321,6 +339,20 @@ class SQLiteStore:
 
     def _tx(self) -> SQLiteStore._Tx:
         return SQLiteStore._Tx(self._db())
+
+    def watermark_get(self, key: str) -> int | None:
+        row = self._db().execute("SELECT value FROM watermarks WHERE key = ?", (key,)).fetchone()
+        return None if row is None else int(row[0])
+
+    def watermark_raise(self, key: str, value: int) -> int:
+        with self._tx() as db:
+            db.execute(
+                "INSERT INTO watermarks (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = MAX(value, excluded.value)",
+                (key, value),
+            )
+            (stored,) = db.execute("SELECT value FROM watermarks WHERE key = ?", (key,)).fetchone()
+            return int(stored)
 
     def allow(self, client: str, limit: int, now: float | None = None) -> bool:
         now = time.time() if now is None else now
@@ -563,9 +595,19 @@ class RedisStore:
     return {cur + 1, cur}
     """
 
+    # Watermark только растёт: сравнение и запись в одном скрипте.
+    _WATERMARK = """
+    local cur = redis.call('GET', KEYS[1])
+    local value = tonumber(ARGV[1])
+    if cur and tonumber(cur) >= value then return tonumber(cur) end
+    redis.call('SET', KEYS[1], value)
+    return value
+    """
+
     def __init__(self, client: Any, prefix: str = "mandat:") -> None:
         self.r = client
         self.prefix = prefix
+        self._watermark = client.register_script(self._WATERMARK)
         self._allow = client.register_script(self._ALLOW)
         self._put = client.register_script(self._PUT)
         self._commit = client.register_script(self._COMMIT)
@@ -594,6 +636,13 @@ class RedisStore:
 
     def release(self, key: str) -> None:
         self.r.delete(f"{self.prefix}seen:{key}")
+
+    def watermark_get(self, key: str) -> int | None:
+        raw = self.r.get(f"{self.prefix}watermark:{key}")
+        return None if raw is None else int(raw)
+
+    def watermark_raise(self, key: str, value: int) -> int:
+        return int(self._watermark(keys=[f"{self.prefix}watermark:{key}"], args=[int(value)]))
 
     def ping(self) -> None:
         self.r.ping()
