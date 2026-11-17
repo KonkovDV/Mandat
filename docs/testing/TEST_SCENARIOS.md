@@ -61,7 +61,7 @@
 |---|---|---|
 | R-FMT-001 | Документы разобраны, обязательные поля МЧД на месте | `test_r_fmt_001_bad_xml_is_insufficient`, `test_r_fmt_001_xml_bomb_rejected`, `test_values_outside_the_schema_lists_are_format_gaps`, `test_document_in_a_foreign_namespace_is_rejected` |
 | R-FMT-002 | МЧД в едином формате 003 | `test_r_fmt_002_foreign_format_needs_review` |
-| R-FMT-003 | Реквизиты МЧД по единым требованиям в ред. Приказа № 1001 | `test_r_fmt_003_order_1001_requisites` |
+| R-FMT-003 | Реквизиты МЧД по единым требованиям на дату выдачи | `test_r_fmt_003_requisites_by_issue_date` |
 | R-FMT-004 | Признаки безотзывной доверенности согласованы с признаком передоверия | `test_r_fmt_004_irrevocable_mismatch_needs_review` |
 | R-FMT-005 | Документы и поля не повторяются | `test_r_fmt_005_duplicate_egrul_is_not_resolved` |
 | R-ID-001 | Контрольные числа ИНН, ОГРН и СНИЛС сходятся | `test_r_id_001_bad_checksum_refutes` |

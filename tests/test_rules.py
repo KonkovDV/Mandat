@@ -11,6 +11,7 @@ from conftest import rule_effects, run
 from mandat.domain.identifiers import make_inn10, make_ogrn
 from mandat.domain.model import Organization, Person
 from mandat.intake.emchd import build_emchd_xml, parse_emchd
+from mandat.rules.pack import default_pack
 
 
 def test_r_fmt_001_bad_xml_is_insufficient():
@@ -35,14 +36,72 @@ def test_r_fmt_002_foreign_format_needs_review():
     assert report.verdict.value == "needs_review"
 
 
-def test_r_fmt_003_order_1001_requisites():
+_ROOT_ORG = "Документ/Довер/СвДоверит/Доверит/РосОргДовер/СвРосОрг"
+_ROOT_SV = "Документ/Довер/СвДов"
+
+
+def _edit_root_poa(path: str, drop: tuple[str, ...] = (), **attrs: str):
+    """Правка корневой МЧД сценария: убрать атрибуты ``drop`` и выставить ``attrs``."""
+    import xml.etree.ElementTree as ET  # синтетика теста, внешних данных нет
+
+    def mutate(sc) -> None:
+        root = ET.fromstring(sc.files["poa-root.xml"])  # noqa: S314
+        element = root.find(path)
+        assert element is not None, path
+        for name in drop:
+            element.attrib.pop(name)
+        for name, value in attrs.items():
+            element.set(name, value)
+        sc.files["poa-root.xml"] = ET.tostring(root, encoding="unicode").encode("utf-8")
+
+    return mutate
+
+
+def _chain(*mutations):
+    def mutate(sc) -> None:
+        for one in mutations:
+            one(sc)
+
+    return mutate
+
+
+def _fmt_003(report) -> list[str]:
+    return [f.message for f in report.findings if f.rule_id == "R-FMT-003"]
+
+
+def test_r_fmt_003_requisites_by_issue_date():
+    """Реквизиты — по редакции Единых требований на дату выдачи МЧД (B7, #170).
+
+    КПП и СНИЛС руководителя требуются с 01.03.2022 (Приказ № 857, п. 2 пп. 3), наименование полномочия рядом
+    с кодом — с 01.02.2026 (Приказ № 1001, п. 4).
+    """
     report = run("missing_1001")
     assert rule_effects(report, "R-FMT-003") == {"needs_review"}
-    assert any("наименование полномочия" in f.message for f in report.findings if f.rule_id == "R-FMT-003")
+    assert any("наименование полномочия" in m for m in _fmt_003(report))
     assert report.verdict.value == "needs_review"
     assert rule_effects(run("ok"), "R-FMT-003") == {"supports"}
-    # МЧД, выданная до 01.02.2026, по новым требованиям не проверяется.
-    assert not rule_effects(run("no_term_expired"), "R-FMT-003")
+    # МЧД от 01.09.2025: КПП и СНИЛС на месте, наименование полномочия ещё не требовалось.
+    old = run("no_term_expired")
+    assert rule_effects(old, "R-FMT-003") == {"supports"}
+    assert any("Приказа № 857 на месте" in m for m in _fmt_003(old))
+    unnamed_2025 = run("missing_1001", mutate=_edit_root_poa(_ROOT_SV, ДатаВыдДовер="2025-09-01"))
+    assert rule_effects(unnamed_2025, "R-FMT-003") == {"supports"}
+    # Без КПП после 01.03.2022 — на разбор, и до 01.02.2026 тоже.
+    no_kpp_2025 = run("no_term_expired", mutate=_edit_root_poa(_ROOT_ORG, drop=("КПП",)))
+    assert rule_effects(no_kpp_2025, "R-FMT-003") == {"needs_review"}
+    assert any("КПП доверителя" in m for m in _fmt_003(no_kpp_2025))
+    # МЧД до 01.03.2022: Единых требований ещё не было, правило её не проверяет.
+    no_kpp_2022 = run(
+        "no_term_expired",
+        mutate=_chain(_edit_root_poa(_ROOT_SV, ДатаВыдДовер="2022-02-28"), _edit_root_poa(_ROOT_ORG, drop=("КПП",))),
+    )
+    assert not rule_effects(no_kpp_2022, "R-FMT-003")
+
+
+def test_r_fmt_003_dates_come_from_the_rule_pack():
+    spec = default_pack().get("R-FMT-003")
+    assert spec.param("kpp_snils_from") == "2022-03-01"
+    assert spec.param("power_name_from") == "2026-02-01"
 
 
 def test_r_fmt_004_irrevocable_mismatch_needs_review():
