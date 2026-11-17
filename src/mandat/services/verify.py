@@ -225,9 +225,10 @@ def verify_case(
     """``advisory`` — находки модели: попадают в отчёт как справка и не влияют на вердикт (ADR-001)."""
     # Профиль проверяется серверной политикой: в pilot/prod demo недоступен ни явно, ни по умолчанию.
     prof = get_profile(resolve_profile(profile))
-    # Статус «approved» — только по действующей подписанной записи юриста (rules/approvals.py), в любом профиле.
-    pack, approval_notes = effective_pack(pack or default_pack(), now or datetime.now(UTC))
     catalog = catalog or default_catalog()
+    # Статус «approved» — только по действующей подписанной записи юриста (rules/approvals.py), в любом профиле;
+    # для правил, читающих каталог операций, запись привязана и к этому каталогу.
+    pack, approval_notes = effective_pack(pack or default_pack(), now or datetime.now(UTC), None, catalog.sha256)
     classifier = classifier or default_classifier()
     ports = ports or default_ports(case)
     chain = build_chain(case, max_links=int(pack.get("R-SUB-008").param("max_chain_links")))
