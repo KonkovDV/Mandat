@@ -1,0 +1,46 @@
+{
+  "case_id": "04_subdelegation_forbidden",
+  "organization": {
+    "inn": "7729985006",
+    "ogrn": "1257700518756",
+    "name": "ООО «Ясная поляна»"
+  },
+  "requester": {
+    "full_name": "Лебедева Ирина Петровна",
+    "inn": "777588807322",
+    "snils": "829-771-961 70"
+  },
+  "operation": {
+    "code": "PAYMENT_SIGN",
+    "date": "2026-10-20",
+    "amount_rub": 480000
+  },
+  "documents": [
+    {
+      "id": "poa-root",
+      "kind": "emchd_xml",
+      "path": "poa-root.xml"
+    },
+    {
+      "id": "poa-child",
+      "kind": "emchd_xml",
+      "path": "poa-child.xml"
+    },
+    {
+      "id": "charter",
+      "kind": "charter_text",
+      "path": "charter.txt"
+    },
+    {
+      "id": "egrul",
+      "kind": "egrul_json",
+      "path": "egrul.json"
+    }
+  ],
+  "registry": {
+    "423967c2-2d67-8a64-de24-b0dcec0f363a": "active",
+    "5fd50157-1dc4-cba1-4318-17a159ba0d37": "active"
+  },
+  "title": "Передоверие при запрете в родительской МЧД",
+  "expected_verdict": "refuted"
+}

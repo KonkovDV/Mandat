@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+# Демо без установки в систему: виртуальное окружение в .venv, отчёты в var/demo.
+set -eu
+cd "$(dirname "$0")"
+PY="${PYTHON:-python3}"
+if [ ! -d .venv ]; then
+  "$PY" -m venv .venv
+fi
+. .venv/bin/activate
+# pip, зависимости и бэкенд сборки — из lock-файлов с хешами (requirements/README.md).
+python -m pip install --quiet --require-hashes -r requirements/pip.lock
+python -m pip install --quiet --require-hashes -r requirements/runtime.lock -r requirements/build.lock
+python -m pip install --quiet --no-deps --no-build-isolation -e .
+mandat demo
+mandat monitor examples/events/takeover.json
+echo
+mandat showcase
+echo "Откройте var/demo/01_ok.html и var/demo/05_director_changed.html в браузере."

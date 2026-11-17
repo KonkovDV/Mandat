@@ -1,0 +1,10 @@
+{
+  "name": "Mandat VTB",
+  "headFontFace": "Golos Text",
+  "bodyFontFace": "Golos Text",
+  "colors": {
+    "dk1": "0B1F44", "lt1": "FFFFFF", "dk2": "0A2973", "lt2": "F3F6FB",
+    "accent1": "004CBC", "accent2": "00AAFF", "accent3": "1A9F68", "accent4": "F5A300",
+    "accent5": "E5484D", "accent6": "6B7A99", "hlink": "004CBC", "folHlink": "0A2973"
+  }
+}

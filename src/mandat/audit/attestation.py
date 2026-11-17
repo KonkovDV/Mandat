@@ -1,0 +1,614 @@
+"""Подписанное удостоверение о результате проверки полномочия (в духе W3C VC 2.0).
+
+Идея перенесена из fsp-talent (ADR-0007: удостоверения W3C VC с подписью Ed25519).
+Подпись проверяется без доступа к базе «Мандата»: нужен только открытый ключ.
+
+Схема подписи повторяет криптонабор ``eddsa-jcs-2022``: хеш канонической
+конфигурации доказательства и хеш канонического документа, подпись Ed25519,
+значение в base58btc с префиксом ``z``. Каноническая запись — RFC 8785 (``audit/jcs.py``,
+проверена на примерах из текста RFC). Для ключей ASCII, строк и целых она совпадает с прежней
+записью ``sort_keys``, поэтому подпись ранее выданных удостоверений проверяется без переподписи.
+Принимаются они не будут: в них нет ``validUntil`` (тест ``test_attestation_signed_before_rfc8785_*``).
+Каноническая запись, оба хеша и ``proofValue`` совпадают с векторами репозитория w3c/vc-di-eddsa
+(коммит 13e70705, ``tests/test_eddsa_jcs_vectors.py``). Ed25519 — не квалифицированная
+электронная подпись по 63-ФЗ и не ГОСТ.
+
+``verify_signature`` отвечает только на вопрос «подписано этим ключом».
+``validate_attestation`` проверяет подлинность удостоверения (издатель, срок, профиль, статус).
+``authorize_operation`` — отдельный контракт допуска операции: подлинность + вердикт confirmed.
+Успех проверки подписи или подлинности сам по себе не является банковским допуском операции.
+
+В удостоверение не попадают ФИО и паспортные данные: только ИНН организации, токен представителя
+(HMAC-SHA256 на ключе издателя, а не хеш ИНН: хеш 12 цифр перебирается словарём), операция,
+вердикт, номера МЧД цепочки и хеши входов.
+Статус удостоверения (отозвано, приостановлено) — по спискам W3C Bitstring Status List
+(``audit/status_list.py``).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import os
+import re
+import secrets
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, time, timedelta
+from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+
+from mandat.audit.jcs import canonicalize
+from mandat.audit.signing import Keyring, Signer, as_signer, checked_sign, key_id
+
+_B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+ISSUER = "did:web:mandat.example"
+CONTEXTS = ["https://www.w3.org/ns/credentials/v2"]
+CRYPTOSUITE = "eddsa-jcs-2022"
+PURPOSE = "assertionMethod"
+VALID_FOR = timedelta(days=30)  # срок принятия удостоверения; параметр банка
+# Дата операции — календарный день банка, а не сутки UTC.
+BANK_TZ = ZoneInfo("Europe/Moscow")
+
+
+def b58encode(data: bytes) -> str:
+    num = int.from_bytes(data, "big")
+    out = ""
+    while num:
+        num, rem = divmod(num, 58)
+        out = _B58[rem] + out
+    pad = len(data) - len(data.lstrip(b"\0"))
+    return "1" * pad + out
+
+
+def b58decode(text: str) -> bytes:
+    num = 0
+    for char in text:
+        num = num * 58 + _B58.index(char)
+    body = num.to_bytes((num.bit_length() + 7) // 8, "big") if num else b""
+    pad = len(text) - len(text.lstrip("1"))
+    return b"\0" * pad + body
+
+
+def _private_bytes(path: Path) -> bytes:
+    """Байты секретного ключа. В POSIX файл, открытый группе или всем, не читается: ключ уже мог утечь."""
+    if os.name == "posix" and path.stat().st_mode & 0o077:
+        raise ValueError(f"ключ {path.name} доступен не только владельцу: выполните chmod 600 {path}")
+    return path.read_bytes()
+
+
+def _read_signing_key(path: Path) -> Ed25519PrivateKey:
+    key = serialization.load_pem_private_key(_private_bytes(path), password=None)
+    if not isinstance(key, Ed25519PrivateKey):
+        raise ValueError("ключ подписи должен быть Ed25519")
+    return key
+
+
+def load_or_create_key(path: Path) -> Ed25519PrivateKey:
+    """Открытый PEM: только demo/dev/test. В защищённом режиме — ``signing.signer_from_env`` (RT-05)."""
+    from mandat.services.env_policy import protected
+
+    if protected():
+        raise ValueError("ключ подписи в открытом PEM в защищённом режиме запрещён: см. docs/KEYS.md")
+    if path.exists():
+        return _read_signing_key(path)
+    key = Ed25519PrivateKey.generate()
+    pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+    return key if _write_private(path, pem) else _read_signing_key(path)
+
+
+def _write_private(path: Path, data: bytes) -> bool:
+    """Новый файл ключа с правами 0600 (в Windows права POSIX не действуют).
+
+    Байты пишутся во временный файл в том же каталоге (двоичный режим, без замены перевода
+    строки), сбрасываются на диск и только потом публикуются под именем ключа жёсткой ссылкой.
+    Поэтому читатель видит либо полный ключ, либо его отсутствие. Существующий файл не
+    перезаписывается: если его успел создать другой процесс, возвращается False, и вызывающий
+    читает уже записанный ключ.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    fd = os.open(tmp, flags, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            return False
+        return True
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def public_key_multibase(key: Ed25519PrivateKey | Ed25519PublicKey | Signer) -> str:
+    if isinstance(key, Ed25519PublicKey):
+        return key_id(key)
+    return as_signer(key).key_id  # multicodec ed25519-pub
+
+
+def _hash_data(document: dict[str, Any], proof_config: dict[str, Any]) -> bytes:
+    return (
+        hashlib.sha256(canonicalize(proof_config).encode("utf-8")).digest()
+        + hashlib.sha256(canonicalize(document).encode("utf-8")).digest()
+    )
+
+
+def sign(document: dict[str, Any], key: Ed25519PrivateKey | Signer, *, now: datetime | None = None) -> dict[str, Any]:
+    """Доказательство Data Integrity в духе ``eddsa-jcs-2022`` для любого JSON-документа."""
+    signer = as_signer(key)
+    created = (now or datetime.now(UTC)).isoformat(timespec="seconds")
+    proof_config = {
+        "@context": CONTEXTS,
+        "type": "DataIntegrityProof",
+        "cryptosuite": CRYPTOSUITE,
+        "created": created,
+        # Идентификатор ключа (kid) в подписанной части: по нему проверяющий берёт ключ из связки.
+        "verificationMethod": f"{ISSUER}#{signer.key_id}",
+        "proofPurpose": PURPOSE,
+    }
+    signature = checked_sign(signer, _hash_data(document, proof_config))
+    return {**document, "proof": {**proof_config, "proofValue": "z" + b58encode(signature)}}
+
+
+def issue(
+    report: dict[str, Any],
+    key: Ed25519PrivateKey | Signer,
+    *,
+    now: datetime | None = None,
+    status: list[dict[str, str]] | None = None,
+    pseudonym_key: bytes | None = None,
+    valid_for: timedelta = VALID_FOR,
+    audience: str | None = None,
+    nonce: str | None = None,
+) -> dict[str, Any]:
+    """Удостоверение по отчёту. Без ``pseudonym_key`` представитель в удостоверение не попадает.
+
+    ``audience`` — система банка, для которой выпущено удостоверение; ``nonce`` — одноразовый номер запроса
+    операции. Вместе с суммой и токеном представителя они привязывают удостоверение к одному запросу
+    (``authorize_operation`` с ``OperationRequest``, M-04).
+    """
+    moment = now or datetime.now(UTC)
+    if moment.tzinfo is None:
+        raise ValueError("момент выпуска без часового пояса")
+    created = moment.isoformat(timespec="seconds")
+    until = moment + valid_for
+    authority_end = _authority_end(report)
+    if authority_end is not None:
+        until = min(until, authority_end)
+    if until <= moment:
+        until = moment  # полномочие уже кончилось: окно нулевой длины не проходит проверку срока
+    rep_inn = (report.get("requester") or {}).get("inn") or ""
+    subject: dict[str, Any] = {
+        "organizationInn": (report.get("organization") or {}).get("inn"),
+        "operation": (report.get("operation") or {}).get("code"),
+        "operationDate": (report.get("operation") or {}).get("date"),
+        "verdict": report.get("verdict"),
+        "profile": report.get("profile"),
+        "ruleSetSha256": (report.get("rule_pack") or {}).get("sha256"),
+        "reportSha256": report.get("reproducibility_hash"),
+        "authorityChain": list((report.get("chain") or {}).get("poa_numbers") or []),
+        "inputs": [row.get("sha256") for row in report.get("inputs") or []],
+        "amountRub": (report.get("operation") or {}).get("amount_rub"),
+    }
+    if audience:
+        subject["audience"] = audience
+    if nonce:
+        if len(nonce) < NONCE_MIN_CHARS:
+            raise ValueError(f"nonce короче {NONCE_MIN_CHARS} символов")
+        subject["nonce"] = nonce
+    if pseudonym_key and rep_inn:
+        subject["representativeToken"] = representative_token(rep_inn, pseudonym_key)
+    credential: dict[str, Any] = {
+        "@context": CONTEXTS,
+        "type": ["VerifiableCredential", "MandatAuthorityAttestation"],
+        "issuer": ISSUER,
+        "validFrom": created,
+        "validUntil": until.isoformat(timespec="seconds"),
+        "credentialSubject": subject,
+    }
+    if status:
+        credential["credentialStatus"] = status
+    return sign(credential, key, now=now)
+
+
+def _rubles(amount: int) -> str:
+    """1920000 → «1 920 000 ₽»: разряды и знак рубля через неразрывный пробел, как в карточке и показе."""
+    return f"{amount:,}".replace(",", " ") + " ₽"
+
+
+def _utf8(text: str) -> bytes:
+    """Байты строки для HMAC и сравнения. Одиночный суррогат не роняет кодирование: строка просто не совпадёт."""
+    return text.encode("utf-8", "surrogatepass")
+
+
+def _same_text(offered: str, expected: str) -> bool:
+    """Сравнение с постоянным временем для любых строк.
+
+    ``hmac.compare_digest`` на str принимает только ASCII и на кириллице бросает TypeError:
+    допуск падал исключением вместо отказа (аудит 31.10.2026, K-01).
+    """
+    return hmac.compare_digest(_utf8(offered), _utf8(expected))
+
+
+def representative_token(inn: str, key: bytes) -> str:
+    """Токен представителя: HMAC-SHA256 на ключе издателя. Без ключа ИНН по токену не подобрать."""
+    return hmac.new(key, _utf8(inn), hashlib.sha256).hexdigest()
+
+
+PSEUDONYM_KEY_MIN_BYTES = 32
+
+
+def _read_pseudonym_key(path: Path) -> bytes:
+    key = _private_bytes(path)
+    if len(key) < PSEUDONYM_KEY_MIN_BYTES:
+        raise ValueError(f"ключ HMAC короче {PSEUDONYM_KEY_MIN_BYTES} байт: токен представителя был бы слабым")
+    return key
+
+
+def load_or_create_pseudonym_key(path: Path) -> bytes:
+    if path.exists():
+        return _read_pseudonym_key(path)
+    key = secrets.token_bytes(PSEUDONYM_KEY_MIN_BYTES)
+    return key if _write_private(path, key) else _read_pseudonym_key(path)
+
+
+def verify_signature(credential: dict[str, Any], public_key: Ed25519PublicKey) -> bool:
+    """Только подпись: «подписано этим ключом». Не означает, что удостоверение можно принять."""
+    return verify(credential, public_key)
+
+
+def _when(value: Any) -> datetime | None:
+    try:
+        moment = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
+
+
+def verify_cryptographic(
+    credential: dict[str, Any],
+    trusted_keys: Iterable[Ed25519PublicKey] | Keyring,
+    *,
+    now: datetime,
+    allow_demo: bool = False,
+) -> list[str]:
+    """Только криптография и поля удостоверения: без проверки статуса.
+
+    Не означает допуск операции и не печатается как «принимается».
+    """
+    return validate_attestation(
+        credential,
+        trusted_keys,
+        now=now,
+        status_dir=None,
+        allow_demo=allow_demo,
+        require_status=False,
+    )
+
+
+def validate_attestation(
+    credential: dict[str, Any],
+    trusted_keys: Iterable[Ed25519PublicKey] | Keyring,
+    *,
+    now: datetime,
+    status_dir: Path | None = None,
+    allow_demo: bool = False,
+    require_status: bool | None = None,
+    seen: dict[str, int] | None = None,
+    operation_risk: str | None = None,
+    require_seen: bool = False,
+) -> list[str]:
+    """Подлинность удостоверения как квитанции результата.
+
+    Пустой список — криптографически и по полям подлинно на момент ``now``.
+    Это **не** разрешение банковской операции: для допуска см. ``authorize_operation``.
+
+    ``require_status``: ``None`` берёт политику ``protected()`` (pilot/prod). В защищённом
+    режиме каталог статусов обязателен: без него, при неизвестном/устаревшем статусе или
+    при отсутствии ``credentialStatus`` удостоверение не считается подлинным для приёма.
+    Диагностика подписи без статуса — только при явном ``require_status=False``.
+    """
+    from mandat.services.env_policy import require_attestation_status
+
+    problems: list[str] = []
+    if require_status is None:
+        try:
+            require_status = require_attestation_status()
+        except ValueError as exc:  # попытка выключить статус в pilot/prod: проверка остаётся, удостоверение — нет
+            problems.append(str(exc))
+            require_status = True
+    proof = credential.get("proof") or {}
+    method = str(proof.get("verificationMethod") or "")
+    keyring = trusted_keys if isinstance(trusted_keys, Keyring) else Keyring.of(trusted_keys)
+    # Выведенный из выпуска ключ проверяет только подписи, сделанные до вывода (Keyring.trusted_for).
+    keys = {public_key_multibase(k): k for k in keyring.trusted_for(_when(proof.get("created")))}
+    key = keys.get(method.split("#", 1)[-1]) if method.startswith(f"{ISSUER}#") else None
+    if credential.get("issuer") != ISSUER:
+        problems.append(f"издатель {credential.get('issuer')!r} не {ISSUER}")
+    if key is None:
+        problems.append("ключ подписи не из списка доверенных ключей издателя")
+    elif not verify(credential, key):
+        problems.append("подпись не верна")
+    if proof.get("cryptosuite") != CRYPTOSUITE or proof.get("type") != "DataIntegrityProof":
+        problems.append(f"криптонабор {proof.get('cryptosuite')!r} не {CRYPTOSUITE}")
+    if proof.get("proofPurpose") != PURPOSE:
+        problems.append(f"назначение подписи {proof.get('proofPurpose')!r} не {PURPOSE}")
+    if "MandatAuthorityAttestation" not in (credential.get("type") or []):
+        problems.append("тип удостоверения не MandatAuthorityAttestation")
+    start, end = _when(credential.get("validFrom")), _when(credential.get("validUntil"))
+    if start is None or end is None:
+        problems.append("срок действия не указан или без часового пояса")
+    elif not start <= now < end:
+        problems.append(f"срок действия {start:%d.%m.%Y %H:%M}–{end:%d.%m.%Y %H:%M} не включает момент проверки")
+    if (credential.get("credentialSubject") or {}).get("profile") == "demo" and not allow_demo:
+        problems.append("удостоверение выпущено по профилю demo: для решения в банке не принимается")
+    needs_status = require_status or status_dir is not None
+    if require_status and status_dir is None:
+        problems.append("каталог статусов не передан: в защищённом режиме проверка статуса обязательна")
+    elif require_status and not (credential.get("credentialStatus") or []):
+        problems.append("в удостоверении нет credentialStatus: статус проверить нельзя")
+    elif (
+        needs_status
+        and status_dir is not None
+        and key is not None
+        and not any(
+            p.startswith("ключ подписи") or p.startswith("подпись не верна") or p.startswith("издатель")
+            for p in problems
+        )
+    ):
+        from mandat.audit.status_list import check_status
+
+        try:
+            state = check_status(
+                credential,
+                status_dir,
+                keyring.for_status_lists() or [key],
+                now=now,
+                seen=seen,
+                operation_risk=operation_risk,
+                require_seen=require_seen,
+            )["state"]
+        except (OSError, ValueError, KeyError) as exc:
+            problems.append(f"статус не проверен: {exc}")
+        else:
+            if state != "действует":
+                problems.append(f"статус удостоверения: {state}")
+    return problems
+
+
+NONCE_MIN_CHARS = 16
+# Причина отказа повторному запросу: допуск по ней ищет повтор того же запроса (services/admission.py).
+NONCE_USED = "nonce уже использован: повтор запроса"
+
+
+@dataclass(frozen=True)
+class OperationRequest:
+    """Запрос операции, к которому должно быть привязано удостоверение (M-04)."""
+
+    operation: str
+    amount_rub: int | None
+    representative_inn: str
+    audience: str
+    nonce: str
+    organization_inn: str
+    operation_date: date
+
+
+def bank_date(moment: datetime) -> date:
+    """Календарный день момента в часовом поясе банка."""
+    if moment.tzinfo is None:
+        raise ValueError("момент проверки без часового пояса")
+    return moment.astimezone(BANK_TZ).date()
+
+
+# Срок документа цепочки не прочитан: окно удостоверения нулевое, а не 30 дней (#126).
+_UNREADABLE_END = datetime.min.replace(tzinfo=UTC)
+
+
+def _authority_end(report: dict[str, Any]) -> datetime | None:
+    """Конец самого раннего срока документов цепочки: день ``effective_until`` включительно.
+
+    Берётся ``effective_until`` (срок по МЧД или год по ст. 186 ГК РФ), иначе ``valid_until``.
+    Конец — начало следующих суток по Москве, чтобы день срока ещё входил в окно.
+
+    Срок, который не читается как дата ``ГГГГ-ММ-ДД``, и дата без следующих суток в календаре
+    (``9999-12-31``) окно не продлевают и выпуск не роняют: конец считается уже наступившим (#126).
+    Документ без срока окно не ограничивает, как и раньше.
+    """
+    chain = report.get("chain") or {}
+    documents = chain.get("documents") if isinstance(chain, dict) else None
+    if documents is None:
+        return None
+    if not isinstance(documents, list):
+        return _UNREADABLE_END
+    ends: list[datetime] = []
+    for doc in documents:
+        if not isinstance(doc, dict):
+            return _UNREADABLE_END
+        raw = doc.get("effective_until")
+        if raw is None:
+            raw = doc.get("valid_until")
+        if raw is None:
+            continue
+        if not isinstance(raw, str) or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", raw) is None:
+            return _UNREADABLE_END
+        try:
+            day = date.fromisoformat(raw)
+        except ValueError:
+            return _UNREADABLE_END
+        if day == date.max:
+            return _UNREADABLE_END
+        ends.append(datetime.combine(day + timedelta(days=1), time.min, tzinfo=BANK_TZ))
+    return min(ends) if ends else None
+
+
+def check_request(
+    subject: dict[str, Any],
+    request: OperationRequest,
+    *,
+    pseudonym_key: bytes | None,
+    consume_nonce: Callable[[str], bool] | None,
+    now: datetime | None = None,
+) -> list[str]:
+    """Сверить удостоверение с запросом: организация, дата, операция, сумма, представитель, получатель, nonce."""
+    problems: list[str] = []
+    asked_org = request.organization_inn
+    signed_org = subject.get("organizationInn")
+    if not isinstance(asked_org, str) or not asked_org.strip():
+        problems.append("в запросе не указана организация")
+    elif not isinstance(signed_org, str) or not signed_org:
+        problems.append("в удостоверении нет организации")
+    elif signed_org != asked_org:
+        problems.append(f"организация {asked_org!r} не та, на которую выпущено удостоверение")
+    asked_day = request.operation_date
+    signed_day = subject.get("operationDate")
+    if isinstance(asked_day, datetime) or not isinstance(asked_day, date):
+        problems.append("дата операции в запросе должна быть календарной датой")
+    elif not isinstance(signed_day, str) or signed_day[:10] != asked_day.isoformat():
+        problems.append("дата операции не та, на которую выпущено удостоверение")
+    elif now is not None and bank_date(now) != asked_day:
+        problems.append("момент проверки не приходится на день операции")
+    if subject.get("operation") != request.operation:
+        problems.append(f"операция {request.operation!r} не та, на которую выпущено удостоверение")
+    bound = subject.get("amountRub")
+    amount = request.amount_rub
+    if amount is not None and (isinstance(amount, bool) or not isinstance(amount, int)):
+        problems.append("сумма операции должна быть целым числом рублей")
+    elif amount is not None and amount < 0:
+        problems.append("сумма операции отрицательная")
+    elif bound is not None:
+        if isinstance(bound, bool) or not isinstance(bound, int):
+            problems.append("сумма в удостоверении повреждена")
+        elif amount is None:
+            problems.append("в запросе нет суммы, а удостоверение выпущено на сумму")
+        elif amount > bound:
+            problems.append(f"сумма {_rubles(amount)} больше проверенной {_rubles(bound)}")
+    elif amount is not None:
+        problems.append("в удостоверении нет суммы: операцию с суммой по нему не допустить")
+    token = subject.get("representativeToken")
+    if not token or not pseudonym_key:
+        problems.append("представителя не сверить: нет токена в удостоверении или ключа HMAC")
+    elif not isinstance(request.representative_inn, str) or not request.representative_inn:
+        problems.append("в запросе не указан представитель")
+    elif not _same_text(str(token), representative_token(request.representative_inn, pseudonym_key)):
+        problems.append("представитель в запросе не тот, для кого выпущено удостоверение")
+    audience = subject.get("audience")
+    if not isinstance(request.audience, str) or not request.audience:
+        problems.append("в запросе не указан получатель (audience)")
+    elif not audience or audience != request.audience:
+        problems.append(f"удостоверение выпущено не для {request.audience!r}")
+    nonce = subject.get("nonce")
+    if not isinstance(request.nonce, str) or len(request.nonce) < NONCE_MIN_CHARS:
+        problems.append(f"nonce запроса короче {NONCE_MIN_CHARS} символов")
+    elif not nonce or not _same_text(str(nonce), request.nonce):
+        problems.append("nonce запроса не совпадает с удостоверением")
+    elif consume_nonce is None:
+        problems.append("нет хранилища nonce: повтор запроса не обнаружить")
+    elif not problems:
+        # nonce расходуется, только если всё остальное сошлось: чужой запрос не «сжигает» удостоверение.
+        try:
+            fresh = consume_nonce(str(nonce)) is True
+        except Exception:  # noqa: BLE001 — недоступное хранилище nonce означает отказ
+            problems.append("хранилище nonce недоступно: допуск невозможен")
+        else:
+            if not fresh:
+                problems.append(NONCE_USED)
+    return problems
+
+
+def authorize_operation(
+    credential: dict[str, Any],
+    trusted_keys: Iterable[Ed25519PublicKey] | Keyring,
+    *,
+    now: datetime,
+    status_dir: Path,
+    allow_demo: bool = False,
+    seen: dict[str, int] | None = None,
+    operation_risk: str | None = None,
+    request: OperationRequest | None = None,
+    pseudonym_key: bytes | None = None,
+    consume_nonce: Callable[[str], bool] | None = None,
+) -> list[str]:
+    """Допуск операции по удостоверению: подлинность + статус + вердикт confirmed + привязка к запросу.
+
+    Успех ``validate_attestation`` при вердикте refuted/needs_review недостаточен для операции.
+    В pilot/prod обязателен ``seen`` (high-watermark списков) и учитывается ``operation_risk`` (M-13).
+    В pilot/prod обязателен и ``request``: операция, сумма, представитель, ``audience`` и одноразовый ``nonce``
+    сверяются с удостоверением (M-04); ``consume_nonce(nonce)`` возвращает True только при первом использовании.
+    На стенде без ``request`` привязка не проверяется.
+    """
+    from mandat.services.env_policy import protected
+
+    problems: list[str] = []
+    require_seen = bool(protected())
+    if require_seen and seen is None:
+        problems.append("нет high-watermark seen: в защищённом режиме обязателен для допуска операции")
+    problems.extend(
+        validate_attestation(
+            credential,
+            trusted_keys,
+            now=now,
+            status_dir=status_dir,
+            allow_demo=allow_demo,
+            require_status=True,
+            seen=seen,
+            operation_risk=operation_risk,
+            # Если seen уже отсутствует — не дублируем ошибку check_status; age всё равно проверим
+            # только когда watermark передан.
+            require_seen=require_seen and seen is not None,
+        )
+    )
+    subject = credential.get("credentialSubject") or {}
+    verdict = subject.get("verdict")
+    if verdict != "confirmed":
+        problems.append(f"вердикт {verdict!r} не разрешает операцию: нужен confirmed")
+    if request is None:
+        if protected():
+            problems.append("нет запроса операции: в защищённом режиме удостоверение привязывается к запросу (M-04)")
+        return problems
+    if problems:
+        return problems  # nonce не расходуется на удостоверении, которое и так не проходит
+    return check_request(subject, request, pseudonym_key=pseudonym_key, consume_nonce=consume_nonce, now=now)
+
+
+# Подпись Ed25519 — 64 байта, в base58btc это не больше 88 знаков, ключ ed25519-pub в multibase — не больше 48.
+# Длинную строку не декодируем: перевод base58 квадратичен по длине, и удостоверение с мегабайтом в proofValue
+# занимало процессор до отказа (аудит 31.10.2026, K-05).
+MAX_PROOF_VALUE_CHARS = 100
+MAX_KEY_MULTIBASE_CHARS = 60
+
+
+def verify(credential: dict[str, Any], public_key: Ed25519PublicKey) -> bool:
+    proof = dict(credential.get("proof") or {})
+    value = proof.pop("proofValue", "")
+    if not isinstance(value, str) or not value.startswith("z") or len(value) > MAX_PROOF_VALUE_CHARS:
+        return False
+    document = {k: v for k, v in credential.items() if k != "proof"}
+    try:
+        public_key.verify(b58decode(value[1:]), _hash_data(document, proof))
+    except (InvalidSignature, ValueError):
+        return False
+    return True
+
+
+def public_key_from_multibase(value: str) -> Ed25519PublicKey:
+    if len(value) > MAX_KEY_MULTIBASE_CHARS:
+        raise ValueError("ожидался ключ ed25519-pub в multibase: строка длиннее ключа")
+    raw = b58decode(value[1:])
+    if not raw.startswith(b"\xed\x01"):
+        raise ValueError("ожидался ключ ed25519-pub в multibase")
+    return Ed25519PublicKey.from_public_bytes(raw[2:])
+
+
+def dump(credential: dict[str, Any]) -> str:
+    return json.dumps(credential, ensure_ascii=False, indent=2)

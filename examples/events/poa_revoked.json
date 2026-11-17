@@ -1,0 +1,26 @@
+{
+  "title": "Отмена основной МЧД обрывает цепочку передоверия",
+  "rights": [
+    {
+      "right_id": "R-003",
+      "org_inn": "7729985006",
+      "representative_inn": "777588807322",
+      "operation": "PAYMENT_SIGN",
+      "poa_numbers": [
+        "ee2afcb0-9003-7ff0-ef03-8dad405558ea",
+        "f3c69a25-a0a0-3e35-723f-2ad0f5e063e7"
+      ],
+      "eio_inn": null
+    }
+  ],
+  "events": [
+    {
+      "kind": "POA_REVOKED",
+      "org_inn": "7729985006",
+      "at": "2026-10-22T10:00:00+03:00",
+      "payload": {
+        "number": "ee2afcb0-9003-7ff0-ef03-8dad405558ea"
+      }
+    }
+  ]
+}

@@ -1,0 +1,173 @@
+{
+  "generated_at": "2026-11-17T23:27:13+00:00",
+  "engine": "mandat/0.3.0",
+  "source": {
+    "base_commit": "c4e6ac7575c3187fc2bd7ca309428ee66a1c6b43",
+    "sources": [
+      "src",
+      "tests",
+      "scripts",
+      "examples"
+    ],
+    "sha256": "301dbfc51725687e57d1267766d9fc2cebed46f19f597c16dce801f53888d915",
+    "check": "python scripts/build_evidence.py --verify-source"
+  },
+  "python": "3.13.18",
+  "rule_pack": {
+    "pack_id": "mandat-rules-ru",
+    "version": "2026.10.2",
+    "status": "draft",
+    "sha256": "cc5f0a0820008adab52de77e7f1a0cd42d8fbd7bc20a6eb212b06653144ed8e9",
+    "rules": 39
+  },
+  "operations_catalog": {
+    "version": "2026.10.2",
+    "sha256": "6e433b8390c7132603140d80f9f078702e70280dd2033706e3f5254c7c51d880",
+    "synthetic": true
+  },
+  "demo_cases": {
+    "command": "mandat demo",
+    "results": {
+      "01_ok": {
+        "verdict": "needs_review",
+        "reproducibility_hash": "1e67a12728e6f3b262d0234e756d22812976f79301759542ecf72881dd908dba"
+      },
+      "02_director_without_poa": {
+        "verdict": "needs_review",
+        "reproducibility_hash": "ec8de992b1d2ab5278dce611a6e106616201fc9df005c4e7e1e0ab9967edbbcc"
+      },
+      "03_subdelegation_ok": {
+        "verdict": "needs_review",
+        "reproducibility_hash": "41bf2585c5d93bd6890921021cc0825d0cce12f57b92c09ecb3b035b3914f3b8"
+      },
+      "04_subdelegation_forbidden": {
+        "verdict": "refuted",
+        "reproducibility_hash": "7a3968090d1f99d7e345a32fadc650cdc30686ca3636caf059860f1ebe8efb18"
+      },
+      "05_director_changed": {
+        "verdict": "needs_review",
+        "reproducibility_hash": "623c1c887ed182688d979db6e79b749f52ad06d9b51e058bcb0d2cf0a25cd943"
+      },
+      "06_text_authority": {
+        "verdict": "needs_review",
+        "reproducibility_hash": "37bec68b0b7e565d80765f52995f2cc220b7ded4b5cb5dbad330ec00eb5912d8"
+      },
+      "07_revoked": {
+        "verdict": "refuted",
+        "reproducibility_hash": "a73a68e84d219f4457fbfb6d329f8e5592f86182c3039b3126d3e5f303805b57"
+      },
+      "08_registry_unavailable": {
+        "verdict": "insufficient_data",
+        "reproducibility_hash": "55f079a07edf56942a3ad5f033dc43ed64b0ca424b78a2494f7ae506f2f4d7af"
+      },
+      "09_charter_limit": {
+        "verdict": "needs_review",
+        "reproducibility_hash": "4f340f708c60323f4ce220e6d15e222a5a20a815a02a41cb4692729c6673d784"
+      },
+      "10_old_director_poa": {
+        "verdict": "needs_review",
+        "reproducibility_hash": "daed60e100d77c3f70e8781e0b10e3dbe287d6cfcd622dfe639fe2c4205ebe38"
+      },
+      "11_parent_revoked": {
+        "verdict": "refuted",
+        "reproducibility_hash": "f3bdb0ddd87958fe081a7d1df30e0fc31be7ccaa95a655bf3864badde75bbaea"
+      },
+      "12_no_term": {
+        "verdict": "needs_review",
+        "reproducibility_hash": "ebacd85f3791c8aff45f398de2278f6df51773b95adf164bcd8aaf2c5ea8b5d1"
+      },
+      "13_bankruptcy": {
+        "verdict": "refuted",
+        "reproducibility_hash": "176b051f41873e4a84c3036abb64dd298fe7f8165c500e78603fc1919e7fa8e5"
+      },
+      "14_old_director_charter_cleared": {
+        "verdict": "confirmed",
+        "reproducibility_hash": "276968d0e8f290c985ac1c84574a799f47f852a8e2d9c001bce41faff4029e04"
+      }
+    }
+  },
+  "synthetic_corpus": {
+    "command": "mandat eval --per-defect 6",
+    "profile": "demo",
+    "seed": 7,
+    "cases": 294,
+    "defect_types": 49,
+    "agreement": 1.0,
+    "agreement_wilson95": [
+      0.987102336807292,
+      1.0
+    ],
+    "false_confirmed": 0,
+    "false_confirmed_rate_upper95": 0.01272692809310183,
+    "negative_defect_types": 48,
+    "false_confirmed_defect_types": [],
+    "false_confirmed_rate_upper95_by_defect_type": 0.07397278534728025,
+    "refute_recall": 1.0,
+    "refute_recall_wilson95": [
+      0.9656526402534428,
+      1.0
+    ],
+    "abstention_rate": 0.6122448979591837,
+    "coverage": 0.3877551020408163,
+    "auto_risk": 0.0,
+    "auto_risk_upper95": 0.03184065408347425,
+    "n_for_recall_0_9_pm_0_05": 139,
+    "confusion": {
+      "confirmed->confirmed": 6,
+      "insufficient_data->insufficient_data": 54,
+      "needs_review->needs_review": 126,
+      "refuted->refuted": 108
+    },
+    "boundary": "синтетический корпус: проверка логики правил, не точность на документах банка"
+  },
+  "synthetic_corpus_strict": {
+    "command": "mandat eval --per-defect 6 --profile strict",
+    "cases": 294,
+    "false_confirmed": 0,
+    "coverage": 0.0,
+    "abstention_rate": 1.0,
+    "boundary": "строгий профиль не подтверждает по черновикам правил и по снимку ЕГРЮЛ из пакета кейса; без СКЗИ подпись не проверена. Доля покрытия — в этом файле, не в старых слайдах"
+  },
+  "synthetic_corpus_holdout": {
+    "command": "mandat eval --per-defect 6 --seed 20261016",
+    "seed": 20261016,
+    "cases": 294,
+    "agreement": 1.0,
+    "false_confirmed": 0,
+    "false_confirmed_rate_upper95": 0.01272692809310183,
+    "false_confirmed_defect_types": [],
+    "false_confirmed_rate_upper95_by_defect_type": 0.07397278534728025,
+    "coverage": 0.3877551020408163,
+    "mismatches": 0,
+    "boundary": "отложенный seed: те же шаблоны с другими значениями; подгонку под генератор не исключает"
+  },
+  "subdelegation_property": {
+    "command": "python -m pytest tests/test_properties.py tests/test_cedar.py",
+    "chains": 384,
+    "property": "«подтверждено» ⇔ передоверие разрешено, не шире и не дольше родительской МЧД и покрывает операцию",
+    "cedar_differential": "tests/test_cedar.py, нужен extra [cedar]"
+  },
+  "classifier": {
+    "classifier_id": "mandat-authority-classifier",
+    "version": "2026.10.1",
+    "sha256": "5f08b73d574ac63ec8118545afe1a351a4b0e275019b2d7f25f886f5a3ef215c",
+    "synthetic": true,
+    "snapshot_at": null
+  },
+  "latency": {
+    "command": "python scripts/bench.py --rounds 20",
+    "cases": 280,
+    "median_ms": 2.54,
+    "p95_ms": 3.54,
+    "machine": "x86_64, Python 3.13.18",
+    "scope": "разбор XML и JSON, 39 правил, свёртка, отчёт; без сети и без модели"
+  },
+  "tests": {
+    "command": "python -m pytest -q",
+    "returncode": 0,
+    "summary": "1830 passed in 163.15s (0:02:43)",
+    "passed": 1830,
+    "collected": 1830,
+    "coverage_percent": 95.7
+  }
+}

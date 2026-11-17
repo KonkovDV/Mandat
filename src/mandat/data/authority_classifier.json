@@ -1,0 +1,69 @@
+{
+  "classifier_id": "mandat-authority-classifier",
+  "version": "2026.10.1",
+  "source": "synthetic",
+  "synthetic": true,
+  "note": "Снимок классификатора полномочий для стенда. Коды SYN-… вымышлены. Настоящий снимок собирается из выгрузки справочника ЕСНСИ командой scripts/import_classifier.py; поля STARTED и REVOKED справочника переносятся в started и revoked. Банковские коды классификатора в открытых источниках не подтверждены — колонка esnsi_status показывает статус сверки, коды не придумываются.",
+  "entries": [
+    {
+      "code": "SYN-BANK-PAY-SIGN",
+      "mnemonic": "SYN.BANK.PAY.SIGN",
+      "name": "Подписание платёжных документов в интернет-банке",
+      "started": "2022-03-01",
+      "revoked": null,
+      "esnsi_code": null,
+      "esnsi_status": "not_confirmed",
+      "esnsi_note": "Кандидат по смыслу — формулировка «Распоряжение банковскими счетами» (вторичный источник); код в ЕСНСИ не подтверждён"
+    },
+    {
+      "code": "SYN-BANK-PAY-SIGN-OLD",
+      "mnemonic": "SYN.BANK.PAY.SIGN.OLD",
+      "name": "Подписание платёжных документов (исключённый код, для демонстрации правила R-COV-002)",
+      "started": "2022-03-01",
+      "revoked": "2026-01-31",
+      "esnsi_code": null,
+      "esnsi_status": "synthetic_only",
+      "esnsi_note": "Демонстрационная запись: показывает работу с датой исключения кода"
+    },
+    {
+      "code": "SYN-BANK-ACCOUNT-DISPOSE",
+      "mnemonic": "SYN.BANK.ACCOUNT.DISPOSE",
+      "name": "Распоряжение банковскими счетами",
+      "started": "2022-03-01",
+      "revoked": null,
+      "esnsi_code": null,
+      "esnsi_status": "not_confirmed",
+      "esnsi_note": "Формулировка встречается во вторичной выгрузке классификатора; код и мнемоника не подтверждены"
+    },
+    {
+      "code": "SYN-BANK-STATEMENT",
+      "mnemonic": "SYN.BANK.STATEMENT",
+      "name": "Получение выписок по счетам",
+      "started": "2022-03-01",
+      "revoked": null,
+      "esnsi_code": null,
+      "esnsi_status": "not_found",
+      "esnsi_note": "Отдельного кода не найдено"
+    },
+    {
+      "code": "SYN-BANK-CLIENT-DATA",
+      "mnemonic": "SYN.BANK.CLIENT.DATA",
+      "name": "Изменение сведений о клиенте и реквизитов",
+      "started": "2022-03-01",
+      "revoked": null,
+      "esnsi_code": null,
+      "esnsi_status": "not_found",
+      "esnsi_note": "Отдельного кода не найдено"
+    },
+    {
+      "code": "SYN-BANK-USER-ADMIN",
+      "mnemonic": "SYN.BANK.USER.ADMIN",
+      "name": "Управление пользователями интернет-банка",
+      "started": "2022-03-01",
+      "revoked": null,
+      "esnsi_code": null,
+      "esnsi_status": "not_found",
+      "esnsi_note": "Отдельного кода не найдено"
+    }
+  ]
+}

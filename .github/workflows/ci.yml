@@ -1,0 +1,253 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  # Новые уязвимости появляются без push: 16.11.2026 pip-audit и Trivy нашли на неизменном main три
+  # исправленные находки. Прогон по расписанию ловит их до следующего PR. Задача package по расписанию не идёт.
+  schedule:
+    - cron: "41 3 * * 1,4"
+
+# По умолчанию у токена нет прав; каждой задаче выдаётся только нужное.
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+      # pip закреплён по хешу (requirements/pip.lock), как и всё остальное.
+      - run: python -m pip install --require-hashes -r requirements/pip.lock
+      # Зависимости только из lock-файла с хешами, сам пакет поверх без зависимостей.
+      - run: python -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
+      - run: python -m pip install --no-deps --no-build-isolation -e .
+      - run: python -m ruff check src tests scripts tools
+      - run: python -m ruff format --check src tests scripts tools
+      - run: python -m mypy
+      - name: tests with coverage threshold
+        run: python -m pytest --cov=mandat --cov-report=term --cov-report=json:var/coverage.json --junitxml=var/junit.xml
+      - name: no skipped tests (security tests must actually run)
+        run: python scripts/check_no_skips.py var/junit.xml
+      - name: test count and coverage to job summary
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, xml.etree.ElementTree as ET
+          s = ET.parse("var/junit.xml").getroot().find("testsuite")
+          cov = json.load(open("var/coverage.json"))["totals"]["percent_covered"]
+          print(f"tests: {s.get('tests')}, failures: {s.get('failures')}, skipped: {s.get('skipped')}, coverage: {cov:.1f}%")
+          PY
+      - run: python scripts/lint_claims.py
+      - run: python scripts/build_evidence.py --verify-source
+      - run: python scripts/check_links.py
+      - name: workflow lint (actionlint, release pinned by SHA-256)
+        if: matrix.python == '3.12'
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$archive"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -no-color -oneline
+      - name: known vulnerabilities in dependencies
+        run: |
+          # pip-audit в отдельном окружении из lock-файла с хешами; проверяется снимок окружения тестов.
+          python -m venv "$RUNNER_TEMP/tools"
+          "$RUNNER_TEMP"/tools/bin/python -m pip install --require-hashes -r requirements/tools.lock
+          python -m pip freeze --exclude-editable > "$RUNNER_TEMP/env.txt"
+          "$RUNNER_TEMP"/tools/bin/pip-audit --no-deps --disable-pip -r "$RUNNER_TEMP/env.txt"
+          "$RUNNER_TEMP"/tools/bin/pip-audit --require-hashes --disable-pip -r requirements/runtime.lock
+      - name: smoke load (API under 4 parallel clients, journal intact)
+        if: matrix.python == '3.12'
+        run: python tools/load/run_load.py --smoke
+      - run: mandat demo
+      - run: mandat eval --per-defect 6
+      - run: mandat journal-verify var/demo/journal.jsonl
+      - run: mandat monitor examples/events/poa_revoked.json --status-dir var/demo/status
+      - run: mandat journal-proof var/demo/journal.jsonl --seq 1
+      # Вся цепочка одной командой: допуск, повтор, завышенная сумма, захват, отказ до платежа, доказательство журнала.
+      - run: mandat showcase --out var/showcase
+
+  # Тесты хранилищ и CAS разбора (M-09b) на настоящем Redis, а не на fakeredis. Образ закреплён по digest.
+  redis:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      redis:
+        image: redis:7@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      MANDAT_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --require-hashes -r requirements/pip.lock
+      - run: python -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
+      - run: python -m pip install --no-deps --no-build-isolation -e .
+      - name: store tests against real Redis
+        run: python -m pytest tests/test_storage.py tests/test_m09b_review_store.py tests/test_m09c_review_api.py --junitxml=var/junit-redis.xml
+      - name: no skipped tests
+        run: python scripts/check_no_skips.py var/junit-redis.xml
+
+  # Полный pytest и на Windows (A4, #99): владелец работает на Windows, локальная проверка должна видеть то же,
+  # что CI. check_no_skips здесь не нужен: POSIX-тесты (O_NOFOLLOW, FIFO, права 0600) на Windows пропускаются законно.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --require-hashes -r requirements/pip.lock
+      - run: python -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
+      - run: python -m pip install --no-deps --no-build-isolation -e .
+      - name: full test suite on Windows
+        # Если тест идёт дольше 120 секунд, faulthandler печатает стеки потоков: зависание видно в логе.
+        run: python -m pytest -q -p no:cacheprovider -rs -o faulthandler_timeout=120
+
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker build -t mandat:ci .
+      - name: container refuses to start without access settings
+        run: |
+          set +e
+          docker run --rm mandat:ci
+          test $? -eq 2
+      - name: container refuses pilot mode without keys
+        run: |
+          set +e
+          docker run --rm -e MANDAT_ENV=pilot -e "MANDAT_API_TOKEN=$(python3 -c 'import secrets;print(secrets.token_hex(32))')" mandat:ci
+          test $? -eq 2
+      - name: docker compose up with the documented .env
+        run: |
+          cp .env.example .env
+          sed -i "s/^MANDAT_API_TOKEN=.*/MANDAT_API_TOKEN=$(python3 -c 'import secrets;print(secrets.token_hex(32))')/" .env
+          docker compose up -d --build --wait --wait-timeout 120
+          curl -fsS http://127.0.0.1:8000/health | tee /dev/stderr | grep -q '"auth_configured":true'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8000/v1/cases -H 'content-type: application/json' -d '{}')" = 401
+          docker compose down
+      - name: image vulnerability scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: mandat:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+  # M-03: пилотный compose-оверлей поднимается с постоянным томом, healthcheck по /readyz, данные переживают рестарт.
+  # Это smoke-проверка конфигурации, а не подтверждение готовности к пилоту.
+  compose-pilot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --require-hashes -r requirements/pip.lock
+      - run: python -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
+      - run: python -m pip install --no-deps --no-build-isolation -e .
+      - name: pilot compose up --wait and persistence across restart
+        run: |
+          cp .env.example .env
+          for name in MANDAT_API_TOKEN MANDAT_JOURNAL_KEY MANDAT_PII_KEY; do
+            sed -i "s/^${name}=.*/${name}=$(python3 -c 'import secrets;print(secrets.token_hex(32))')/" .env
+          done
+          MANDAT_API_TOKEN="$(grep '^MANDAT_API_TOKEN=' .env | cut -d= -f2)"
+          export MANDAT_API_TOKEN
+          docker compose -f docker-compose.yml -f deploy/compose.pilot.yml config > /dev/null
+          docker compose -f docker-compose.yml -f deploy/compose.pilot.yml up -d --build --wait --wait-timeout 180
+          python scripts/pilot_smoke.py
+      - name: compose logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml -f deploy/compose.pilot.yml logs --no-color mandat | sed -E 's/(KEY|TOKEN|SECRET)=[^ ]+/\1=***/g'
+      - name: compose down
+        if: always()
+        run: docker compose -f docker-compose.yml -f deploy/compose.pilot.yml down -v
+
+  # Пакет, SBOM и подписанное происхождение сборки (SLSA provenance) только для main.
+  package:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --require-hashes -r requirements/tools.lock
+      # Бэкенд сборки из build.lock: python -m build без изоляции не скачивает setuptools сам.
+      - run: python -m pip install --require-hashes -r requirements/build.lock
+      - run: python -m build --no-isolation
+      - name: CycloneDX SBOM of the runtime environment
+        run: |
+          python -m venv "$RUNNER_TEMP/runtime"
+          "$RUNNER_TEMP"/runtime/bin/pip install --require-hashes -r requirements/pip.lock
+          "$RUNNER_TEMP"/runtime/bin/pip install --require-hashes -r requirements/runtime.lock
+          "$RUNNER_TEMP"/runtime/bin/pip install --no-deps "$(ls dist/*.whl)"
+          cyclonedx-py environment "$RUNNER_TEMP"/runtime/bin/python --pyproject pyproject.toml --mc-type application --of JSON -o dist/mandat.cdx.json
+      - name: build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: "dist/*.whl, dist/*.tar.gz"
+      - name: SBOM attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: "dist/*.whl"
+          sbom-path: dist/mandat.cdx.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          retention-days: 30
