@@ -253,20 +253,31 @@ _SUB_CODE = {Subdelegation.NONE: "1", Subdelegation.ONCE: "2", Subdelegation.CHA
 
 
 @rule("R-FMT-003")
-def fmt_order_1001(ctx: RuleContext) -> list[Finding]:
-    since = date.fromisoformat(ctx.pack.get("R-FMT-003").param("effective_from"))
+def fmt_requisites(ctx: RuleContext) -> list[Finding]:
+    """Реквизиты по единым требованиям в редакции на дату выдачи МЧД.
+
+    КПП доверителя и СНИЛС лица, действующего без доверенности, требует п. 2 пп. 3 Единых требований с
+    01.03.2022 (Приказ № 857); наименование полномочия рядом с кодом — пп. 9 в ред. Приказа № 1001 с 01.02.2026.
+    СНИЛС берётся у подписанта МЧД: это руководитель, а по новой редакции и руководитель филиала.
+    """
+    spec = ctx.pack.get("R-FMT-003")
+    base_from = date.fromisoformat(spec.param("kpp_snils_from"))
+    names_from = date.fromisoformat(spec.param("power_name_from"))
     out = []
     for poa in _poas_in_scope(ctx):
-        if poa.issue_date is None or poa.issue_date < since:
+        if poa.issue_date is None or poa.issue_date < base_from:
             continue
         missing = []
         if not poa.principal.kpp:
             missing.append("КПП доверителя")
         if not poa.signer.snils:
             missing.append("СНИЛС руководителя доверителя")
-        unnamed = [a.code for a in poa.authorities if a.kind == "machine" and not (a.name or "").strip()]
-        if unnamed:
-            missing.append("наименование полномочия рядом с кодом (" + ", ".join(str(c) for c in unnamed) + ")")
+        edition = "Приказа № 857"
+        if poa.issue_date >= names_from:
+            edition = "Приказа № 857 в ред. № 1001"
+            unnamed = [a.code for a in poa.authorities if a.kind == "machine" and not (a.name or "").strip()]
+            if unnamed:
+                missing.append("наименование полномочия рядом с кодом (" + ", ".join(str(c) for c in unnamed) + ")")
         if missing:
             out.append(
                 ctx.emit(
@@ -281,7 +292,7 @@ def fmt_order_1001(ctx: RuleContext) -> list[Finding]:
                 ctx.emit(
                     "R-FMT-003",
                     E.SUPPORTS,
-                    f"МЧД {poa.number}: реквизиты по единым требованиям в ред. Приказа № 1001 на месте",
+                    f"МЧД {poa.number}: реквизиты по единым требованиям {edition} на месте",
                     [poa.ref("principal.kpp")],
                 )
             )
