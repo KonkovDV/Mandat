@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -78,7 +79,8 @@ def test_encrypted_pem_roundtrip_in_prod(tmp_path, monkeypatch):
     created = signing.load_pem_signer(path)
     data = path.read_bytes()
     assert b"ENCRYPTED PRIVATE KEY" in data
-    assert path.stat().st_mode & 0o077 == 0
+    if os.name == "posix":  # в Windows права POSIX не действуют
+        assert path.stat().st_mode & 0o077 == 0
     assert signing.load_pem_signer(path).key_id == created.key_id
     cred = _cred(created)
     assert attestation.verify(cred, created.public_key())

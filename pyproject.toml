@@ -20,6 +20,8 @@ classifiers = [
 dependencies = [
   "defusedxml>=0.7.1",
   "cryptography>=45",
+  # В Windows нет системной базы часовых поясов: ZoneInfo("Europe/Moscow") берёт её из пакета tzdata (A4).
+  "tzdata>=2025.2; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

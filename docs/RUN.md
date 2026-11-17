@@ -8,7 +8,7 @@ Linux, macOS или WSL, без установки в систему:
 ./run-demo.sh
 ```
 
-На Windows без WSL пакет пока не запускается: модуль списков статусов делает `import fcntl` ([границы](../LIMITS.md#безопасность-и-защита-данных)). Родной запуск `.\run-demo.ps1` вернёт задача A4 ([#99](https://github.com/KonkovDV/Mandat/issues/99)).
+На Windows — `.\run-demo.ps1` или WSL: реестр статусов блокируется `msvcrt.locking` вместо `flock`, базу часовых поясов даёт пакет `tzdata` (A4, [#99](https://github.com/KonkovDV/Mandat/issues/99)). Полный `pytest` на Windows идёт в CI, задача `windows`.
 
 Из установленного пакета:
 

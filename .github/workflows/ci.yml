@@ -116,6 +116,30 @@ jobs:
       - name: no skipped tests
         run: python scripts/check_no_skips.py var/junit-redis.xml
 
+  # Полный pytest и на Windows (A4, #99): владелец работает на Windows, локальная проверка должна видеть то же,
+  # что CI. check_no_skips здесь не нужен: POSIX-тесты (O_NOFOLLOW, FIFO, права 0600) на Windows пропускаются законно.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --require-hashes -r requirements/pip.lock
+      - run: python -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
+      - run: python -m pip install --no-deps --no-build-isolation -e .
+      - name: full test suite on Windows
+        # Если тест идёт дольше 120 секунд, faulthandler печатает стеки потоков: зависание видно в логе.
+        run: python -m pytest -q -p no:cacheprovider -rs -o faulthandler_timeout=120
+
   docker:
     runs-on: ubuntu-latest
     permissions:

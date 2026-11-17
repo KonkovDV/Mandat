@@ -196,7 +196,8 @@ def test_new_key_files_are_created_private_and_never_overwritten(tmp_path, monke
     finally:
         os.umask(old)
     for name in ("k.pem", "h.key"):
-        assert stat.S_IMODE((tmp_path / "keys" / name).stat().st_mode) == 0o600
+        if os.name == "posix":  # в Windows права POSIX не действуют
+            assert stat.S_IMODE((tmp_path / "keys" / name).stat().st_mode) == 0o600
     real_open = os.open
     seen: list[int] = []
 
