@@ -1,0 +1,10 @@
+# Тексты — с LF на любой системе: хеши evidence.json, фикстур и примеров считаются по байтам (A4).
+* text=auto eol=lf
+
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.ttf  binary
+*.xlsx binary
+*.pptx binary
+*.mp4  binary

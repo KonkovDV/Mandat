@@ -1,0 +1,714 @@
+{
+  "components": {
+    "schemas": {
+      "AdmissionBody": {
+        "additionalProperties": false,
+        "description": "Тело POST /v1/operations/authorize: удостоверение «Мандата» и запрос операции.",
+        "properties": {
+          "credential": {
+            "additionalProperties": true,
+            "title": "Credential",
+            "type": "object"
+          },
+          "operation_risk": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "уровень риска: payment, high, low…",
+            "title": "Operation Risk"
+          },
+          "request": {
+            "$ref": "#/components/schemas/AdmissionOperation"
+          }
+        },
+        "required": [
+          "credential",
+          "request"
+        ],
+        "title": "AdmissionBody",
+        "type": "object"
+      },
+      "AdmissionOperation": {
+        "additionalProperties": false,
+        "description": "Запрос одной операции, к которому привязано удостоверение (M-04). ИНН представителя в журнал не пишется.",
+        "properties": {
+          "amount_rub": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "целые рубли",
+            "title": "Amount Rub"
+          },
+          "audience": {
+            "description": "система банка, для которой выпущено удостоверение",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Audience",
+            "type": "string"
+          },
+          "nonce": {
+            "description": "одноразовый номер запроса",
+            "maxLength": 200,
+            "minLength": 16,
+            "title": "Nonce",
+            "type": "string"
+          },
+          "operation": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Operation",
+            "type": "string"
+          },
+          "operation_date": {
+            "description": "день операции по Москве",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "title": "Operation Date",
+            "type": "string"
+          },
+          "organization_inn": {
+            "pattern": "^\\d{10}(\\d{2})?$",
+            "title": "Organization Inn",
+            "type": "string"
+          },
+          "representative_inn": {
+            "pattern": "^\\d{10}(\\d{2})?$",
+            "title": "Representative Inn",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organization_inn",
+          "operation",
+          "operation_date",
+          "representative_inn",
+          "audience",
+          "nonce"
+        ],
+        "title": "AdmissionOperation",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ReviewAction": {
+        "description": "Действие разбора. ``expected_version`` — поле ``version`` из GET /v1/cases/{id}/review.",
+        "properties": {
+          "expected_version": {
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Reason",
+            "type": "string"
+          },
+          "specialization": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Specialization"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "ReviewAction",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Мандат API"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/readyz": {
+      "get": {
+        "description": "Готовность (не живость): журнал, хранилище, ключи. 200 только если все проверки прошли.\n\nВ теле только имена проверок и ok/fail, без путей и текстов исключений. Это проверка конфигурации и\nдоступности на момент запроса, а не гарантия сохранности данных.",
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readyz"
+      }
+    },
+    "/v1/cases": {
+      "post": {
+        "operationId": "create_case_v1_cases_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile"
+            }
+          },
+          {
+            "in": "query",
+            "name": "replace",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Replace",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Manifest",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Case V1 Cases Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Case"
+      }
+    },
+    "/v1/cases/{case_id}": {
+      "get": {
+        "operationId": "get_case_v1_cases__case_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Case V1 Cases  Case Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Case"
+      }
+    },
+    "/v1/cases/{case_id}/report.html": {
+      "get": {
+        "operationId": "get_case_html_v1_cases__case_id__report_html_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Case Html"
+      }
+    },
+    "/v1/cases/{case_id}/review": {
+      "get": {
+        "description": "Состояние разбора и версия, которую надо передать в ``expected_version``.",
+        "operationId": "get_review_v1_cases__case_id__review_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Review V1 Cases  Case Id  Review Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Review"
+      }
+    },
+    "/v1/cases/{case_id}/review/{action}": {
+      "post": {
+        "description": "Действие разбора: appeal, open, accept, reject, request_docs, close, require (docs/REVIEW.md).\n\n403 — роль, специализация или независимость решения; 409 — переход недопустим или версия устарела;\n422 — нет основания; 503 — журнал не настроен в pilot/prod или хранилище недоступно.",
+        "operationId": "review_action_v1_cases__case_id__review__action__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "title": "Action",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Review Action V1 Cases  Case Id  Review  Action  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Action"
+      }
+    },
+    "/v1/events": {
+      "post": {
+        "description": "Только оценка событий. Статусы удостоверений этот метод не меняет: их пишет CLI monitor.",
+        "operationId": "post_events_v1_events_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window_hours",
+            "required": false,
+            "schema": {
+              "default": 72,
+              "title": "Window Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Events V1 Events Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Events"
+      }
+    },
+    "/v1/operations/authorize": {
+      "post": {
+        "description": "Допуск одной операции по удостоверению: подлинность, статус, вердикт confirmed и привязка к запросу.\n\n200 — решение: ``allowed`` и причины отказа. Отказ тоже 200: это ответ, а не ошибка запроса.\n``already_admitted`` — этот же запрос уже допущен в ``admitted_at``, например ответ потерялся в сети;\nвторого допуска нет, операцию по первому допуску ДБО проводит один раз.\n503 — допуск не настроен или в защищённом режиме нет общего хранилища nonce и журнала.",
+        "operationId": "authorize_operation_v1_operations_authorize_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdmissionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Authorize Operation V1 Operations Authorize Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Authorize Operation"
+      }
+    },
+    "/v1/review/queue": {
+      "get": {
+        "description": "Кейсы, ждущие человека, по сроку (раньше — выше). operator видит только свои.",
+        "operationId": "review_queue_v1_review_queue_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Review Queue V1 Review Queue Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Queue"
+      }
+    }
+  }
+}

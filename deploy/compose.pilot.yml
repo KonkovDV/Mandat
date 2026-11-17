@@ -1,0 +1,37 @@
+# Оверлей поверх docker-compose.yml для проверки пилотной конфигурации:
+#   docker compose -f docker-compose.yml -f deploy/compose.pilot.yml up --build --wait
+#
+# Что делает: постоянный том вместо tmpfs для /app/var (журнал и SQLite-хранилище переживают рестарт),
+# MANDAT_ENV=pilot, healthcheck по /readyz (журнал + хранилище + ключи), а не по /health.
+#
+# Чего НЕ делает: не делает развёртывание «пилотом». Нет внешнего якоря журнала (задайте
+# MANDAT_JOURNAL_ANCHOR), нет резервного копирования тома, нет TLS и обратного прокси, нет разделения
+# ролей и ротации ключей. Журнал и хранилище пишутся двумя отдельными операциями (см. LIMITS.md, M-10).
+# Обязательные переменные (MANDAT_API_TOKEN или MANDAT_API_USERS, MANDAT_JOURNAL_KEY, MANDAT_PII_KEY)
+# берутся из .env; без них mandat serve не стартует.
+services:
+  mandat:
+    environment:
+      MANDAT_ENV: pilot
+      MANDAT_API_JOURNAL: /app/var/journal.jsonl
+      MANDAT_API_STORE: sqlite:////app/var/store.db
+      MANDAT_JOURNAL_ANCHOR: ${MANDAT_JOURNAL_ANCHOR:-}
+      MANDAT_JOURNAL_ANCHOR_POLICY: ${MANDAT_JOURNAL_ANCHOR_POLICY:-warn}
+    # Базовый файл монтирует /app/var как tmpfs; здесь он заменяется томом (!override требует Compose v2.24+).
+    tmpfs: !override
+      - /tmp
+    volumes:
+      - mandat-var:/app/var
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3)"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  mandat-var:
