@@ -81,6 +81,8 @@ jobs:
       - run: mandat journal-verify var/demo/journal.jsonl
       - run: mandat monitor examples/events/poa_revoked.json --status-dir var/demo/status
       - run: mandat journal-proof var/demo/journal.jsonl --seq 1
+      # Вся цепочка одной командой: допуск, повтор, завышенная сумма, захват, отказ до платежа, доказательство журнала.
+      - run: mandat showcase --out var/showcase
 
   # Тесты хранилищ и CAS разбора (M-09b) на настоящем Redis, а не на fakeredis. Образ закреплён по digest.
   redis:

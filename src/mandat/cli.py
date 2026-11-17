@@ -473,6 +473,24 @@ def cmd_approvals_sign(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_showcase(args: argparse.Namespace) -> int:
+    """Сценарий «захват компании останавливается до платежа»: проверка, удостоверение, допуск, захват, отказ."""
+    from mandat.services import showcase
+    from mandat.services.env_policy import protected
+
+    if protected():
+        print(
+            "ошибка: showcase — сценарий стенда на вымышленных данных; в защищённом режиме не запускается",
+            file=sys.stderr,
+        )
+        return 2
+    show = showcase.run(_repo_root(), Path(args.out))
+    print(showcase.render_text(show))
+    print(f"Шаги и решения: {Path(args.out) / 'showcase.json'}, журнал: {Path(args.out) / 'journal.jsonl'}")
+    refused_last = show.steps[-1].outcome == "ОТКАЗ"
+    return 0 if refused_last and show.journal_ok and show.proof_ok else 1
+
+
 def cmd_examples(args: argparse.Namespace) -> int:
     from mandat.examples import write_examples
 
@@ -666,6 +684,10 @@ def build_parser() -> argparse.ArgumentParser:
     asg.add_argument("--valid-until", required=True, help="последний день действия записи, не дальше года")
     asg.add_argument("--file", help="добавить запись в этот файл утверждений; без него — вывести")
     asg.set_defaults(func=cmd_approvals_sign)
+
+    sc = sub.add_parser("showcase", help="сценарий: захват компании останавливается до платежа")
+    sc.add_argument("--out", default="var/showcase", help="каталог для журнала, списков статусов и отчёта сценария")
+    sc.set_defaults(func=cmd_showcase)
 
     x = sub.add_parser("examples", help="пересобрать демо-кейсы")
     x.add_argument("--out", default="examples/cases")

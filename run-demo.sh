@@ -13,4 +13,6 @@ python -m pip install --quiet --require-hashes -r requirements/runtime.lock -r r
 python -m pip install --quiet --no-deps --no-build-isolation -e .
 mandat demo
 mandat monitor examples/events/takeover.json
+echo
+mandat showcase
 echo "Откройте var/demo/01_ok.html и var/demo/05_director_changed.html в браузере."

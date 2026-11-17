@@ -1,6 +1,6 @@
 PY ?= python
 
-.PHONY: install lint test claims rules-doc cedar check demo eval evidence serve doctor clean deck demo-cards analytics video submission
+.PHONY: install lint test claims rules-doc cedar check demo showcase eval evidence serve doctor clean deck demo-cards analytics video submission
 
 install:
 	$(PY) -m pip install --require-hashes -r requirements/pip.lock
@@ -30,6 +30,9 @@ check: lint test claims
 
 demo:
 	mandat demo
+
+showcase:
+	mandat showcase
 
 eval:
 	mandat eval --per-defect 6
