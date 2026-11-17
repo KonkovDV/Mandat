@@ -60,6 +60,8 @@ class RulePack:
     status: str
     sha256: str
     rules: dict[str, RuleSpec]
+    # Действующие подписанные утверждения (rules/approvals.py): хеш файла и id правил. Нет утверждений — None.
+    approvals: dict[str, Any] | None = None
 
     def get(self, rule_id: str) -> RuleSpec:
         try:
@@ -68,12 +70,15 @@ class RulePack:
             raise RulePackError(f"правила {rule_id} нет в пакете {self.pack_id}") from exc
 
     def summary(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "pack_id": self.pack_id,
             "version": self.version,
             "status": self.status,
             "sha256": self.sha256,
         }
+        if self.approvals is not None:
+            out["approvals"] = self.approvals
+        return out
 
 
 def validate_pack(payload: dict[str, Any]) -> RulePack:

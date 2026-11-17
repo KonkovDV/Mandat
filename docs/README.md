@@ -41,6 +41,7 @@
 | Какая норма за каким правилом | [правила](RULES.md), [трассировка норм](audit/LEGAL_TRACEABILITY.md) |
 | Почему смена руководителя не гасит доверенность | [ADR-002](adr/ADR-002-director-change.md) |
 | Почему модель не выносит вердикт | [ADR-001](adr/ADR-001-verdict-ownership.md) |
+| Как юрист банка утверждает правило | [ADR-009](adr/ADR-009-rule-approval-records.md), [вопросы юристу](LEGAL_REVIEW.md#как-утвердить-правило) |
 | Почему Cedar, а не OpenFGA | [передовые решения](SOTA.md) |
 | Насколько проект готов | [ступени готовности](audit/READINESS_GATES.md) |
 | Что требуют от банка за рубежом и где у банка болит | [практика банков](research/BANK-PRACTICE-2026-10-20.md) |

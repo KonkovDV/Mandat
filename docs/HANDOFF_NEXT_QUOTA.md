@@ -83,7 +83,7 @@
 
 | Задача | Issue | Размер | Суть |
 |---|---|---|---|
-| B1 | [#101](https://github.com/KonkovDV/Mandat/issues/101) | M | подписанное утверждение правил: механизм, правила остаются `draft` |
+| B1 | [#101](https://github.com/KonkovDV/Mandat/issues/101) | M | сделано 17.11: подписанное утверждение правил, правила остаются `draft` ([ADR-009](adr/ADR-009-rule-approval-records.md)) |
 | B2 | [#102](https://github.com/KonkovDV/Mandat/issues/102) | M | карточка нормы на каждое правило для юриста |
 | B3 | [#103](https://github.com/KonkovDV/Mandat/issues/103) | M | первоисточники приказов № 857 (в ред. № 1001) и № 856 |
 | B4 | [#104](https://github.com/KonkovDV/Mandat/issues/104) | M | форма передоверия R-SUB-010 в Cedar |
