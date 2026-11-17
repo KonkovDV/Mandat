@@ -1,6 +1,6 @@
 # Lock-файлы зависимостей
 
-Файлы с хешами (`--require-hashes`), общие для Python 3.11 и новее (`--universal`); CI ставит их на 3.11–3.14.
+Файлы с хешами (`--require-hashes`), общие для Python 3.11 и новее (`--universal`); CI ставит их на 3.11–3.15.
 
 - `runtime.lock` — ядро и extra `[api]`, ставится в Docker-образ.
 - `dev.lock` — всё для CI: `[dev,api,cedar,redis]` (в `dev` входит `tuf` для тестов `audit/trust.py`).
