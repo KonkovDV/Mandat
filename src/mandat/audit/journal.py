@@ -52,6 +52,8 @@ ACTIONS = (
     "event",
     "reverify",
     "status_change",
+    # Допуск операции по удостоверению через HTTP (A5): решение и число причин отказа, без ИНН представителя.
+    "authorize_operation",
 )
 
 
