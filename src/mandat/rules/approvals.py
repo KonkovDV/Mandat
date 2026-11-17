@@ -32,7 +32,7 @@ from mandat.audit.attestation import b58decode, b58encode
 from mandat.audit.jcs import JcsError, canonicalize
 from mandat.audit.signing import Keyring, Signer, checked_sign
 from mandat.data import load_json
-from mandat.rules.pack import RulePack, RuleSpec
+from mandat.rules.pack import RulePack, RuleSpec, default_catalog
 from mandat.strictjson import strict_loads
 
 APPROVALS_ENV = "MANDAT_APPROVALS"
@@ -67,23 +67,34 @@ class ApprovalError(ValueError):
     """Файл утверждений или связка ключей не читаются."""
 
 
-def rule_text(spec: RuleSpec) -> dict[str, Any]:
-    """То, что юрист утверждает: группа, название, норма и эффекты правила.
+# Правила, которые читают каталог операций (``ctx.catalog`` в rules/checks.py): какие коды полномочий покрывают
+# операцию, нужен ли для неё устав и высок ли риск. Для них каталог — часть утверждаемого текста: правка
+# operations.json без новой подписи расширяла бы покрытие операции. Список сверяет с кодом правил
+# tests/test_b1_catalog_binding.py.
+CATALOG_RULES = frozenset({"R-EIO-002", "R-COV-001", "R-COV-002", "R-CHR-002"})
+
+
+def rule_text(spec: RuleSpec, catalog_sha256: str | None = None) -> dict[str, Any]:
+    """То, что юрист утверждает: группа, название, норма и эффекты правила, а для правил из ``CATALOG_RULES`` —
+    ещё и хеш каталога операций (по умолчанию каталога пакета).
 
     Параметры (``params``) — настройки банка, подразделение и следующий шаг — операционные поля: их правка
     утверждение не снимает. Логику правила держит код и тесты из поля ``tests``, подпись её не покрывает.
     """
-    return {
+    text: dict[str, Any] = {
         "id": spec.id,
         "check": spec.check,
         "title": spec.title,
         "norm_ref": spec.norm_ref,
         "effects": list(spec.effects),
     }
+    if spec.id in CATALOG_RULES:
+        text["operations_catalog"] = catalog_sha256 or default_catalog().sha256
+    return text
 
 
-def rule_text_sha256(spec: RuleSpec) -> str:
-    return hashlib.sha256(canonicalize(rule_text(spec)).encode("utf-8")).hexdigest()
+def rule_text_sha256(spec: RuleSpec, catalog_sha256: str | None = None) -> str:
+    return hashlib.sha256(canonicalize(rule_text(spec, catalog_sha256)).encode("utf-8")).hexdigest()
 
 
 def _signed_bytes(record: dict[str, Any]) -> bytes:
@@ -100,6 +111,7 @@ def sign_record(
     norm_checked_on: date,
     valid_until: date,
     signed_at: datetime | None = None,
+    catalog_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Запись утверждения правила ``spec``, подписанная ``signer``. Проверка — :func:`check_record`."""
     moment = signed_at or datetime.now(UTC)
@@ -107,7 +119,7 @@ def sign_record(
         "type": RECORD_TYPE,
         "pack_id": pack_id,
         "rule_id": spec.id,
-        "rule_sha256": rule_text_sha256(spec),
+        "rule_sha256": rule_text_sha256(spec, catalog_sha256),
         "decision": "approve",
         "norm_edition": norm_edition,
         "norm_checked_on": norm_checked_on.isoformat(),
@@ -137,8 +149,10 @@ def _day(record: dict[str, Any], name: str) -> date | None:
         return None
 
 
-def check_record(record: Any, pack: RulePack, keyring: Keyring | None, now: datetime) -> str | None:
-    """Почему запись не утверждает правило. ``None`` — запись действует."""
+def check_record(
+    record: Any, pack: RulePack, keyring: Keyring | None, now: datetime, catalog_sha256: str | None = None
+) -> str | None:
+    """Почему запись не утверждает правило. ``None`` — запись действует. ``catalog_sha256`` — каталог проверки."""
     if not isinstance(record, dict):
         return "запись не объект JSON"
     extra = set(record) - RECORD_FIELDS
@@ -158,7 +172,9 @@ def check_record(record: Any, pack: RulePack, keyring: Keyring | None, now: date
     digest = record["rule_sha256"]
     if not isinstance(digest, str) or not _HEX64.fullmatch(digest):
         return "rule_sha256 — 64 шестнадцатеричных знака"
-    if digest != rule_text_sha256(spec):
+    if digest != rule_text_sha256(spec, catalog_sha256):
+        if spec.id in CATALOG_RULES:
+            return "текст правила или каталог операций изменены после подписи: нужна новая запись"
         return "текст правила изменён после подписи: нужна новая запись"
     for name in ("norm_edition", "approver_role", "key_id", "signature"):
         if _text(record, name) is None:
@@ -265,7 +281,9 @@ def load_approvals(path: Path | None = None, keys: Path | None = None) -> Approv
     return Approvals(tuple(records), keyring, digest, str(raw_path) if raw_path else "пакет: approvals.json")
 
 
-def effective_pack(pack: RulePack, now: datetime, approvals: Approvals | None = None) -> tuple[RulePack, list[str]]:
+def effective_pack(
+    pack: RulePack, now: datetime, approvals: Approvals | None = None, catalog_sha256: str | None = None
+) -> tuple[RulePack, list[str]]:
     """Пакет со статусами по подписанным записям и предупреждения о записях, которые не приняты.
 
     ``approved`` получает только правило с действующей записью. Остальные ``approved`` становятся ``draft``,
@@ -279,7 +297,7 @@ def effective_pack(pack: RulePack, now: datetime, approvals: Approvals | None = 
         loaded, notes = None, [f"Утверждения правил не прочитаны ({exc}): все правила считаются черновиками"]
     approved: set[str] = set()
     for record in loaded.records if loaded else ():
-        reason = check_record(record, pack, loaded.keyring if loaded else None, now)
+        reason = check_record(record, pack, loaded.keyring if loaded else None, now, catalog_sha256)
         rule = record.get("rule_id") if isinstance(record, dict) else None
         label = rule if isinstance(rule, str) and rule in pack.rules else "запись"
         if reason is None:

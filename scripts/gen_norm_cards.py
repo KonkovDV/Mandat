@@ -24,9 +24,9 @@ from mandat.eval.run import HOLDOUT_SEED
 from mandat.eval.synth import DEFECTS, build
 from mandat.examples import DEMO, OVERLAYS
 from mandat.intake.case_loader import load_case_dir, load_case_inline
-from mandat.rules.approvals import rule_text_sha256
+from mandat.rules.approvals import CATALOG_RULES, rule_text_sha256
 from mandat.rules.checks import RULES
-from mandat.rules.pack import RulePack, RuleSpec, default_pack
+from mandat.rules.pack import RulePack, RuleSpec, default_catalog, default_pack
 from mandat.services.verify import verify_case
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -272,6 +272,16 @@ def render_card(
         "",
         f"`{rule_text_sha256(spec)}`",
         "",
+        *(
+            [
+                "Для этого правила хеш включает и каталог операций `src/mandat/data/operations.json` "
+                f"(sha256 `{default_catalog().sha256[:16]}…`): какие коды полномочий покрывают операцию, нужен ли "
+                "устав и высок ли риск. Правка каталога тоже снимает утверждение.",
+                "",
+            ]
+            if spec.id in CATALOG_RULES
+            else []
+        ),
         "- [ ] Утверждаю: подписать запись утверждения с этим хешем "
         "([как утвердить](../../LEGAL_REVIEW.md#как-утвердить-правило)).",
         "- [ ] Утверждаю с правкой: правило меняется, получает новый хеш и новую карточку. Правка: ____________",
