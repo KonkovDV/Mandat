@@ -167,8 +167,15 @@ def decide_detailed(
     fingerprint = request_fingerprint(request, config.pseudonym_key)
     stamp = now.astimezone(UTC).isoformat(timespec="seconds")
     held: list[str] = []
+    saved = False
 
     def consume_nonce(nonce: str) -> bool:
+        nonlocal saved
+        # High-watermark списков пишется до захвата nonce: после захвата хранилище больше не трогается.
+        # Иначе сбой хранилища между захватом и записью давал ответ 503 без записи в журнале, а повтор того же
+        # запроса получал «уже допущен» с временем допуска, которого не было (P4-01).
+        seen.save()
+        saved = True
         existing = store.claim(nonce_key(audience, nonce), f"{fingerprint} {stamp}", NONCE_TTL_SECONDS)
         if existing is None:
             return True
@@ -190,7 +197,8 @@ def decide_detailed(
         )
     except (KeyError, TypeError, ValueError, OSError) as exc:
         return AdmissionDecision([f"удостоверение не проверить: {type(exc).__name__}"])
-    seen.save()
+    if not saved:
+        seen.save()
     if held and attestation.NONCE_USED in problems:
         prior, _, prior_at = held[0].partition(" ")
         if _is_fingerprint(prior) and hmac.compare_digest(prior, fingerprint):
