@@ -267,6 +267,17 @@ def verify_signature(credential: dict[str, Any], public_key: Ed25519PublicKey) -
     return verify(credential, public_key)
 
 
+def _object(credential: dict[str, Any], name: str) -> dict[str, Any]:
+    """Поле удостоверения, которое по формату — объект. Строка или список вместо объекта — пустой объект.
+
+    Удостоверение приходит от системы банка как недоверенный ввод. ``proof`` или ``credentialSubject``
+    другого типа раньше роняли проверку на ``.get``, и API отвечало 503 «хранилище недоступно» вместо
+    отказа (P4-02). Пустой объект даёт обычные причины отказа: нет подписи, нет вердикта.
+    """
+    value = credential.get(name)
+    return value if isinstance(value, dict) else {}
+
+
 def _when(value: Any) -> datetime | None:
     try:
         moment = datetime.fromisoformat(str(value))
@@ -327,7 +338,7 @@ def validate_attestation(
         except ValueError as exc:  # попытка выключить статус в pilot/prod: проверка остаётся, удостоверение — нет
             problems.append(str(exc))
             require_status = True
-    proof = credential.get("proof") or {}
+    proof = _object(credential, "proof")
     method = str(proof.get("verificationMethod") or "")
     keyring = trusted_keys if isinstance(trusted_keys, Keyring) else Keyring.of(trusted_keys)
     # Выведенный из выпуска ключ проверяет только подписи, сделанные до вывода (Keyring.trusted_for).
@@ -350,7 +361,7 @@ def validate_attestation(
         problems.append("срок действия не указан или без часового пояса")
     elif not start <= now < end:
         problems.append(f"срок действия {start:%d.%m.%Y %H:%M}–{end:%d.%m.%Y %H:%M} не включает момент проверки")
-    if (credential.get("credentialSubject") or {}).get("profile") == "demo" and not allow_demo:
+    if _object(credential, "credentialSubject").get("profile") == "demo" and not allow_demo:
         problems.append("удостоверение выпущено по профилю demo: для решения в банке не принимается")
     needs_status = require_status or status_dir is not None
     if require_status and status_dir is None:
@@ -568,7 +579,7 @@ def authorize_operation(
             require_seen=require_seen and seen is not None,
         )
     )
-    subject = credential.get("credentialSubject") or {}
+    subject = _object(credential, "credentialSubject")
     verdict = subject.get("verdict")
     if verdict != "confirmed":
         problems.append(f"вердикт {verdict!r} не разрешает операцию: нужен confirmed")
@@ -589,7 +600,7 @@ MAX_KEY_MULTIBASE_CHARS = 60
 
 
 def verify(credential: dict[str, Any], public_key: Ed25519PublicKey) -> bool:
-    proof = dict(credential.get("proof") or {})
+    proof = dict(_object(credential, "proof"))
     value = proof.pop("proofValue", "")
     if not isinstance(value, str) or not value.startswith("z") or len(value) > MAX_PROOF_VALUE_CHARS:
         return False
