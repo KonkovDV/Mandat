@@ -100,6 +100,27 @@
         "title": "AdmissionOperation",
         "type": "object"
       },
+      "EraseBody": {
+        "additionalProperties": false,
+        "description": "Тело POST /v1/cases/{id}/erase: основание удаления из закрытого списка.",
+        "properties": {
+          "reason": {
+            "enum": [
+              "unlawful_processing",
+              "purpose_achieved",
+              "consent_withdrawn",
+              "subject_request"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "EraseBody",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -375,6 +396,68 @@
           }
         },
         "summary": "Get Case"
+      }
+    },
+    "/v1/cases/{case_id}/erase": {
+      "post": {
+        "description": "Удалить отчёт кейса с ПДн по основанию из 152-ФЗ (P4-13). Только администратор.\n\nПорядок: запись в журнал, закрытие разбора без истории, удаление отчёта. Сбой журнала — ничего не удалено.\nВ журнале остаются кейс, хеш отчёта, основание, категории ПДн и система, без самих данных: это выгрузка из\nжурнала, которой вместе с актом подтверждают уничтожение (приказ Роскомнадзора № 179, п. 2 и 5). Резервные\nкопии и снимки хранилища банк уничтожает своей процедурой.",
+        "operationId": "erase_case_v1_cases__case_id__erase_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EraseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Erase Case V1 Cases  Case Id  Erase Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Erase Case"
       }
     },
     "/v1/cases/{case_id}/report.html": {
