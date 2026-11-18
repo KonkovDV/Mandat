@@ -34,8 +34,9 @@ def resolve_profile(requested: str | None) -> str:
 def key_problem() -> str | None:
     """Почему сервис нельзя запускать в текущем режиме без ключей. ``None``, если ключи на месте.
 
-    В защищённых режимах (pilot, prod и любой неизвестный) ключ журнала и ключ псевдонимизации ПДн
-    проверяются при старте, а не при первой записи: иначе сервис поднимается и падает на первом кейсе.
+    В защищённых режимах (pilot, prod и любой неизвестный) ключ журнала, ключ псевдонимизации ПДн и ключ
+    хранилища (P5-01) проверяются при старте, а не при первой записи: иначе сервис поднимается и падает на
+    первом кейсе.
     """
     if not protected():
         return None
@@ -53,6 +54,12 @@ def key_problem() -> str | None:
         pii_key()
     except PiiKeyMissing as exc:
         problems.append(f"MANDAT_ENV={mode()}: {exc}")
+    from mandat.api.sealing import StoreKeyMissing, load_sealer
+
+    try:
+        load_sealer()
+    except StoreKeyMissing as exc:
+        problems.append(str(exc))
     return "; ".join(problems) or None
 
 
