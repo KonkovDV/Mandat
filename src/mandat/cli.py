@@ -260,6 +260,46 @@ def cmd_formats(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_law_calendar(args: argparse.Namespace) -> int:
+    """Календарь норм пакета: какие акты вступают в силу или утрачивают её в окне и какие правила на них стоят.
+
+    Код возврата 1 — на дату ``--on`` уже есть акт, утративший силу, а правила на нём не пересверены.
+    """
+    from datetime import date, timedelta
+
+    from mandat.rules.pack import default_pack
+
+    try:
+        on = date.fromisoformat(args.on) if args.on else date.today()
+    except ValueError:
+        print(f"--on: ожидалась дата ГГГГ-ММ-ДД, получено {args.on!r}", file=sys.stderr)
+        return 2
+    until = on + timedelta(days=max(0, args.days))
+    rows = []
+    for norm in default_pack().norms:
+        events = [
+            {"event": label, "date": day.isoformat()}
+            for label, day in (("вступает в силу", norm.in_force_from), ("утрачивает силу", norm.in_force_until))
+            if day is not None and on <= day <= until
+        ]
+        rows.append(
+            {
+                "id": norm.id,
+                "title": norm.title,
+                "state": norm.state_on(on),
+                "in_force_from": norm.in_force_from.isoformat() if norm.in_force_from else None,
+                "in_force_until": norm.in_force_until.isoformat() if norm.in_force_until else None,
+                "events": events,
+                "rules": list(norm.rules),
+                "url": norm.url,
+            }
+        )
+    stale = [r["id"] for r in rows if r["state"] == "утратил силу"]
+    report = {"on": on.isoformat(), "days": args.days, "stale": stale, "norms": rows}
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 1 if stale else 0
+
+
 def _attest_verify_keyring(args: argparse.Namespace, cred: dict[str, Any]) -> int:
     """Проверка по связке ключей издателя: ключ выбирается по kid из подписанного доказательства."""
 
@@ -648,6 +688,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     f = sub.add_parser("formats", help="поддерживаемые форматы МЧД")
     f.set_defaults(func=cmd_formats)
+
+    lc = sub.add_parser("law-calendar", help="нормы пакета правил: что вступает в силу и что утрачивает её")
+    lc.add_argument("--on", help="дата отсчёта ГГГГ-ММ-ДД (по умолчанию сегодня)")
+    lc.add_argument("--days", type=int, default=365, help="окно вперёд, дней (365)")
+    lc.set_defaults(func=cmd_law_calendar)
 
     a = sub.add_parser("attest-verify", help="проверить подпись, срок, издателя и статус удостоверения")
     a.add_argument("path")
