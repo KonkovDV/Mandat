@@ -168,6 +168,16 @@ mandat law-calendar --on 2027-08-01 --days 240
 
 Показывает акты из каталога пакета правил: состояние на дату, что вступает в силу и что утрачивает её в окне, на какие правила это влияет. Код 1 — на дату есть акт, утративший силу, а правила на нём не пересверены: команду удобно ставить в планировщик ([ADR-010](adr/ADR-010-norm-validity.md), [календарь изменений](REGULATORY.md#календарь-изменений)).
 
+## Сайт проекта
+
+```bash
+python scripts/build_site.py --out _site
+```
+
+Страница — шаблон `site/index.html`: числа подставляются из `evidence.json`, календарь норм — из пакета правил, 14 отчётов демо собирает `mandat demo`. На сайт уходят только HTML-отчёты: ключи стенда, журнал и удостоверения демо остаются во временном каталоге. Шрифт и стили лежат рядом, внешних запросов страница не делает.
+
+Задача CI `pages` собирает сайт на каждом PR и push в `main`. Публикация включается владельцем один раз: Settings → Pages → Source: GitHub Actions, затем Settings → Secrets and variables → Actions → Variables → `PAGES_ENABLED` = `true`. До этого публикация пропускается, а проверки остаются зелёными.
+
 ## Перед сдачей
 
 `make check` на Linux, в WSL или Docker. По шагам — как в CI: `python -m ruff check src tests scripts tools`, `python -m ruff format --check src tests scripts tools`, `python -m mypy`, `python -m pytest --cov=mandat`, `python scripts/lint_claims.py`, `python scripts/check_links.py`, `python scripts/build_evidence.py --verify-source`. Числа для слайдов пересобирает `make evidence` на Linux.
