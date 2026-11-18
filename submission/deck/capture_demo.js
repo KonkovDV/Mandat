@@ -4,7 +4,7 @@
 //   node capture_demo.js          # нужен Playwright с Chromium (npx playwright install chromium)
 //
 // Кадр — верх карточки, крупно: вердикт, сильнейшее возражение, операция, организация и сигналы.
-// Ширина окна 820 пикселей: текст карточки на слайде читается с экрана (около 9 пунктов).
+// Ширина окна 920 пикселей: кадр сохраняет пропорции места на слайде, текст карточки — около 7–8 пунктов.
 const path = require("path");
 const sharp = require("sharp");
 
@@ -21,7 +21,7 @@ const OUT = path.join(__dirname, "assets", "demo-card-14.jpg");
 
 (async () => {
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 820, height: 900 }, deviceScaleFactor: 2 });
+  const page = await browser.newPage({ viewport: { width: 920, height: 900 }, deviceScaleFactor: 2 });
   await page.goto(`file://${CARD}`);
   const box = await page.evaluate(() => {
     const cards = [...document.querySelectorAll("div.card")];

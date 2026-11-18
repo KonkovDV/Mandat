@@ -40,3 +40,15 @@ def test_card_shows_draft_status_and_next_steps():
     html = _card("revoked")
     assert "черновик (draft)" in html
     assert "Что сделать дальше" in html
+
+
+def test_card_fits_a_phone_and_follows_the_device_theme():
+    """Карточка без скриптов, картинок и веб-шрифтов (CSP API); на узком экране таблицы складываются в блоки."""
+    html = _card("revoked")
+    assert "<script" not in html and "<img" not in html and "@font-face" not in html
+    assert 'name="viewport" content="width=device-width' in html
+    assert "prefers-color-scheme:dark" in html and "@media print" in html
+    assert "@media (max-width:700px)" in html and "table.stack td::before{content:attr(data-label)" in html
+    for label in ("Правило", "Эффект", "Вывод", "Источник"):
+        assert f'data-label="{label}"' in html
+    assert "\xa0₽" in html  # сумма не переносится внутри числа
