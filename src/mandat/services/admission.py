@@ -195,7 +195,8 @@ def decide_detailed(
             pseudonym_key=config.pseudonym_key,
             consume_nonce=consume or consume_nonce,
         )
-    except (KeyError, TypeError, ValueError, OSError) as exc:
+    except (AttributeError, KeyError, TypeError, ValueError, OSError) as exc:
+        # Нечитаемое удостоверение — отказ с причиной, а не 503 «хранилище недоступно» (P4-02).
         return AdmissionDecision([f"удостоверение не проверить: {type(exc).__name__}"])
     if not saved:
         seen.save()
