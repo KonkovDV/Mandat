@@ -88,10 +88,10 @@ def _demo_rows(evidence: dict) -> str:
 def _law_rows() -> str:
     rows = []
     for norm in default_pack().norms:
-        rules = ", ".join(norm.rules)
+        rules = ", ".join(f'<span class="rule">{html.escape(rule)}</span>' for rule in norm.rules)
         rows.append(
             f'<tr><td><a href="{html.escape(norm.url)}">{html.escape(norm.title)}</a></td>'
-            f"<td>{_day(norm.in_force_from)}</td><td>{_day(norm.in_force_until)}</td><td>{html.escape(rules)}</td></tr>"
+            f"<td>{_day(norm.in_force_from)}</td><td>{_day(norm.in_force_until)}</td><td>{rules}</td></tr>"
         )
     return "\n".join(rows)
 
