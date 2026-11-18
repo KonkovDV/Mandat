@@ -6,8 +6,8 @@ title = "Mandat"
 useDefault = true
 
 [[allowlists]]
-description = "Аннотации типов вида «key: Ed25519PrivateKey | Signer»: имя класса, а не значение ключа"
-regexTarget = "line"
+description = "Аннотации типов вида «key: Ed25519PrivateKey | Signer»: имя класса, а не значение ключа. Исключение действует на само совпадение, а не на строку: секрет, записанный в той же строке, проверка ловит"
+regexTarget = "match"
 regexes = ['''key: Ed25519(Private|Public)Key''']
 
 [[allowlists]]
