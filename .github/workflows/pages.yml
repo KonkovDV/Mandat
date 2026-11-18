@@ -1,0 +1,53 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+# Загрузка и публикация — в двух задачах: в одной задаче upload-pages-artifact и deploy-pages v5 гоняются
+# за артефакт («No artifacts named github-pages»).
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --require-hashes -r requirements/pip.lock
+      - run: python -m pip install --require-hashes -r requirements/runtime.lock -r requirements/build.lock
+      - run: python -m pip install --no-deps --no-build-isolation -e .
+      - name: build the site (numbers from evidence.json, demo reports of this commit)
+        run: python scripts/build_site.py --out _site
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    # Публикация — когда владелец включит Pages (Settings → Pages → Source: GitHub Actions) и задаст переменную
+    # репозитория PAGES_ENABLED=true. До этого сборка проверяет сайт на каждом PR, а публикация пропускается.
+    if: github.ref == 'refs/heads/main' && vars.PAGES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
