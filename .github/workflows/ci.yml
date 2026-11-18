@@ -194,7 +194,7 @@ jobs:
       - name: pilot compose up --wait and persistence across restart
         run: |
           cp .env.example .env
-          for name in MANDAT_API_TOKEN MANDAT_JOURNAL_KEY MANDAT_PII_KEY; do
+          for name in MANDAT_API_TOKEN MANDAT_JOURNAL_KEY MANDAT_PII_KEY MANDAT_STORE_KEY; do
             sed -i "s/^${name}=.*/${name}=$(python3 -c 'import secrets;print(secrets.token_hex(32))')/" .env
           done
           MANDAT_API_TOKEN="$(grep '^MANDAT_API_TOKEN=' .env | cut -d= -f2)"

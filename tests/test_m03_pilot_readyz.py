@@ -12,9 +12,10 @@ from mandat.api.storage import MemoryStore, SQLiteStore
 KEY = "k" * 40
 
 
-def _pilot(monkeypatch, *, journal_key=KEY, pii_key=KEY):
+def _pilot(monkeypatch, *, journal_key=KEY, pii_key=KEY, store_key="s" * 40):
     monkeypatch.setenv("MANDAT_ENV", "pilot")
-    for name, value in (("MANDAT_JOURNAL_KEY", journal_key), ("MANDAT_PII_KEY", pii_key)):
+    keys = (("MANDAT_JOURNAL_KEY", journal_key), ("MANDAT_PII_KEY", pii_key), ("MANDAT_STORE_KEY", store_key))
+    for name, value in keys:
         if value is None:
             monkeypatch.delenv(name, raising=False)
         else:
