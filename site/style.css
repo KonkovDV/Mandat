@@ -55,6 +55,7 @@ h3 { margin: 28px 0 8px; font-size: 20px; }
 .steps b { display: block; font-size: 18px; }
 .steps span { color: var(--muted); font-size: 15px; }
 .verdicts { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 10px; }
+.rule { white-space: nowrap; }
 .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 14px; font-weight: 600; white-space: nowrap; }
 .badge.ok { background: var(--ok-bg); color: var(--ok); }
 .badge.no { background: var(--no-bg); color: var(--no); }

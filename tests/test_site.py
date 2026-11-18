@@ -77,3 +77,5 @@ def test_law_calendar_on_the_page_is_the_rule_pack_catalogue(site):
         assert norm.url in page
         if norm.in_force_until is not None:
             assert f"{norm.in_force_until:%d.%m.%Y}" in page
+        for rule in norm.rules:
+            assert f'<span class="rule">{rule}</span>' in page, rule  # код правила не рвётся на дефисе
