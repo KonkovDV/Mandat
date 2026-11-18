@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -49,10 +50,22 @@ def test_unhandled_500_is_generic(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING, "mandat.api"):
         r = client.post("/v1/events", json={"events": []}, headers=AUTH)
     assert r.status_code == 500
-    assert r.json()["detail"] == "внутренняя ошибка сервера"
-    assert "4111" not in r.text and "4111111111111111" not in caplog.text
+    body = r.json()
+    assert set(body) == {"detail", "request_id"}
+    assert body["detail"] == "внутренняя ошибка сервера"
+    # request_id — 16 случайных шестнадцатеричных знаков, а не текст исключения. Кусок номера ищется только в тексте
+    # для клиента: в случайном номере запроса «4111» иногда встречается само (P4-09), а полный номер — нигде.
+    assert re.fullmatch(r"[0-9a-f]{16}", body["request_id"])
+    assert "4111" not in body["detail"]
+    assert "4111111111111111" not in r.text and "4111111111111111" not in caplog.text
     assert "RuntimeError" in caplog.text and "app.py:" in caplog.text
     assert r.headers["x-content-type-options"] == "nosniff"
+
+
+def test_unhandled_500_with_a_request_id_that_contains_4111(monkeypatch, caplog):
+    """P4-09: номер запроса из упавшего прогона CI — тест не путает случайные знаки с номером карты."""
+    monkeypatch.setattr(api.secrets, "token_hex", lambda n=8: "82614111dae50612")
+    test_unhandled_500_is_generic(monkeypatch, caplog)
 
 
 def test_journal_503_hides_cause(tmp_path, monkeypatch, caplog):
