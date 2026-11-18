@@ -135,6 +135,7 @@ Docker поднимает API только на localhost: `docker compose up --
 | `MANDAT_JOURNAL_KEY` | ключ HMAC журнала | на стенде по желанию, в `pilot` и `prod` обязателен |
 | `MANDAT_JOURNAL_SEGMENT_RECORDS` | записей в сегменте журнала; при заданном якоре закрытый сегмент уходит наружу | 1000 |
 | `MANDAT_PII_KEY` | ключ псевдонимизации ПДн | пусто: на стенде ключ разработки, в `pilot` и `prod` без ключа псевдонимизация отказывает |
+| `MANDAT_STORE_KEY`, `MANDAT_STORE_KEY_PREVIOUS` | шифрование отчётов и разборов в хранилище (AES-256-GCM) и прежние ключи для чтения при смене ([ключи](KEYS.md)) | пусто: на стенде открытым текстом; в `pilot` и `prod` без ключа сервис не стартует |
 | `MANDAT_SIGNER`, `MANDAT_SIGNING_KEY_FILE`, `MANDAT_SIGNING_KEY_PASSPHRASE` и настройки PKCS#11, Vault, KMS | ключ подписи удостоверений | `file`; подробно — [подписант удостоверений](KEYS.md#подписант-удостоверений) |
 | `MANDAT_ATTESTATION_KEYRING`, `MANDAT_STATUS_DIR`, `MANDAT_REPRESENTATIVE_KEY_FILE` | допуск операции: связка ключей издателя, каталог списков статусов и ключ HMAC представителя ([допуск](#допуск-операции-для-дбо)); заданный не полностью — ошибка старта | не задано: маршрут допуска отвечает 503 |
 | `MANDAT_APPROVALS`, `MANDAT_APPROVAL_KEYS` | файл подписанных утверждений правил и связка открытых ключей юристов; проверка — `mandat approvals-verify` ([ADR-009](adr/ADR-009-rule-approval-records.md)) | пустой файл пакета, связки нет: все правила — черновики |

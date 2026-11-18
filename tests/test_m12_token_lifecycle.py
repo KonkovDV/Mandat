@@ -166,6 +166,7 @@ def test_users_file_in_protected_mode_without_expiry_fails_closed_on_reload(tmp_
     future = (datetime.now(UTC) + timedelta(days=1)).isoformat()
     path.write_text(json.dumps([_entry(expires_at=future)]), encoding="utf-8")
     monkeypatch.setenv("MANDAT_ENV", "pilot")
+    monkeypatch.setenv("MANDAT_STORE_KEY", "s" * 40)  # хранилище из окружения в pilot шифруется (P5-01)
     client = TestClient(create_app(users=str(path)))
     headers = {"Authorization": f"Bearer {TOKEN}"}
     assert client.get("/v1/cases/x", headers=headers).status_code == 404
