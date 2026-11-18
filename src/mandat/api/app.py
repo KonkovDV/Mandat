@@ -39,6 +39,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from mandat import ENGINE, __version__
 from mandat.api import review as review_api
 from mandat.api.principals import Directory, Principal, load_users
+from mandat.api.sealing import SealError, sealed
 from mandat.api.storage import Idem, Pending, ReviewVersionConflict, Store, open_store
 from mandat.audit import journal
 from mandat.audit.attestation import NONCE_MIN_CHARS, OperationRequest
@@ -331,7 +332,8 @@ def create_app(
         redoc_url=None,
     )
     check_sla()  # неверный MANDAT_REVIEW_SLA_HOURS не даёт стартовать
-    shared = store if store is not None else open_store()
+    # Хранилище из окружения шифруется ключом MANDAT_STORE_KEY (P5-01); переданное явно — как есть.
+    shared = store if store is not None else sealed(open_store())
     env_journal = os.environ.get("MANDAT_API_JOURNAL", "").strip()
     audit_log = journal_path if journal_path is not None else (Path(env_journal) if env_journal else None)
     # Допуск операции включается связкой ключей издателя; настроенный не полностью — ошибка старта, а не 500.
@@ -348,6 +350,11 @@ def create_app(
     @app.exception_handler(ApiProblem)
     async def api_problem(request: Request, exc: ApiProblem) -> JSONResponse:
         return problem(request, exc.status, exc.detail, exc.cause)
+
+    @app.exception_handler(SealError)
+    async def seal_error(request: Request, exc: SealError) -> JSONResponse:
+        # Запись хранилища подменена, переставлена или не зашифрована: данных из неё клиент не получает (P5-01).
+        return problem(request, 500, "запись хранилища не прошла проверку целостности", f"SealError: {exc}")
 
     @app.exception_handler(Exception)
     async def server_error(request: Request, exc: Exception) -> JSONResponse:

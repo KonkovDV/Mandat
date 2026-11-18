@@ -12,10 +12,12 @@ services:
       MANDAT_API_STORE: ${MANDAT_API_STORE:-}
       MANDAT_WEBHOOK_SECRET: ${MANDAT_WEBHOOK_SECRET:-}
       # Режим задаётся явно: demo/dev/test для стенда, pilot/prod для защищённого контура.
-      # В pilot и prod mandat serve не стартует без MANDAT_JOURNAL_KEY и MANDAT_PII_KEY.
+      # В pilot и prod mandat serve не стартует без MANDAT_JOURNAL_KEY, MANDAT_PII_KEY и MANDAT_STORE_KEY.
       MANDAT_ENV: ${MANDAT_ENV:?задайте MANDAT_ENV в .env (demo, dev, test, pilot или prod)}
       MANDAT_JOURNAL_KEY: ${MANDAT_JOURNAL_KEY:-}
       MANDAT_PII_KEY: ${MANDAT_PII_KEY:-}
+      MANDAT_STORE_KEY: ${MANDAT_STORE_KEY:-}
+      MANDAT_STORE_KEY_PREVIOUS: ${MANDAT_STORE_KEY_PREVIOUS:-}
       MANDAT_APPROVALS: ${MANDAT_APPROVALS:-}
       MANDAT_APPROVAL_KEYS: ${MANDAT_APPROVAL_KEYS:-}
       MANDAT_ATTESTATION_KEYRING: ${MANDAT_ATTESTATION_KEYRING:-}

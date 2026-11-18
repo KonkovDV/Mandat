@@ -78,6 +78,7 @@ def test_key_check_passes_with_keys(monkeypatch, env):
     monkeypatch.setenv("MANDAT_ENV", env)
     monkeypatch.setenv("MANDAT_JOURNAL_KEY", STRONG)
     monkeypatch.setenv("MANDAT_PII_KEY", STRONG)
+    monkeypatch.setenv("MANDAT_STORE_KEY", "s" * 40)
     assert key_problem() is None
 
 
