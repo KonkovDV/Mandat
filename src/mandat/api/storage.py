@@ -104,6 +104,9 @@ class Store(Protocol):
     def discard(self, case_id: str, attempt: str) -> bool:
         """Убрать ожидающий отчёт, если номер попытки совпал."""
 
+    def erase(self, case_id: str) -> bool:
+        """Удалить отчёт кейса и его ожидающую запись (P4-13; 152-ФЗ, ст. 21). True — отчёт был."""
+
     def pending(self, case_id: str) -> Pending | None:
         """Ожидающая запись по кейсу или None."""
 
@@ -256,6 +259,11 @@ class MemoryStore:
             del self._pending[case_id]
             return True
 
+    def erase(self, case_id: str) -> bool:
+        with self._lock:
+            self._pending.pop(case_id, None)
+            return self._reports.pop(case_id, None) is not None
+
     def pending(self, case_id: str) -> Pending | None:
         with self._lock:
             return self._pending.get(case_id)
@@ -352,6 +360,8 @@ class SQLiteStore:
             db = sqlite3.connect(self.path, timeout=10, isolation_level=None, check_same_thread=False)
             db.execute("PRAGMA journal_mode=WAL")
             db.execute("PRAGMA busy_timeout=10000")
+            # Удалённый отчёт с ПДн затирается нулями в файле базы, а не остаётся на свободных страницах (P4-13).
+            db.execute("PRAGMA secure_delete=ON")
             self._local.db = db
         return db
 
@@ -474,6 +484,15 @@ class SQLiteStore:
     def discard(self, case_id: str, attempt: str) -> bool:
         with self._tx() as db:
             return db.execute("DELETE FROM pending WHERE case_id = ? AND attempt = ?", (case_id, attempt)).rowcount == 1
+
+    def erase(self, case_id: str) -> bool:
+        with self._tx() as db:
+            db.execute("DELETE FROM pending WHERE case_id = ?", (case_id,))
+            found = db.execute("DELETE FROM reports WHERE case_id = ?", (case_id,)).rowcount == 1
+        # Прежняя копия страницы с отчётом живёт в файле -wal до контрольной точки: переносим и обрезаем его сразу.
+        # Занятый читателями файл обрежется на следующей контрольной точке; удаление от этого не отменяется.
+        self._db().execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+        return found
 
     @staticmethod
     def _pending_row(row: Any) -> Pending:
@@ -624,6 +643,22 @@ class RedisStore:
     return 1
     """
 
+    _ERASE = """
+    local p = KEYS[1]
+    local pk = p .. 'pending:' .. ARGV[1]
+    local raw = redis.call('GET', pk)
+    if raw then
+        local pend = cjson.decode(raw)
+        redis.call('DEL', pk)
+        redis.call('SREM', p .. 'pendingset', ARGV[1])
+        if pend.idem_key ~= '' then
+            redis.call('DEL', p .. 'pendidem:' .. pend.idem_owner .. ':' .. pend.idem_key)
+        end
+    end
+    redis.call('ZREM', p .. 'reports', ARGV[1])
+    return redis.call('DEL', p .. 'report:' .. ARGV[1])
+    """
+
     # CAS по версии разбора: сравнение и запись в одном скрипте. -1 — версия не совпала.
     _REVIEW_PUT = """
     local k = KEYS[1]
@@ -659,6 +694,7 @@ class RedisStore:
         self._put = client.register_script(self._PUT)
         self._commit = client.register_script(self._COMMIT)
         self._discard = client.register_script(self._DISCARD)
+        self._erase = client.register_script(self._ERASE)
         self._review_put = client.register_script(self._REVIEW_PUT)
 
     def allow(self, client: str, limit: int, now: float | None = None) -> bool:
@@ -731,6 +767,9 @@ class RedisStore:
 
     def discard(self, case_id: str, attempt: str) -> bool:
         return bool(self._discard(keys=[self.prefix], args=[case_id, attempt]))
+
+    def erase(self, case_id: str) -> bool:
+        return bool(self._erase(keys=[self.prefix], args=[case_id]))
 
     def _pending_from(self, case_id: str, raw: Any) -> Pending | None:
         if raw is None:

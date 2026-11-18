@@ -29,7 +29,7 @@ import traceback
 from collections.abc import MutableMapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -134,6 +134,25 @@ class AdmissionBody(BaseModel):
     credential: dict[str, Any]
     request: AdmissionOperation
     operation_risk: str | None = Field(default=None, max_length=32, description="уровень риска: payment, high, low…")
+
+
+# Основания удаления кейса (P4-13): закрытый список вместо свободного текста, чтобы в журнал не попали ПДн.
+ERASE_REASONS = {
+    "unlawful_processing": "152-ФЗ, ст. 21, ч. 3: обработка неправомерна; уничтожить не позднее 10 рабочих дней",
+    "purpose_achieved": "152-ФЗ, ст. 21, ч. 4: цель обработки достигнута; уничтожить не позднее 30 дней",
+    "consent_withdrawn": "152-ФЗ, ст. 21, ч. 5: согласие отозвано; уничтожить не позднее 30 дней",
+    "subject_request": "152-ФЗ, ст. 14, ч. 1: данные незаконно получены или не нужны для цели обработки",
+}
+# Категории ПДн в отчёте кейса: их называет выгрузка из журнала (приказ Роскомнадзора № 179, п. 5).
+ERASED_CATEGORIES = ("фамилия, имя, отчество", "ИНН", "СНИЛС", "должность")
+
+
+class EraseBody(BaseModel):
+    """Тело POST /v1/cases/{id}/erase: основание удаления из закрытого списка."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: Literal["unlawful_processing", "purpose_achieved", "consent_withdrawn", "subject_request"]
 
 
 class ReviewAction(BaseModel):
@@ -575,8 +594,8 @@ def create_app(
                 shared.review_put(case_id, fresh, 0)
             return
         previous, version = stored
-        if previous.get("report_hash") == fresh["report_hash"]:
-            return  # тот же отчёт: разбор продолжается
+        if previous.get("report_hash") == fresh["report_hash"] and not previous.get("erased"):
+            return  # тот же отчёт: разбор продолжается; после удаления кейса (P4-13) разбор начинается заново
         fresh = review_api.reset(fresh, previous, version)
         if audit_log is not None:
             journal.append(
@@ -594,6 +613,29 @@ def create_app(
                 },
             )
         shared.review_put(case_id, fresh, version)
+
+    def close_review_for_erase(case_id: str, reason: str) -> None:
+        """Разбор удалённого кейса закрывается без истории: в ней бывают слова сотрудников о человеке (P4-13).
+
+        Версия продолжает расти, поэтому решения по прежним версиям не спутать с новыми, если кейс с тем же
+        ``case_id`` загрузят снова: ``seed_review`` тогда начнёт разбор заново.
+        """
+        for attempt in range(3):
+            stored = shared.review_get(case_id)
+            if stored is None:
+                return
+            previous, version = stored
+            if previous.get("erased"):
+                return
+            keep = ("case_id", "report_hash", "created_by", "required_specialization")
+            tombstone: dict[str, Any] = {key: previous.get(key) for key in keep}
+            tombstone.update(state=ReviewState.CLOSED.value, history=[], superseded=[], erased={"reason": reason})
+            try:
+                shared.review_put(case_id, tombstone, version)
+                return
+            except ReviewVersionConflict:
+                if attempt == 2:
+                    raise
 
     def read_logged(case_id: str, principal: Principal, action: str) -> dict[str, Any]:
         """Отчёт кейса для чтения; чтение пишется в журнал аудита (P4-11).
@@ -636,6 +678,50 @@ def create_app(
                 "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"
             },
         )
+
+    @app.post("/v1/cases/{case_id}/erase", dependencies=[Depends(strict_json_object)])
+    def erase_case(case_id: str, body: EraseBody, principal: Principal = Depends(writer)) -> dict[str, Any]:
+        """Удалить отчёт кейса с ПДн по основанию из 152-ФЗ (P4-13). Только администратор.
+
+        Порядок: запись в журнал, закрытие разбора без истории, удаление отчёта. Сбой журнала — ничего не удалено.
+        В журнале остаются кейс, хеш отчёта, основание, категории ПДн и система, без самих данных: это выгрузка из
+        журнала, которой вместе с актом подтверждают уничтожение (приказ Роскомнадзора № 179, п. 2 и 5). Резервные
+        копии и снимки хранилища банк уничтожает своей процедурой.
+        """
+        if principal.role != "admin":
+            raise HTTPException(403, "удалить кейс может только администратор")
+        report = visible(case_id, principal)
+        if audit_log is None and protected():
+            raise HTTPException(503, "журнал аудита не настроен: задайте MANDAT_API_JOURNAL")
+        basis = ERASE_REASONS[body.reason]
+        if audit_log is not None:
+            try:
+                journal.append(
+                    audit_log,
+                    action="erase_case",
+                    actor=principal.name,
+                    role=principal.role,
+                    case_id=case_id,
+                    payload_hash=report.get("reproducibility_hash"),
+                    reason=basis,
+                    details={
+                        "reason": body.reason,
+                        "categories": list(ERASED_CATEGORIES),
+                        "system": "Мандат",
+                        "via": "api",
+                    },
+                )
+            except (ValueError, OSError, journal.JournalKeyMissing) as exc:
+                cause = f"journal: {type(exc).__name__}"
+                raise ApiProblem(503, "журнал аудита недоступен, кейс не удалён", cause) from exc
+        try:
+            close_review_for_erase(case_id, body.reason)
+            shared.erase(case_id)
+        except ReviewVersionConflict as exc:
+            raise ApiProblem(503, "разбор кейса меняется прямо сейчас: повторите удаление", "review: conflict") from exc
+        except Exception as exc:
+            raise ApiProblem(503, "хранилище недоступно, кейс не удалён", f"store: {type(exc).__name__}") from exc
+        return {"case_id": case_id, "erased": True, "reason": body.reason, "basis": basis}
 
     def review_target(case_id: str, principal: Principal) -> tuple[dict[str, Any], str]:
         # reviewer разбирает любые кейсы, остальные видят свои; auditor и admin — все (только чтение разбора).

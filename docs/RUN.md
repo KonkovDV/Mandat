@@ -57,8 +57,9 @@ Docker поднимает API только на localhost: `docker compose up --
 | `GET /health` | без токена | процесс жив: движок, настроен ли доступ, режим, хранилище |
 | `GET /readyz` | без токена | готовность: журнал, хранилище, ключи; 200 или 503, в теле только имена проверок |
 | `POST /v1/cases` | `operator`, `reviewer`, `admin` | проверка кейса по манифесту JSON; `?profile=`, `?replace=true`, заголовок `Idempotency-Key` |
-| `GET /v1/cases/{id}` | владелец кейса, `auditor`, `admin` | отчёт JSON |
+| `GET /v1/cases/{id}` | владелец кейса, `auditor`, `admin` | отчёт JSON; каждое чтение пишется в журнал (`read_case`) |
 | `GET /v1/cases/{id}/report.html` | то же | карточка сотрудника |
+| `POST /v1/cases/{id}/erase` | `admin` | удаление отчёта с ПДн по основанию из 152-ФЗ: тело `{"reason": "unlawful_processing" \| "purpose_achieved" \| "consent_withdrawn" \| "subject_request"}`; запись в журнал без данных ([защита данных](DATA_PROTECTION.md#удаление-кейса)) |
 | `GET /v1/cases/{id}/review` | то же и `reviewer` | состояние разбора и версия для `expected_version` |
 | `POST /v1/cases/{id}/review/{action}` | `operator`, `reviewer` | действие разбора: `appeal`, `open`, `accept`, `reject`, `request_docs`, `close`, `require` ([разбор](REVIEW.md)) |
 | `GET /v1/review/queue` | любая роль; `operator` видит свои кейсы | кейсы, ждущие человека, по сроку |
