@@ -13,3 +13,4 @@ var/
 *.zip
 submission/deck/node_modules/
 mutants/
+_site/
