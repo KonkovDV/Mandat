@@ -595,14 +595,43 @@ def create_app(
             )
         shared.review_put(case_id, fresh, version)
 
+    def read_logged(case_id: str, principal: Principal, action: str) -> dict[str, Any]:
+        """Отчёт кейса для чтения; чтение пишется в журнал аудита (P4-11).
+
+        В отчёте ФИО, ИНН и СНИЛС людей, поэтому кто, когда и какой кейс открыл, — событие безопасности, как
+        создание кейса и допуск: 152-ФЗ, ст. 19, ч. 2; приказ ФСТЭК № 21, меры группы РСБ; ГОСТ Р 57580.1.
+        Журнал недоступен — отчёт не выдаётся: чтение ПДн без записи о нём недоказуемо. Без журнала отчёт
+        выдаётся только на стенде; в защищённом режиме — 503, как и при создании кейса. В записи — только
+        идентификатор кейса, роль и хеш отчёта, без самих данных.
+        """
+        report = visible(case_id, principal)
+        if audit_log is None:
+            if protected():
+                raise HTTPException(503, "журнал аудита не настроен: задайте MANDAT_API_JOURNAL")
+            return report
+        try:
+            journal.append(
+                audit_log,
+                action=action,
+                actor=principal.name,
+                role=principal.role,
+                case_id=case_id,
+                payload_hash=report.get("reproducibility_hash"),
+                details={"via": "api"},
+            )
+        except (ValueError, OSError, journal.JournalKeyMissing) as exc:
+            cause = f"journal: {type(exc).__name__}"
+            raise ApiProblem(503, "журнал аудита недоступен, отчёт не выдан", cause) from exc
+        return report
+
     @app.get("/v1/cases/{case_id}")
     def get_case(case_id: str, principal: Principal = Depends(auth)) -> dict[str, Any]:
-        return visible(case_id, principal)
+        return read_logged(case_id, principal, "read_case")
 
     @app.get("/v1/cases/{case_id}/report.html", response_class=HTMLResponse)
     def get_case_html(case_id: str, principal: Principal = Depends(auth)) -> HTMLResponse:
         return HTMLResponse(
-            render(visible(case_id, principal)),
+            render(read_logged(case_id, principal, "read_report")),
             headers={
                 "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"
             },
