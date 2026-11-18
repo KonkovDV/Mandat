@@ -106,4 +106,5 @@ def test_events_at_the_edge_of_the_calendar_are_422_not_500(root: Path, moment: 
     # R2-API-3: клиенту общий текст и request_id, причина — в журнале сервера
     assert response.json()["detail"] == "события не разобраны"
     assert response.json()["request_id"] == response.headers["x-request-id"]
-    assert "1900–9998" in caplog.text
+    # Причина — в журнале сервера; числа в ней скрыты маской журнала (P4-10), смысл остаётся.
+    assert "время события вне диапазона <num> годов" in caplog.text
