@@ -232,10 +232,38 @@ def _format_supports(ctx: RuleContext) -> list[Finding]:
 
 @rule("R-FMT-002")
 def fmt_version(ctx: RuleContext) -> list[Finding]:
+    """Форма МЧД по правилам на дату её выдачи.
+
+    До ``unified_form_from`` (01.09.2027) — единый формат 003. С этой даты доверенность представляется по единой
+    форме на ЕПГУ или по дополнительной форме оператора ГИС, Банка России, ФНП (ч. 1 ст. 17.5 63-ФЗ в ред.
+    315-ФЗ). Какие формы банк принимает, задаёт ``forms_after_unified``: пока список пуст, МЧД, выданная с этой
+    даты, уходит на разбор. Выданные раньше МЧД оцениваются по прежним правилам: переходных положений в 315-ФЗ нет.
+    """
+    spec = ctx.pack.get("R-FMT-002")
+    unified_from = date.fromisoformat(spec.param("unified_form_from"))
+    before = set(spec.param("forms_before_unified"))
+    after = set(spec.param("forms_after_unified"))
     out = []
     for poa in ctx.case.poas[:0] if ctx.chain.too_long else ctx.case.poas:
         ref = poa.ref("format_version")
-        if poa.format_version == "EMCHD_1":
+        if poa.issue_date is not None and poa.issue_date >= unified_from:
+            if poa.format_version in after:
+                message = f"МЧД {poa.number}: форма {poa.format_version} принята банком как единая или дополнительная"
+                out.append(ctx.emit("R-FMT-002", E.SUPPORTS, message, [ref]))
+            else:
+                out.append(
+                    ctx.emit(
+                        "R-FMT-002",
+                        E.NEEDS_REVIEW,
+                        f"МЧД {poa.number} выдана {poa.issue_date:%d.%m.%Y}: с {unified_from:%d.%m.%Y} доверенность "
+                        "представляется по единой форме ЕПГУ или по дополнительной форме Банка России, ФНП или "
+                        "оператора ГИС (ч. 1 ст. 17.5 63-ФЗ в ред. 315-ФЗ); форма "
+                        f"{poa.format_version or 'не указана'} в списке банка не значится",
+                        [ref],
+                    )
+                )
+            continue
+        if poa.format_version in before:
             out.append(ctx.emit("R-FMT-002", E.SUPPORTS, f"МЧД {poa.number}: единый формат 003", [ref]))
         else:
             out.append(
@@ -936,8 +964,14 @@ ORG_PROCEDURES = frozenset(
 
 
 def _bankruptcy(ctx: RuleContext) -> list[Finding]:
-    """Подп. 7 п. 1 ст. 188 ГК РФ и 127-ФЗ: что процедура банкротства делает с доверенностью."""
+    """Подп. 7 п. 1 ст. 188 ГК РФ и 127-ФЗ: что процедура банкротства делает с доверенностью.
+
+    С вступлением 253-ФЗ (``org_debt_restructuring_from``) реструктуризация долгов применяется и к юрлицу: органы
+    управления действуют с ограничениями плана, а план может передать полномочия руководителя арбитражному
+    управляющему. До этой даты такая процедура у юрлица — противоречие в сведениях.
+    """
     port = ctx.ports.bankruptcy
+    org_restructuring_from = date.fromisoformat(ctx.pack.get("R-EIO-004").param("org_debt_restructuring_from"))
     out = []
     for who, inn, is_org in (
         ("Доверитель", ctx.case.organization.inn, True),
@@ -959,7 +993,18 @@ def _bankruptcy(ctx: RuleContext) -> list[Finding]:
             out.append(ctx.emit("R-EIO-004", E.NEEDS_REVIEW, text, [ref]))
             continue
         effect, why = BANKRUPTCY_RULES[status]
-        if is_org != (status in ORG_PROCEDURES):
+        if (
+            is_org
+            and status is BankruptcyStatus.DEBT_RESTRUCTURING
+            and ctx.case.operation.on_date >= org_restructuring_from
+        ):
+            effect = E.NEEDS_REVIEW
+            why = (
+                "реструктуризация долгов юрлица (127-ФЗ в ред. 253-ФЗ): органы управления действуют с ограничениями "
+                "плана реструктуризации, план может передать полномочия руководителя арбитражному управляющему; "
+                "МЧД нужно сверить с планом"
+            )
+        elif is_org != (status in ORG_PROCEDURES):
             # Процедура не того вида лица: данные противоречат друг другу, решает человек.
             effect = E.NEEDS_REVIEW
             why = f"процедура {status.value} не подходит к этому лицу, сведения нужно перепроверить"
@@ -1916,4 +1961,33 @@ def run_rules(ctx: RuleContext) -> list[Finding]:
                     [],
                 )
             )
+    findings.extend(legal_horizon(ctx, findings))
     return findings
+
+
+def legal_horizon(ctx: RuleContext, findings: list[Finding]) -> list[Finding]:
+    """Правило, чей нормативный акт на дату операции утратил силу, «подтверждено» не даёт.
+
+    Его «подтверждает» уходит на разбор, пока пакет правил не пересверят с актом, который пришёл на смену.
+    Каталог актов и сроков — ``norms`` в пакете правил; сама норма к правилу не дописывается.
+    """
+    on = ctx.case.operation.on_date
+    supported = {f.rule_id for f in findings if f.effect == E.SUPPORTS}
+    expired: dict[str, list[str]] = {}
+    for norm in ctx.pack.norms:
+        if norm.in_force_until is None or on < norm.in_force_until:
+            continue
+        for rule_id in norm.rules:
+            if rule_id in supported:
+                expired.setdefault(rule_id, []).append(f"{norm.title} (действует до {norm.in_force_until:%d.%m.%Y})")
+    return [
+        ctx.emit(
+            rule_id,
+            E.NEEDS_REVIEW,
+            f"На дату операции {on:%d.%m.%Y} основание правила утратило силу: "
+            + "; ".join(titles)
+            + ". Правило нужно пересверить с действующей нормой",
+            [],
+        )
+        for rule_id, titles in expired.items()
+    ]
