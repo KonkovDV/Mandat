@@ -54,7 +54,7 @@ python finish_deck.py --pdf ../slides/Mandat_VTB.pdf
 
 Слайды 9 и 10 показывают настоящий вывод продукта, а не макет:
 
-- скриншот карточки кейса 14 — `assets/demo-card-14.jpg`, верх карточки крупно (окно 820 пикселей, текст на слайде около 9 пунктов); переснять: `./run-demo.sh` в корне, затем `node capture_demo.js` (нужен Playwright с Chromium);
+- скриншот карточки кейса 14 — `assets/demo-card-14.jpg`, верх карточки крупно (окно 920 пикселей, текст на слайде около 7–8 пунктов); переснять: `./run-demo.sh` в корне, затем `node capture_demo.js` (нужен Playwright с Chromium);
 - вывод терминала — константа `TERMINAL` в `build_deck.js`, строки взяты из `mandat demo`, `mandat attest-verify` и `mandat monitor examples/events/takeover.json` (сценарий — `docs/DEMO.md`); пропущенные строки обозначены «…»;
 - ось времени слайда 6 строится из файлов демо-кейса 14 (`egrul.json`, `poa-root.xml`, `case.json`) при каждой сборке;
 - шаги слайда 10 — отчёт `mandat showcase` (`var/showcase/showcase.json`): название шага, итог и причина дословно, причина, которая не помещается, сокращается с «…». `make deck` запускает сценарий перед сборкой, а сборка останавливается, если шаги или журнал сценария не те, на которые рассчитан слайд.

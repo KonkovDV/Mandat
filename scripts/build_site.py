@@ -2,7 +2,7 @@
 
 Страница — шаблон ``site/index.html``; числа подставляются из ``evidence.json``, календарь норм — из пакета правил,
 отчёты демо-кейсов собирает ``mandat demo``. На сайт уходят только HTML-отчёты: ключи стенда, журнал и удостоверения
-демо остаются во временном каталоге. Внешних запросов страница не делает: шрифт лежит рядом.
+демо остаются во временном каталоге. Внешних запросов и скриптов у страницы нет: шрифт, иконки и стили лежат рядом.
 
     python scripts/build_site.py --out _site
 """
@@ -24,10 +24,24 @@ from string import Template
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from mandat.data import load_json  # noqa: E402
 from mandat.rules.pack import default_pack  # noqa: E402
 
+sys.path.insert(0, str(ROOT / "scripts"))
+import effect_model  # noqa: E402
+
 SITE = ROOT / "site"
-FONTS = ("GolosText-Regular.ttf", "GolosText-SemiBold.ttf", "GolosText-Bold.ttf")
+# Шрифт сайта — WOFF2 с кириллицей и латиницей (site/fonts), примерно в шесть раз легче TTF из колоды.
+FONTS = ("GolosText-Regular.woff2", "GolosText-SemiBold.woff2", "GolosText-Bold.woff2")
+STATIC = (
+    "style.css",
+    "favicon.svg",
+    "manifest.webmanifest",
+    "apple-touch-icon.png",
+    "icon-192.png",
+    "icon-512.png",
+    "og.jpg",
+)
 MATERIALS = {
     "Mandat_VTB.pdf": ROOT / "submission" / "slides" / "Mandat_VTB.pdf",
     "Mandat_analytics_all.pdf": ROOT / "submission" / "analytics" / "out" / "Mandat_analytics_all.pdf",
@@ -39,6 +53,8 @@ VERDICTS = {
     "insufficient_data": ("недостаточно данных", "gap"),
 }
 REPO = "https://github.com/KonkovDV/Mandat"
+# Адрес страницы на GitHub Pages: нужен только метаданным Open Graph, браузер по нему ничего не грузит.
+SITE_URL = "https://konkovdv.github.io/Mandat/"
 
 
 def _num(value: float, digits: int = 0) -> str:
@@ -96,6 +112,40 @@ def _law_rows() -> str:
     return "\n".join(rows)
 
 
+def _months(value: float) -> str:
+    """Срок окупаемости, как в колоде и пакете аналитики: до года — с десятыми («7,5 месяца»)."""
+    rounded = round(value) if value >= 12 else round(value, 1)
+    if float(rounded).is_integer():
+        n = int(rounded)
+        return f"{n} {_plural(n, 'месяц', 'месяца', 'месяцев')}"
+    return f"{_num(rounded, 1)} месяца"
+
+
+def economics() -> dict[str, str]:
+    """Ценность для банка в базовом сценарии: те же значения, что в колоде, форме спринта и пакете аналитики.
+
+    Юнит-экономика — ``scripts/effect_model.py --unit`` (C-21), окупаемость, эффект и ставки — модель пакета
+    аналитики, операции без согласия у юрлиц — обзоры Банка России в ``effect_scenarios.json`` (M-07, M-15).
+    """
+    unit = effect_model.unit_economics()[1]
+    bank = json.loads((ROOT / "submission" / "analytics" / "out" / "model_values.json").read_text(encoding="utf-8"))[
+        "bank"
+    ]
+    effect = load_json("effect_scenarios.json")
+    fte = int(bank["fte_round"][1])
+    return {
+        "unit_manual": _num(round(float(unit["manual_check_rub"]) / 10) * 10),
+        "unit_mandat": _num(float(unit["mandat_cost_per_check_rub"])),
+        "unit_ratio": _num(float(unit["manual_to_mandat"]), 1),
+        "payback": _months(float(bank["payback_cash"][1])),
+        "prevented": _num(float(bank["prevented_round"][1])),
+        "fte": str(fte),
+        "fte_word": _plural(fte, "ставка", "ставки", "ставок"),
+        "incidents_h1": _num(2 * float(effect["incidentsPerQuarter"])),
+        "loss_h1_bln": _num(2 * float(effect["lossPerQuarterMln"]) / 1000, 1),
+    }
+
+
 def values(evidence: dict) -> dict[str, str]:
     corpus = evidence["synthetic_corpus"]
     confirmed = corpus["confusion"].get("confirmed->confirmed", 0)
@@ -127,8 +177,10 @@ def values(evidence: dict) -> dict[str, str]:
         "pack_version": html.escape(evidence["rule_pack"]["version"]),
         "as_of": evidence["generated_at"][:10],
         "repo": REPO,
+        "site_url": SITE_URL,
         "demo_rows": _demo_rows(evidence),
         "law_rows": _law_rows(),
+        **economics(),
     }
 
 
@@ -139,12 +191,13 @@ def build(out: Path, demo_dir: Path | None = None) -> Path:
     out.mkdir(parents=True)
     page = Template((SITE / "index.html").read_text(encoding="utf-8")).substitute(values(evidence))
     (out / "index.html").write_text(page, encoding="utf-8")
-    for name in ("style.css", "favicon.svg"):
+    for name in STATIC:
         shutil.copy2(SITE / name, out / name)
     fonts = out / "assets" / "fonts"
     fonts.mkdir(parents=True)
-    for name in (*FONTS, "OFL.txt"):
-        shutil.copy2(ROOT / "submission" / "deck" / "fonts" / name, fonts / name)
+    for name in FONTS:
+        shutil.copy2(SITE / "fonts" / name, fonts / name)
+    shutil.copy2(ROOT / "submission" / "deck" / "fonts" / "OFL.txt", fonts / "OFL.txt")
     materials = out / "materials"
     materials.mkdir()
     for name, source in MATERIALS.items():

@@ -79,3 +79,51 @@ def test_law_calendar_on_the_page_is_the_rule_pack_catalogue(site):
             assert f"{norm.in_force_until:%d.%m.%Y}" in page
         for rule in norm.rules:
             assert f'<span class="rule">{rule}</span>' in page, rule  # код правила не рвётся на дефисе
+
+
+def test_page_is_ready_for_phones_and_sharing(site):
+    """Телефон, планшет и компьютер: viewport, цвет панели браузера, иконки, manifest и картинка для мессенджеров."""
+    page = _page(site)
+    assert 'name="viewport" content="width=device-width' in page
+    assert page.count('name="theme-color"') == 2
+    manifest = json.loads((site / "manifest.webmanifest").read_text(encoding="utf-8"))
+    assert manifest["lang"] == "ru" and manifest["start_url"] == "./"
+    for icon in manifest["icons"]:
+        assert (site / icon["src"]).is_file(), icon["src"]
+    assert (site / "apple-touch-icon.png").is_file()
+    image = re.search(r'property="og:image" content="([^"]+)"', page)
+    assert image is not None and image.group(1).startswith(build_site.SITE_URL)
+    assert (site / image.group(1).removeprefix(build_site.SITE_URL)).is_file()
+
+
+def test_fonts_are_woff2_and_tables_scroll_inside_their_frame(site):
+    """Шрифт — WOFF2 рядом со страницей; таблица на узком экране листается в своей рамке, страница вбок не уезжает."""
+    page = _page(site)
+    css = (site / "style.css").read_text(encoding="utf-8")
+    fonts = re.findall(r'url\("(assets/fonts/[^"]+)"\)', css)
+    assert fonts and all(f.endswith(".woff2") and (site / f).is_file() for f in fonts)
+    assert sum((site / f).stat().st_size for f in fonts) < 80_000
+    assert page.count("<table") == page.count('<div class="table-wrap')
+    assert "prefers-reduced-motion" in css and "@media print" in css
+
+
+def test_sprint_2_criteria_and_value_for_the_bank_come_from_the_model(site):
+    """Спринт 2 на первом экране после вопроса: шесть критериев на сто баллов; экономика — из модели, как в форме."""
+    page = _page(site)
+    points = [int(p.split("–")[1]) for p in re.findall(r'<span class="pts">([^<]+)</span>', page)]
+    assert points == [18, 22, 22, 16, 12, 10] and sum(points) == 100
+    assert page.index('id="sprint"') < page.index('id="pain"') < page.index('id="value"') < page.index('id="pilot"')
+    values = build_site.economics()
+    unit = build_site.effect_model.unit_economics()[1]
+    assert values["unit_manual"] == build_site._num(round(float(unit["manual_check_rub"]) / 10) * 10)
+    for key in ("unit_manual", "unit_mandat", "payback", "prevented", "incidents_h1", "loss_h1_bln"):
+        assert values[key] in page, key
+    form = (ROOT / "submission" / "FORM_SPRINT2.md").read_text(encoding="utf-8")
+    for phrase in (
+        f"около {values['unit_manual']} ₽",
+        f"около {values['unit_mandat']} ₽",
+        f"за {values['payback']}",
+        f"{values['fte']} {values['fte_word']}",
+        f"{values['prevented']} млн ₽",
+    ):
+        assert phrase in form, phrase
