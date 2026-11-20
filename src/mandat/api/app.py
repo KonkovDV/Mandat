@@ -486,10 +486,10 @@ def create_app(
             if done is not None:
                 if done[1] != idem.fingerprint:
                     raise HTTPException(422, "Idempotency-Key уже использован с другим запросом")
-                found = shared.get(done[0])
-                if found is None:
+                if shared.get(done[0]) is None:
                     raise HTTPException(409, "результат запроса с этим Idempotency-Key больше не хранится")
-                return found[0]
+                # Повтор снова отдаёт отчёт с ПДн: это чтение, как GET, с проверкой видимости и записью (P6-02).
+                return read_logged(done[0], principal, "read_case", replay=True)
             return _create(manifest, resolved, replace, principal, idem)
         finally:
             shared.release(lease)
@@ -644,14 +644,15 @@ def create_app(
                 if attempt == 2:
                     raise
 
-    def read_logged(case_id: str, principal: Principal, action: str) -> dict[str, Any]:
+    def read_logged(case_id: str, principal: Principal, action: str, *, replay: bool = False) -> dict[str, Any]:
         """Отчёт кейса для чтения; чтение пишется в журнал аудита (P4-11).
 
         В отчёте ФИО, ИНН и СНИЛС людей, поэтому кто, когда и какой кейс открыл, — событие безопасности, как
         создание кейса и допуск: 152-ФЗ, ст. 19, ч. 2; приказ ФСТЭК № 21, меры группы РСБ; ГОСТ Р 57580.1.
         Журнал недоступен — отчёт не выдаётся: чтение ПДн без записи о нём недоказуемо. Без журнала отчёт
         выдаётся только на стенде; в защищённом режиме — 503, как и при создании кейса. В записи — только
-        идентификатор кейса, роль и хеш отчёта, без самих данных.
+        идентификатор кейса, роль и хеш отчёта, без самих данных. ``replay`` — отчёт отдаёт повтор запроса
+        по ``Idempotency-Key`` (P6-02): это тоже чтение, и в записи это видно.
         """
         report = visible(case_id, principal)
         if audit_log is None:
@@ -666,7 +667,7 @@ def create_app(
                 role=principal.role,
                 case_id=case_id,
                 payload_hash=report.get("reproducibility_hash"),
-                details={"via": "api"},
+                details={"via": "api", "replay": "idempotency_key"} if replay else {"via": "api"},
             )
         except (ValueError, OSError, journal.JournalKeyMissing) as exc:
             cause = f"journal: {type(exc).__name__}"

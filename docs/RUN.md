@@ -56,7 +56,7 @@ Docker поднимает API только на localhost: `docker compose up --
 |---|---|---|
 | `GET /health` | без токена | процесс жив: движок, настроен ли доступ, режим, хранилище |
 | `GET /readyz` | без токена | готовность: журнал, хранилище, ключи; 200 или 503, в теле только имена проверок |
-| `POST /v1/cases` | `operator`, `reviewer`, `admin` | проверка кейса по манифесту JSON; `?profile=`, `?replace=true`, заголовок `Idempotency-Key` |
+| `POST /v1/cases` | `operator`, `reviewer`, `admin` | проверка кейса по манифесту JSON; `?profile=`, `?replace=true`, заголовок `Idempotency-Key`: повтор отдаёт прежний отчёт только владельцу и пишется в журнал как чтение (`read_case`) |
 | `GET /v1/cases/{id}` | владелец кейса, `auditor`, `admin` | отчёт JSON; каждое чтение пишется в журнал (`read_case`) |
 | `GET /v1/cases/{id}/report.html` | то же | карточка сотрудника |
 | `POST /v1/cases/{id}/erase` | `admin` | удаление отчёта с ПДн по основанию из 152-ФЗ: тело `{"reason": "unlawful_processing" \| "purpose_achieved" \| "consent_withdrawn" \| "subject_request"}`; запись в журнал без данных ([защита данных](DATA_PROTECTION.md#удаление-кейса)) |
