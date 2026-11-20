@@ -3,9 +3,11 @@
 Хранилище копируют: резервные копии, снимки Redis (RDB, AOF), реплики, файл SQLite на диске. Каждая копия —
 та же база ПДн, что и рабочая. Зашифрованная запись в копии без ключа бесполезна, а уничтожение ключа
 уничтожает данные сразу во всех копиях. Второе свойство — целостность. AES-256-GCM с привязкой к виду записи,
-``case_id`` и версии разбора не даёт тайно поменять вердикт в базе, переставить отчёт одного кейса под другой
-или вернуть разбор к прежней версии без смены её номера. Запись без шифра при заданном ключе тоже отказ:
-иначе подделку достаточно было бы записать открытым текстом.
+``case_id``, владельцу отчёта и версии разбора не даёт тайно поменять вердикт в базе, переставить отчёт одного
+кейса под другой, отдать отчёт другому пользователю, переписав поле владельца рядом с шифром (P6-01), или вернуть
+разбор к прежней версии без смены её номера. Запись без шифра при заданном ключе тоже отказ: иначе подделку
+достаточно было бы записать открытым текстом. Записи прежнего формата ``mandat.sealed.v1`` (владелец не привязан)
+не читаются: кейс создают заново.
 
 Это не СКЗИ. Если модель угроз банка требует криптографической защиты хранения (приказ ФСБ России № 378),
 её даёт сертифицированное средство с ГОСТ Р 34.12-2015. Замена — другой ``Sealer`` с теми же методами.
@@ -31,7 +33,9 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from mandat.api.storage import Pending, Store
 
 MIN_KEY_BYTES = 32
-ENVELOPE = "mandat.sealed.v1"
+# v2 (P6-01): привязка отчёта включает владельца. v1 его не включал, и такие записи не читаются.
+ENVELOPE = "mandat.sealed.v2"
+UNBOUND_ENVELOPES = frozenset({"mandat.sealed.v1"})
 NONCE_BYTES = 12
 
 
@@ -80,6 +84,10 @@ class Sealer:
         }
 
     def open(self, value: Any, aad: str) -> dict[str, Any]:
+        if isinstance(value, dict) and value.get("sealed") in UNBOUND_ENVELOPES:
+            raise SealError(
+                f"запись в формате {value.get('sealed')}: владелец не привязан к шифру (P6-01), создайте кейс заново"
+            )
         if not isinstance(value, dict) or value.get("sealed") != ENVELOPE:
             raise SealError("запись хранилища не зашифрована")
         cipher = self._keys.get(str(value.get("kid")))
@@ -121,8 +129,9 @@ def load_sealer() -> Sealer | None:
     return Sealer(current, previous)
 
 
-def report_aad(case_id: str) -> str:
-    return f"report\x00{case_id}"
+def report_aad(case_id: str, owner: str) -> str:
+    """Привязка отчёта: вид записи, кейс и владелец. По владельцу API решает, кто видит отчёт (P6-01)."""
+    return f"report\x00{case_id}\x00{owner}"
 
 
 def review_aad(case_id: str, version: int) -> str:
@@ -145,10 +154,10 @@ class SealedStore:
         found = self.inner.get(case_id)
         if found is None:
             return None
-        return self.sealer.open(found[0], report_aad(case_id)), found[1]
+        return self.sealer.open(found[0], report_aad(case_id, found[1])), found[1]
 
     def put(self, case_id: str, report: dict[str, Any], owner: str, max_reports: int) -> None:
-        self.inner.put(case_id, self.sealer.seal(report, report_aad(case_id)), owner, max_reports)
+        self.inner.put(case_id, self.sealer.seal(report, report_aad(case_id, owner)), owner, max_reports)
 
     def stage(
         self,
@@ -159,12 +168,12 @@ class SealedStore:
         idem: Any,
         now: float | None = None,
     ) -> None:
-        self.inner.stage(case_id, self.sealer.seal(report, report_aad(case_id)), owner, attempt, idem, now)
+        self.inner.stage(case_id, self.sealer.seal(report, report_aad(case_id, owner)), owner, attempt, idem, now)
 
     def _opened(self, pend: Pending | None) -> Pending | None:
         if pend is None:
             return None
-        return pend._replace(report=self.sealer.open(pend.report, report_aad(pend.case_id)))
+        return pend._replace(report=self.sealer.open(pend.report, report_aad(pend.case_id, pend.owner)))
 
     def pending(self, case_id: str) -> Pending | None:
         return self._opened(self.inner.pending(case_id))
