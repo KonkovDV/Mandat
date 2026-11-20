@@ -31,11 +31,12 @@ def test_every_action_has_role_rules() -> None:
 
 
 def test_api_roles_are_final_set() -> None:
-    assert set(API_ROLES) == {"operator", "reviewer", "auditor", "admin"}
+    # dbo — учётная запись системы банка для допуска операции (P6-05): кейсы не создаёт и не разбирает.
+    assert set(API_ROLES) == {"operator", "reviewer", "auditor", "admin", "dbo"}
 
 
 @pytest.mark.parametrize("action", sorted(ALLOWED_ROLES))
-@pytest.mark.parametrize("role", ["admin", "auditor"])
+@pytest.mark.parametrize("role", ["admin", "auditor", "dbo"])
 def test_admin_and_auditor_never_move_cases(action: str, role: str) -> None:
     for state in ReviewState:
         case = ReviewCase("c1", H, state=state)

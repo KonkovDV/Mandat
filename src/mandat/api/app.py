@@ -383,6 +383,21 @@ def create_app(
             raise HTTPException(403, f"роль {principal.role} только читает")
         return principal
 
+    def admitter(principal: Principal = Depends(auth)) -> Principal:
+        """Кто получает допуск операции (P6-05).
+
+        В pilot и prod — только ``dbo``: служебная учётная запись системы банка, которая проводит операцию.
+        Сотрудник допуск к платежу не получает: разделение обязанностей и минимальные привилегии (приказ
+        ФСТЭК № 21, меры УПД.4 и УПД.5; ГОСТ Р 57580.1). На стенде допуск доступен и ролям с правом записи.
+        """
+        if principal.role == "dbo" or (principal.can_write and not protected()):
+            return principal
+        raise ApiProblem(
+            403,
+            "допуск операции выдаётся только учётной записи системы банка (роль dbo)",
+            f"admission: role {principal.role}",
+        )
+
     def visible(case_id: str, principal: Principal) -> dict[str, Any]:
         # Чужой кейс неотличим от несуществующего: 404, а не 403.
         found = shared.get(case_id)
@@ -849,7 +864,7 @@ def create_app(
         return {"alerts": alerts, "warnings": warnings}
 
     @app.post("/v1/operations/authorize", dependencies=[Depends(strict_json_object)])
-    def authorize_operation(body: AdmissionBody, principal: Principal = Depends(writer)) -> dict[str, Any]:
+    def authorize_operation(body: AdmissionBody, principal: Principal = Depends(admitter)) -> dict[str, Any]:
         """Допуск одной операции по удостоверению: подлинность, статус, вердикт confirmed и привязка к запросу.
 
         200 — решение: ``allowed`` и причины отказа. Отказ тоже 200: это ответ, а не ошибка запроса.
@@ -862,6 +877,13 @@ def create_app(
         if protected() and (shared.name == "memory" or audit_log is None):
             raise HTTPException(503, "в защищённом режиме допуск требует общего хранилища и журнала аудита")
         fields = body.request
+        if principal.audiences and fields.audience not in principal.audiences:
+            # Учётная запись одного канала не расходует удостоверения другого; nonce не тронут (P6-05).
+            raise ApiProblem(
+                403,
+                "учётной записи не разрешён этот получатель удостоверения (audience)",
+                f"admission: audience not allowed for {principal.name}",
+            )
         try:
             operation = OperationRequest(
                 operation=fields.operation,

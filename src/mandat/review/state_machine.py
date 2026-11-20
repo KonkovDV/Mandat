@@ -73,6 +73,7 @@ ROLES = ACTING_ROLES | set(SPECIALIZATIONS)
 NON_ACTING_ROLES = {
     "auditor": "только чтение",
     "admin": "управляет пользователями и настройками, кейсы не решает",
+    "dbo": "учётная запись системы банка: только допуск операции (P6-05)",
 }
 # Кто может выполнить действие.
 ALLOWED_ROLES: dict[str, frozenset[str]] = {
