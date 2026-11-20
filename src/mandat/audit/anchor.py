@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from mandat.audit import merkle, tlog
+from mandat.audit.bounded import read_bounded
 from mandat.audit.revocation import RevocationChecker
 from mandat.audit.revocation import from_env as revocation_from_env
 from mandat.strictjson import strict_loads
@@ -417,7 +418,7 @@ class TsaSink:
             method="POST",
         )
         with self._open(request) as response:
-            raw = response.read()
+            raw = read_bounded(response)
         from asn1crypto import core
 
         try:
@@ -547,7 +548,7 @@ class RekorSink:
 
     def _json(self, request: urllib.request.Request) -> Any:
         with self._open(request) as response:
-            return json.loads(response.read().decode("utf-8"))
+            return json.loads(read_bounded(response).decode("utf-8"))
 
     def _get(self, path: str) -> Any:
         return json.loads(tlog.read_url(self._open, self.url + path, "application/json").decode("utf-8"))
@@ -709,7 +710,7 @@ class RekorV2Sink:
             method="POST",
         )
         with self._open(request) as response:
-            tle = json.loads(response.read().decode("utf-8"))
+            tle = json.loads(read_bounded(response).decode("utf-8"))
         receipt = {"sha256": digest(stmt), "log_index": int(tle.get("logIndex", -1)), "tle": tle}
         if self.log_key and not self._entry_ok(stmt, receipt):
             raise OSError("Rekor v2 вернул запись, которая не проверяется")
