@@ -217,9 +217,13 @@ class Guard:
             await send(message)
 
         async def reply(status: int, detail: str, extra: dict[str, str] | None = None) -> None:
-            # Отказы (401, 413, 429) идут с теми же заголовками безопасности, что и обычные ответы.
+            # Отказы (401, 405, 413, 429) идут с теми же заголовками безопасности, что и обычные ответы.
             await JSONResponse({"detail": detail}, status_code=status, headers=extra)(scope, receive, secured)
 
+        if path in OPEN_PATHS and scope.get("method") not in {"GET", "HEAD"}:
+            # Открытые пути без токена и без лимита частоты отвечают только на GET: тело здесь не читается (P6-04).
+            await reply(405, "метод не поддерживается", {"Allow": "GET, HEAD"})
+            return
         if path not in OPEN_PATHS:
             if self.limit > 0:
                 client = (scope.get("client") or ("unknown",))[0]
