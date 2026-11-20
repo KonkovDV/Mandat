@@ -29,6 +29,8 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
+from mandat.audit.bounded import read_bounded
+
 PASSPHRASE_ENV = "MANDAT_SIGNING_KEY_PASSPHRASE"  # noqa: S105 - имя переменной, не значение
 MIN_PASSPHRASE_BYTES = 16
 _B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
@@ -248,7 +250,7 @@ class VaultTransitSigner:
             headers={"X-Vault-Token": self._token, "Content-Type": "application/json"},
         )
         with self._open(request) as response:
-            return dict(json.loads(response.read()))
+            return dict(json.loads(read_bounded(response)))
 
     @property
     def key_id(self) -> str:

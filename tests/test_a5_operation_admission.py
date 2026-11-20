@@ -17,6 +17,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 
 from mandat.api.app import create_app
+from mandat.api.principals import hash_token
 from mandat.api.storage import MemoryStore, RedisStore, SQLiteStore
 from mandat.audit import attestation, journal
 from mandat.audit.attestation import BANK_TZ
@@ -250,14 +251,16 @@ def test_protected_mode_needs_a_shared_store_and_a_journal(issuer, tmp_path, mon
     monkeypatch.setenv("MANDAT_PII_KEY", "p" * 40)
     nonce = "n-" + "9" * 20
     body = _body(issuer.issue(nonce), nonce)
+    # В pilot и prod допуск получает только учётная запись системы банка (P6-05).
+    expires = (datetime.now(UTC) + timedelta(days=30)).isoformat(timespec="seconds")
+    account = {"name": "dbo", "role": "dbo", "token_sha256": hash_token(TOKEN), "expires_at": expires}
+    dbo = json.dumps([{**account, "audiences": [AUDIENCE]}])
     memory = TestClient(
-        create_app(
-            token=TOKEN, store=MemoryStore(), journal_path=tmp_path / "j.jsonl", admission_config=issuer.config()
-        )
+        create_app(users=dbo, store=MemoryStore(), journal_path=tmp_path / "j.jsonl", admission_config=issuer.config())
     )
     assert memory.post("/v1/operations/authorize", json=body, headers=HEADERS).status_code == 503
     no_journal = TestClient(
-        create_app(token=TOKEN, store=SQLiteStore(tmp_path / "s.db"), admission_config=issuer.config())
+        create_app(users=dbo, store=SQLiteStore(tmp_path / "s.db"), admission_config=issuer.config())
     )
     assert no_journal.post("/v1/operations/authorize", json=body, headers=HEADERS).status_code == 503
 

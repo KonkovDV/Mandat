@@ -38,12 +38,17 @@ from typing import Any
 from mandat.strictjson import strict_loads
 
 # Кто что может. Видеть чужие кейсы могут только аудитор и администратор.
+# dbo — служебная учётная запись системы банка, которая проводит операцию (P6-05): только допуск операции
+# по удостоверению для своих audiences; кейсы не создаёт и отчёты с ПДн не читает.
 ROLES = {
     "operator": {"write": True, "see_all": False},
     "reviewer": {"write": True, "see_all": False},
     "auditor": {"write": False, "see_all": True},
     "admin": {"write": True, "see_all": True},
+    "dbo": {"write": False, "see_all": False},
 }
+# Длина audience — как у поля запроса допуска (api/app.py, AdmissionOperation).
+MAX_AUDIENCE_CHARS = 200
 
 
 @dataclass(frozen=True)
@@ -52,6 +57,8 @@ class Principal:
     role: str
     # Только у reviewer: lawyer | compliance | security | client_service (docs/REVIEW.md).
     specialization: str | None = None
+    # Только у dbo: получатели удостоверений (audience), для которых эта учётная запись запрашивает допуск.
+    audiences: tuple[str, ...] = ()
 
     @property
     def can_write(self) -> bool:
@@ -131,6 +138,7 @@ def parse_users(raw: Any, *, require_expiry: bool | None = None, now: datetime |
                 raise ValueError(f"MANDAT_API_USERS: specialization есть только у роли reviewer, у {name} роль {role}")
             if specialization not in SPECIALIZATIONS:
                 raise ValueError(f"MANDAT_API_USERS: у {name} specialization не из {list(SPECIALIZATIONS)}")
+        audiences = _parse_audiences(name, role, item.get("audiences"), required=require_expiry)
         revoked = item.get("revoked", False)
         if not isinstance(revoked, bool):
             raise ValueError(f"MANDAT_API_USERS: у {name} revoked должен быть true или false")
@@ -145,8 +153,25 @@ def parse_users(raw: Any, *, require_expiry: bool | None = None, now: datetime |
                 raise ValueError(f"MANDAT_API_USERS: {message} (потолок срока в pilot/prod)")
             log.warning("MANDAT_API_USERS: %s", message)
         seen.add(name)
-        users.append(UserEntry(Principal(name, role, specialization), digest.lower(), expires, revoked))
+        users.append(UserEntry(Principal(name, role, specialization, audiences), digest.lower(), expires, revoked))
     return tuple(users)
+
+
+def _parse_audiences(name: str, role: str, raw: Any, *, required: bool) -> tuple[str, ...]:
+    """``audiences`` учётной записи ДБО (P6-05): непустой список строк. В pilot и prod у роли dbo обязателен."""
+    if raw is None:
+        if role == "dbo" and required:
+            raise ValueError(f"MANDAT_API_USERS: у {name} нет audiences (обязательны для роли dbo в pilot/prod)")
+        return ()
+    if role != "dbo":
+        raise ValueError(f"MANDAT_API_USERS: audiences есть только у роли dbo, у {name} роль {role}")
+    if (
+        not isinstance(raw, list)
+        or not raw
+        or not all(isinstance(a, str) and a and len(a) <= MAX_AUDIENCE_CHARS for a in raw)
+    ):
+        raise ValueError(f"MANDAT_API_USERS: у {name} audiences — непустой список строк до {MAX_AUDIENCE_CHARS} знаков")
+    return tuple(dict.fromkeys(raw))
 
 
 def load_users(value: str | None = None) -> tuple[UserEntry, ...]:

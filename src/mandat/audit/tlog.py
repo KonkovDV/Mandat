@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from mandat.audit import merkle
+from mandat.audit.bounded import read_bounded
 
 RangeHash = Callable[[int, int], bytes]
 Prover = Callable[[int, int], list[bytes]]
@@ -397,4 +398,4 @@ class CheckpointState:
 def read_url(open_: Callable[[urllib.request.Request], Any], url: str, accept: str = "*/*") -> bytes:
     request = urllib.request.Request(url, headers={"accept": accept})  # noqa: S310 - адрес задаёт администратор
     with open_(request) as response:
-        return bytes(response.read())
+        return read_bounded(response)
