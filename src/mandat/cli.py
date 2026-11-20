@@ -622,8 +622,17 @@ def cmd_api_user(args: argparse.Namespace) -> int:
     if args.role not in ROLES:
         print(f"роль: одна из {', '.join(sorted(ROLES))}", file=sys.stderr)
         return 2
+    audiences = list(dict.fromkeys(args.audience or []))
+    if audiences and args.role != "dbo":
+        print("--audience: только для роли dbo (учётная запись системы банка)", file=sys.stderr)
+        return 2
+    if args.role == "dbo" and not audiences and protected():
+        print("в защищённом режиме у роли dbo задайте --audience (P6-05)", file=sys.stderr)
+        return 2
     token = secrets.token_urlsafe(32)
     entry: dict[str, Any] = {"name": args.name, "role": args.role, "token_sha256": hash_token(token)}
+    if audiences:
+        entry["audiences"] = audiences
     if args.expires_in_days is not None:
         import math
 
@@ -740,8 +749,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     u = sub.add_parser("api-user", help="выпустить токен пользователя API и его хеш")
     u.add_argument("--name", required=True)
-    u.add_argument("--role", required=True, help="operator, reviewer, auditor или admin")
+    u.add_argument("--role", required=True, help="operator, reviewer, auditor, admin или dbo (система банка)")
     u.add_argument("--expires-in-days", type=float, default=None, help="срок жизни токена; в pilot/prod обязателен")
+    u.add_argument(
+        "--audience", action="append", help="получатель удостоверений для роли dbo; можно несколько, в pilot/prod нужен"
+    )
     u.set_defaults(func=cmd_api_user)
 
     s = sub.add_parser("serve", help="запустить HTTP API")
