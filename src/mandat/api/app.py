@@ -107,7 +107,9 @@ def request_id(scope: MutableMapping[str, Any]) -> str:
 
 def problem(request: Request, status: int, detail: str, cause: str) -> JSONResponse:
     rid = request_id(request.scope)
-    log.warning("request_id=%s status=%s path=%s cause=%s", rid, status, request.url.path, scrub(cause))
+    # Путь задаёт клиент: кейс, названный по ИНН, иначе оставлял бы номер в журнале сервера (P6-03).
+    path = scrub(request.url.path)
+    log.warning("request_id=%s status=%s path=%s cause=%s", rid, status, path, scrub(cause))
     headers = {k.decode(): v.decode() for k, v in [*SECURITY_HEADERS, DEFAULT_CSP]}
     headers[REQUEST_ID_HEADER.decode()] = rid
     return JSONResponse({"detail": detail, "request_id": rid}, status_code=status, headers=headers)
