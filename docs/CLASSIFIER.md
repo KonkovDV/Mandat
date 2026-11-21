@@ -1,7 +1,7 @@
 # Снимок классификатора полномочий ФНС
 
 Код: `src/mandat/rules/classifier.py` (`import_kpmp`), правило R-COV-002 (`src/mandat/rules/checks.py`);
-тесты: `tests/test_sota_m1_kpmp_classifier.py`.
+тесты: `tests/test_classifier_snapshot.py`.
 
 ## Источник
 
