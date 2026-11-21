@@ -30,7 +30,7 @@
 |---|---|---|---|
 | A-1 | Подложная МЧД: чужой ОГРН, неверная контрольная сумма, чужой представитель, подпись не ЕИО | опровергнуто | корпус `ogrn_of_other_company`, `bad_checksum`, `wrong_representative`, `signer_not_eio`, `snils_of_other_person` |
 | A-2 | XML-бомба, битый XML, сверхглубокий JSON, превышение размера | отказ без падения | корпус `xml_bomb`, `malformed_xml`; `test_hardening.py`; `test_redteam_regressions.py::test_rt06_*` |
-| A-3 | Подмена файла кейса ссылкой после проверки пути, рост файла после fstat, FIFO | отказ (S-4) | `tests/test_case_races.py` |
+| A-3 | Подмена файла кейса ссылкой после проверки пути, рост файла после fstat, FIFO | отказ | `tests/test_case_races.py` |
 | A-4 | Двойник-документ, повтор ЕГРЮЛ, номер-двойник | недостаточно данных | корпус `duplicate_egrul`, `same_number_twin`, `leaf_tie` |
 | A-5 | Подбор токена, отсутствие токена, чужой кейс | 401 / 404, лимит 429 | `test_api_users.py`, нагрузочный `--overload` |
 | A-6 | Подделка журнала между записями | следующая запись отвергается | `tests/test_case_races.py::test_journal_tampering_between_appends_is_still_caught` |
