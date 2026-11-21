@@ -22,7 +22,7 @@
 | Начать | запустить и показать | [демо в README](../README.md#запустить-демо), [сценарий показа](DEMO.md), [для жюри](JURY.md) |
 | Сделать | решить конкретную задачу | [запуск и API](RUN.md), [ключи](KEYS.md), [разбор](REVIEW.md), [классификатор](CLASSIFIER.md), [пилот](PILOT.md), [сдача](../submission/README.md), [мутационное тестирование](testing/MUTATION.md) |
 | Справочник | найти точный факт | [правила](RULES.md), [реестр утверждений](../CLAIMS_REGISTRY.md), [границы](../LIMITS.md), [формат МЧД](FORMAT_NOTES.md), [предметная модель](DOMAIN.md), [переменные окружения](RUN.md#переменные-окружения), [контракт API](api/openapi.json), [схема манифеста](api/case-manifest.schema.json) |
-| Объяснение | понять, почему так | [архитектура](ARCHITECTURE.md), [решения ADR](adr/), [передовые решения](SOTA.md), [литература](LITERATURE.md), [нормы](REGULATORY.md), [конкуренты](COMPETITORS.md), [экономика](ECONOMICS.md), [оценка](EVALUATION.md), [риски модели](AI_RISKS.md), [защита данных](DATA_PROTECTION.md), [модель угроз](THREAT_MODEL.md), [перенос идей](PORTING.md) |
+| Объяснение | понять, почему так | [архитектура](ARCHITECTURE.md), [решения ADR](adr/), [передовые решения](SOTA.md), [литература](LITERATURE.md), [нормы](REGULATORY.md), [конкуренты](COMPETITORS.md), [экономика](ECONOMICS.md), [оценка](EVALUATION.md), [риски модели](AI_RISKS.md), [защита данных](DATA_PROTECTION.md), [модель угроз](THREAT_MODEL.md), [перенос идей](PORTING.md), [визуальная система и шрифты](VISUALS.md) |
 
 ## По вопросу
 

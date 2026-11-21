@@ -36,6 +36,19 @@
 
 Не из репозиториев автора, а из стандартов и статей: списки статусов (W3C Bitstring Status List), дерево Меркла (RFC 9162), перекрёстная проверка на Cedar, пара «риск — покрытие». Источники — [SOTA](SOTA.md) и [LITERATURE](LITERATURE.md).
 
+## Сайт и колода (21.11.2026)
+
+| Идея | Откуда | Где в «Мандате» |
+|---|---|---|
+| Строгая CSP без встроенного кода, адрес стиля и скрипта с хешем содержимого | rightrack | `scripts/build_site.py` (`_stamp`), `tests/test_site.py` |
+| Матрица устройств в Playwright и axe-core для WCAG 2.2 AA | rightrack | `scripts/check_site_devices.js` |
+| Калькулятор сверяется с эталонной моделью, написанной заново, на случайных допущениях с фиксированным зерном | rightrack | `scripts/check_site_devices.js` (`reference`) |
+| Проверка PDF колоды по рамкам слов `pdftotext -bbox-layout` и по `pdffonts` | InvaRadar: `presentation/qa/check_collisions.py` | `submission/deck/qa_deck.py`, расширена разрывами слов, переполнением рамок и висячим словом в заголовке |
+| Сайт проекта на GitHub Pages: сборка на каждом PR, публикация из `main` | SynAPS-MobiRoute, InvaRadar | `.github/workflows/pages.yml` |
+| Изображения: агент пишет промты и правила образа, кадры генерируются в Figma, в репозиторий попадают готовые файлы | Synergy | [VISUALS](VISUALS.md), `submission/deck/import_visuals.py` |
+
+Пути в rightrack, SynAPS-MobiRoute и Synergy не сверялись через API: перенесены приёмы, а не файлы.
+
 ## Не взято
 
 - SynAPS — оптимизатор расписаний, для очереди из сотен кейсов избыточен.

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="$csp">
+<title>Захват до платежа — Мандат</title>
+<meta name="description" content="Сценарий mandat showcase: допуск платежа, отказ повтору и лишней сумме, признаки захвата компании и отказ следующему платежу до списания денег.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1426" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Мандат — захват компании останавливается до платежа">
+<meta property="og:image" content="${site_url}og.jpg">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="style.css">
+<script src="js/theme.js"></script>
+<script type="module" src="js/showcase.js"></script>
+</head>
+<body>
+$header
+
+<main id="main">
+<section class="hero slim">
+  <div class="wrap">
+    <img class="page-art" src="img/icon-showcase.webp" width="341" height="341" alt="">
+    <p class="kicker">Сценарий <code>mandat showcase</code></p>
+    <h1>Захват компании останавливается до списания денег</h1>
+    <p class="lead">Банк проверил представителя и выпустил удостоверение на один платёж. Дальше ДБО спрашивает «Мандат» перед каждым платежом. Сценарий проходит семь шагов: от первого допуска до отказа после признаков захвата. Шаги и причины отказов — вывод самой команды на этой сборке.</p>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <div class="controls" id="controls" hidden>
+      <button class="btn primary small" type="button" id="play">Пуск</button>
+      <button class="btn small" type="button" id="prev" aria-label="Предыдущий шаг">← Шаг</button>
+      <button class="btn small" type="button" id="next" aria-label="Следующий шаг">Шаг →</button>
+      <button class="btn small" type="button" id="reset">Сначала</button>
+      <span class="pos" id="pos" aria-live="polite"></span>
+    </div>
+    <div class="player">
+      <ol class="track" id="track">
+$showcase_rows
+      </ol>
+      <aside class="state" aria-label="Состояние после шага">
+        <div class="card">
+          <dl>
+            <dt>Удостоверение на платёж</dt>
+            <dd id="s-att">выпущено, затем приостановлено после признаков захвата</dd>
+          </dl>
+        </div>
+        <div class="card">
+          <dl>
+            <dt>Одноразовый nonce запроса</dt>
+            <dd id="s-nonce">израсходован первым платежом</dd>
+          </dl>
+        </div>
+        <div class="card">
+          <dl>
+            <dt>Последний ответ ДБО</dt>
+            <dd id="s-dbo">отказ: статус удостоверения — приостановлено</dd>
+          </dl>
+        </div>
+        <div class="card">
+          <dl>
+            <dt>Журнал решений</dt>
+            <dd id="s-journal">$showcase_records записей, цепочка цела</dd>
+          </dl>
+          <ol class="fine" id="s-records"></ol>
+        </div>
+      </aside>
+    </div>
+    <p class="note">Журнал: $showcase_records записей, цепочка цела. Включение записи об отказе доказано деревом Меркла, корень <code>$showcase_root…</code>. Весь сценарий занял $showcase_seconds&nbsp;с. Повторить: <code>mandat showcase</code>.</p>
+  </div>
+</section>
+
+<section class="sec alt">
+  <div class="wrap two">
+    <div>
+      <h2>Почему отказ</h2>
+      <ul class="ticks">
+        <li><b>Повтор.</b> Nonce одноразовый и расходуется атомарно в общем хранилище. Из восьми одновременных одинаковых запросов проходит один.</li>
+        <li><b>Сумма.</b> Удостоверение привязано к проверенной сумме, организации, дню операции по Москве, представителю и получателю.</li>
+        <li><b>Захват.</b> Смена руководителя, новая МЧД и заявка на смену реквизитов в одном окне — признаки захвата. Удостоверения организации приостанавливаются, следующий платёж получает отказ.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Что получает банк</h2>
+      <p>На каждый запрос — «допустить» или причины отказа. Решение пишется в журнал без ИНН представителя, включение записи можно доказать аудитору, не отдавая журнал целиком. Допуск выдаётся только служебной учётной записи системы банка: сотрудник с правом записи чужой nonce не израсходует.</p>
+      <p class="fine">Это стенд: данные вымышлены, профиль demo, события ЕГРЮЛ и МЧД задаёт сценарий, а не реестры. Ключи сценария создаются при каждом запуске, поэтому корень журнала каждый раз свой.</p>
+      <a class="more" href="verify.html">Проверить удостоверение и журнал в браузере</a>
+    </div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <h2>Видео-демо: две минуты настоящего вывода</h2>
+    <p class="sub">Ролик собран из вывода команд, без монтажа экрана: кейсы, удостоверение, мониторинг и этот сценарий.</p>
+    <video controls preload="metadata" width="1920" height="1080" src="materials/Mandat_demo.mp4">
+      <a href="materials/Mandat_demo.mp4">Видео-демо, MP4</a>
+    </video>
+  </div>
+</section>
+</main>
+
+<script type="application/json" id="page-data">$data</script>
+$footer
+</body>
+</html>

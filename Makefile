@@ -51,10 +51,13 @@ demo-cards: demo
 
 deck:
 	mandat showcase --out var/showcase > /dev/null
+	$(PY) scripts/build_site.py --scrub var/scrub.json > /dev/null
 	cd submission/deck && npm ci && node build_deck.js ../../evidence.json ../slides/Mandat_VTB.pptx
 	$(PY) submission/deck/finish_deck.py submission/slides/Mandat_VTB.pptx
 	soffice --headless --convert-to pdf --outdir submission/slides submission/slides/Mandat_VTB.pptx
 	$(PY) submission/deck/finish_deck.py --pdf submission/slides/Mandat_VTB.pdf
+	$(PY) submission/deck/qa_deck.py submission/slides/Mandat_VTB.pdf
+	$(PY) submission/deck/export_slides.py submission/slides/Mandat_VTB.pptx submission/slides/Mandat_VTB.pdf
 
 analytics:
 	$(PY) submission/analytics/build_model.py
