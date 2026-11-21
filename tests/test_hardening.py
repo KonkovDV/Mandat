@@ -32,7 +32,7 @@ def _protected_api(monkeypatch, tmp_path, env: str) -> None:
     # Защищённый режим API пишет журнал аудита с ключом: без них POST /v1/cases отвечает 503.
     monkeypatch.setenv("MANDAT_ENV", env)
     monkeypatch.setenv("MANDAT_JOURNAL_KEY", "k" * 32)
-    # Хранилище из окружения в защищённом режиме шифруется своим ключом (P5-01).
+    # Хранилище из окружения в защищённом режиме шифруется своим ключом.
     monkeypatch.setenv("MANDAT_STORE_KEY", "s" * 32)
     monkeypatch.setenv("MANDAT_API_JOURNAL", str(tmp_path / "api.jsonl"))
 

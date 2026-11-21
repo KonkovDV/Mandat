@@ -154,7 +154,7 @@ def test_redis_backend_matches_env(redis_store):
     assert redis_store.r.get(marker) == b"1"
 
 
-# --- B6 (#160): claim — атомарный nonce с отпечатком запроса ---------------------------------------------
+# --- #160: claim — атомарный nonce с отпечатком запроса --------------------------------------------------
 
 
 def test_claim_takes_a_free_key_and_reports_the_holder(store):

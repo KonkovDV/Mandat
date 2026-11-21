@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 import json
 import re
 import subprocess
@@ -693,9 +694,17 @@ def test_evidence_matches_current_engine():
         assert report.reproducibility_hash == row["reproducibility_hash"], name
 
 
-# --------------------------------------------------------------------------- материалы для жюри
+# --------------------------------------------------------------------------- гигиена репозитория
 
-_FORBIDDEN_TRACES = re.compile("clau" + "de|anthr" + "opic|co-authored-by|/tmp/|ivan ivanov", re.IGNORECASE)
+_FORBIDDEN_TRACES = re.compile(r"co-authored-by|/tmp/|ivan ivanov", re.IGNORECASE)
+# Запрещённые слова хранятся хешами SHA-256: самих слов в репозитории нет.
+_FORBIDDEN_WORD_DIGESTS = frozenset(
+    {
+        "c857d09db23e6822e3600bc06ad8d58f92ed62bc8efd81c753f77048662cb97d",
+        "c70eca6b0f88f44d81a41311647e50fda1ac454ec04ffd442b0eb4743a993131",
+    }
+)
+_ASCII_WORD = re.compile(r"[a-z]+")
 _SKIP_DIRS = {".git", ".venv", "venv", "var", "build", "dist", "node_modules", "__pycache__"}
 _TEXT_SUFFIXES = {".py", ".md", ".txt", ".json", ".toml", ".yml", ".yaml", ".html", ".cff", ".ps1", ".sh", ".js"}
 
@@ -725,7 +734,12 @@ def _pdf_text(path: Path) -> str:
     return "\n".join(parts)
 
 
-def test_no_assistant_traces_or_local_paths_in_repository():
+def _forbidden_words(text: str) -> list[str]:
+    words = set(_ASCII_WORD.findall(text.lower()))
+    return sorted(w for w in words if hashlib.sha256(w.encode()).hexdigest() in _FORBIDDEN_WORD_DIGESTS)
+
+
+def test_no_coauthor_trailers_or_local_paths_in_repository():
     hits = []
     for path in _repo_files():
         if path.name == Path(__file__).name:
@@ -739,6 +753,7 @@ def test_no_assistant_traces_or_local_paths_in_repository():
         else:
             continue
         hits += [f"{path.relative_to(ROOT)}: {m.group(0)}" for m in _FORBIDDEN_TRACES.finditer(text)]
+        hits += [f"{path.relative_to(ROOT)}: {word}" for word in _forbidden_words(text)]
     assert not hits, "\n".join(hits[:20])
 
 

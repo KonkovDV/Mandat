@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/KonkovDV/Mandat/blob/main/docs/api/case-manifest.schema.json",
   "title": "Манифест кейса «Мандата» (case.json и тело POST /v1/cases)",
-  "description": "Контракт входа. Источник истины — src/mandat/intake/case_loader.py; tests/test_r11_manifest_schema.py сверяет схему и загрузчик. Документы в каталоге кейса задаются path, в API — content.",
+  "description": "Контракт входа. Источник истины — src/mandat/intake/case_loader.py; tests/test_manifest_schema.py сверяет схему и загрузчик. Документы в каталоге кейса задаются path, в API — content.",
   "type": "object",
   "required": ["operation", "organization"],
   "additionalProperties": false,

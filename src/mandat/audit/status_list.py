@@ -76,7 +76,7 @@ def status_max_age_days() -> float:
     return value
 
 
-# M-13: окно свежести по риску операции (дни). Итог = min(global, risk-tier) (G1).
+# Окно свежести по риску операции (дни). Итог = min(global, risk-tier).
 # В protected JSON ``MANDAT_STATUS_MAX_AGE_BY_RISK`` может только ужесточить default (G-A).
 # ``payment`` ≈ 1 час; архивная квитанция — до 7 дней.
 DEFAULT_STATUS_MAX_AGE_BY_RISK: dict[str, float] = {
@@ -136,10 +136,10 @@ def status_max_age_for(operation_risk: str | None = None) -> float:
     Карта ``operation_risk`` → дни (``DEFAULT_STATUS_MAX_AGE_BY_RISK`` /
     ``MANDAT_STATUS_MAX_AGE_BY_RISK``). В демо-режиме ``None``/пусто → ``default``.
     В protected (pilot/prod и любой неизвестный режим) ``None``/пусто — это «риск не указан» и он
-    трактуется как **самый строгий** (G-B), а не как 7 дней; явный ``default`` по-прежнему ``default``.
+    трактуется как **самый строгий**, а не как 7 дней; явный ``default`` по-прежнему ``default``.
     Неизвестный risk → **самое строгое** окно (минимум по карте).
 
-    Если задан ``MANDAT_STATUS_MAX_AGE_DAYS`` — берём ``min(global, risk)`` (G1):
+    Если задан ``MANDAT_STATUS_MAX_AGE_DAYS`` — берём ``min(global, risk)``:
     глобальный потолок не может ослабить payment до 7 дней.
     """
     mapping = _risk_age_mapping()
@@ -161,7 +161,7 @@ def _lock_path(directory: Path) -> Path:
     return directory / ".registry.lock"
 
 
-# Блокировка файла за одной парой функций (A4, #99): flock на POSIX, msvcrt.locking на Windows.
+# Блокировка файла за одной парой функций (#99): flock на POSIX, msvcrt.locking на Windows.
 if sys.platform == "win32":  # pragma: no cover — проверяется задачей CI windows
     import msvcrt
 
@@ -552,7 +552,7 @@ def check_status(
     список без отзыва считается действующим: демо можно смотреть и через месяц. В pilot, prod и любом
     защищённом режиме без ``now`` состояние — «свежесть не проверена», не «действует». Известные отзыв
     и приостановка сообщаются и без ``now``.
-    ``operation_risk`` задаёт окно через ``status_max_age_for`` (M-13).
+    ``operation_risk`` задаёт окно через ``status_max_age_for``.
     ``require_seen``: ``True`` — без ``seen`` fail-closed; ``None``/``False`` — watermark
     необязателен (квитанция / демо). Для допуска в pilot/prod см. ``authorize_operation``.
     """

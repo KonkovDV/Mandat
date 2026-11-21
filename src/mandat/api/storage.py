@@ -48,7 +48,7 @@ MAX_CLIENTS = 10_000
 
 
 class ReviewVersionConflict(RuntimeError):
-    """Состояние разбора уже записано с другой версией (M-09): запрос основан на устаревшем снимке."""
+    """Состояние разбора уже записано с другой версией: запрос основан на устаревшем снимке."""
 
     def __init__(self, case_id: str, expected: int, current: int) -> None:
         super().__init__(f"разбор {case_id}: ожидалась версия {expected}, сейчас {current}")
@@ -86,7 +86,7 @@ class Store(Protocol):
     def ping(self) -> None:
         """Проверка живости хранилища для /readyz; исключение значит «не готово»."""
 
-    # --- Двухфазная запись отчёта (M-10): stage → журнал → commit. GET видит только закоммиченное. ---
+    # --- Двухфазная запись отчёта: stage → журнал → commit. GET видит только закоммиченное. ---
     def stage(
         self,
         case_id: str,
@@ -105,7 +105,7 @@ class Store(Protocol):
         """Убрать ожидающий отчёт, если номер попытки совпал."""
 
     def erase(self, case_id: str) -> bool:
-        """Удалить отчёт кейса и его ожидающую запись (P4-13; 152-ФЗ, ст. 21). True — отчёт был."""
+        """Удалить отчёт кейса и его ожидающую запись (152-ФЗ, ст. 21). True — отчёт был."""
 
     def pending(self, case_id: str) -> Pending | None:
         """Ожидающая запись по кейсу или None."""
@@ -119,7 +119,7 @@ class Store(Protocol):
     def idem_get(self, owner: str, key: str) -> tuple[str, str] | None:
         """(case_id, отпечаток запроса) завершённого запроса с этим Idempotency-Key или None."""
 
-    # --- Состояние разбора (M-09): запись только по ожидаемой версии (CAS). ---
+    # --- Состояние разбора: запись только по ожидаемой версии (CAS). ---
     def review_get(self, case_id: str) -> tuple[dict[str, Any], int] | None:
         """(состояние разбора, версия) или None, если разбора нет."""
 
@@ -346,7 +346,7 @@ class SQLiteStore:
             CREATE TABLE IF NOT EXISTS watermarks (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
             """
         )
-        # Файлы до B6 (#160): у таблицы seen нет столбца value. Строки first_seen остаются со значением NULL.
+        # Файлы старого формата (#160): у таблицы seen нет столбца value. Строки first_seen остаются со значением NULL.
         columns = {row[1] for row in self._db().execute("PRAGMA table_info(seen)")}
         if "value" not in columns:
             self._db().execute("ALTER TABLE seen ADD COLUMN value TEXT")
@@ -360,7 +360,7 @@ class SQLiteStore:
             db = sqlite3.connect(self.path, timeout=10, isolation_level=None, check_same_thread=False)
             db.execute("PRAGMA journal_mode=WAL")
             db.execute("PRAGMA busy_timeout=10000")
-            # Удалённый отчёт с ПДн затирается нулями в файле базы, а не остаётся на свободных страницах (P4-13).
+            # Удалённый отчёт с ПДн затирается нулями в файле базы, а не остаётся на свободных страницах.
             db.execute("PRAGMA secure_delete=ON")
             self._local.db = db
         return db

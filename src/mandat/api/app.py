@@ -78,14 +78,14 @@ CARD_CSP = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none
 DEFAULT_CSP = (b"content-security-policy", b"default-src 'none'; frame-ancestors 'none'")
 
 
-# R2-API-3 (OWASP API8:2023, ASVS 5.0 V16): клиент получает общий текст и request_id, подробности — только
+# OWASP API8:2023, ASVS 5.0 V16: клиент получает общий текст и request_id, подробности — только
 # в журнале сервера, и без ПДн: значения полей из ошибок схемы не пишутся, длинные числа (ИНН, ОГРН,
 # СНИЛС, паспорт) и адреса почты маскируются.
 log = logging.getLogger("mandat.api")
 REQUEST_ID_HEADER = b"x-request-id"
 # Номер от пяти цифр — и сплошной, и по группам через пробел, дефис, тире, точку, косую черту или скобки:
 # карта «4111 1111 1111 1111», паспорт «45 06 123456», телефон «+7 (903) 123-45-67», СНИЛС «112-233-445 95».
-# Раньше маска ловила только сплошные цифры, и номер по группам уходил в журнал сервера как есть (P4-10).
+# Раньше маска ловила только сплошные цифры, и номер по группам уходил в журнал сервера как есть.
 # PCI DSS 4.0, требование 3.5.1: номер карты нечитаем везде, где хранится, в том числе в журналах. Дата и время
 # тоже попадают под маску: для журнала сервера это допустимая цена, дата рождения — тоже персональные данные.
 _DIGITS = re.compile(r"\+?\d(?:[ \t().\-\u2010-\u2015/]*\d){4,}")
@@ -107,7 +107,7 @@ def request_id(scope: MutableMapping[str, Any]) -> str:
 
 def problem(request: Request, status: int, detail: str, cause: str) -> JSONResponse:
     rid = request_id(request.scope)
-    # Путь задаёт клиент: кейс, названный по ИНН, иначе оставлял бы номер в журнале сервера (P6-03).
+    # Путь задаёт клиент: кейс, названный по ИНН, иначе оставлял бы номер в журнале сервера.
     path = scrub(request.url.path)
     log.warning("request_id=%s status=%s path=%s cause=%s", rid, status, path, scrub(cause))
     headers = {k.decode(): v.decode() for k, v in [*SECURITY_HEADERS, DEFAULT_CSP]}
@@ -116,7 +116,7 @@ def problem(request: Request, status: int, detail: str, cause: str) -> JSONRespo
 
 
 class AdmissionOperation(BaseModel):
-    """Запрос одной операции, к которому привязано удостоверение (M-04). ИНН представителя в журнал не пишется."""
+    """Запрос одной операции, к которому привязано удостоверение. ИНН представителя в журнал не пишется."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -139,7 +139,7 @@ class AdmissionBody(BaseModel):
     operation_risk: str | None = Field(default=None, max_length=32, description="уровень риска: payment, high, low…")
 
 
-# Основания удаления кейса (P4-13): закрытый список вместо свободного текста, чтобы в журнал не попали ПДн.
+# Основания удаления кейса: закрытый список вместо свободного текста, чтобы в журнал не попали ПДн.
 ERASE_REASONS = {
     "unlawful_processing": "152-ФЗ, ст. 21, ч. 3: обработка неправомерна; уничтожить не позднее 10 рабочих дней",
     "purpose_achieved": "152-ФЗ, ст. 21, ч. 4: цель обработки достигнута; уничтожить не позднее 30 дней",
@@ -163,7 +163,7 @@ class ReviewAction(BaseModel):
 
     expected_version: int = Field(ge=0)
     reason: str = Field(default="", max_length=4000)
-    # Только для действия require: специализация, без которой кейс не решить (M-09).
+    # Только для действия require: специализация, без которой кейс не решить.
     specialization: str | None = Field(default=None, max_length=64)
 
 
@@ -221,7 +221,7 @@ class Guard:
             await JSONResponse({"detail": detail}, status_code=status, headers=extra)(scope, receive, secured)
 
         if path in OPEN_PATHS and scope.get("method") not in {"GET", "HEAD"}:
-            # Открытые пути без токена и без лимита частоты отвечают только на GET: тело здесь не читается (P6-04).
+            # Открытые пути без токена и без лимита частоты отвечают только на GET: тело здесь не читается.
             await reply(405, "метод не поддерживается", {"Allow": "GET, HEAD"})
             return
         if path not in OPEN_PATHS:
@@ -338,7 +338,7 @@ def create_app(
         redoc_url=None,
     )
     check_sla()  # неверный MANDAT_REVIEW_SLA_HOURS не даёт стартовать
-    # Хранилище из окружения шифруется ключом MANDAT_STORE_KEY (P5-01); переданное явно — как есть.
+    # Хранилище из окружения шифруется ключом MANDAT_STORE_KEY; переданное явно — как есть.
     shared = store if store is not None else sealed(open_store())
     env_journal = os.environ.get("MANDAT_API_JOURNAL", "").strip()
     audit_log = journal_path if journal_path is not None else (Path(env_journal) if env_journal else None)
@@ -359,7 +359,7 @@ def create_app(
 
     @app.exception_handler(SealError)
     async def seal_error(request: Request, exc: SealError) -> JSONResponse:
-        # Запись хранилища подменена, переставлена или не зашифрована: данных из неё клиент не получает (P5-01).
+        # Запись хранилища подменена, переставлена или не зашифрована: данных из неё клиент не получает.
         return problem(request, 500, "запись хранилища не прошла проверку целостности", f"SealError: {exc}")
 
     @app.exception_handler(Exception)
@@ -384,7 +384,7 @@ def create_app(
         return principal
 
     def admitter(principal: Principal = Depends(auth)) -> Principal:
-        """Кто получает допуск операции (P6-05).
+        """Кто получает допуск операции.
 
         В pilot и prod — только ``dbo``: служебная учётная запись системы банка, которая проводит операцию.
         Сотрудник допуск к платежу не получает: разделение обязанностей и минимальные привилегии (приказ
@@ -442,7 +442,7 @@ def create_app(
         return False
 
     def reconcile_one(pend: Pending, *, force: bool = False) -> str:
-        """Свести ожидающую запись с журналом после сбоя (M-10).
+        """Свести ожидающую запись с журналом после сбоя.
 
         Запись журнала этой попытки есть → отчёт подтверждается (журнал — источник истины, клиент мог
         не получить 200). Записи нет → попытка отбрасывается: клиенту 200 не уходил. Свежие записи
@@ -509,7 +509,7 @@ def create_app(
                     raise HTTPException(422, "Idempotency-Key уже использован с другим запросом")
                 if shared.get(done[0]) is None:
                     raise HTTPException(409, "результат запроса с этим Idempotency-Key больше не хранится")
-                # Повтор снова отдаёт отчёт с ПДн: это чтение, как GET, с проверкой видимости и записью (P6-02).
+                # Повтор снова отдаёт отчёт с ПДн: это чтение, как GET, с проверкой видимости и записью.
                 return read_logged(done[0], principal, "read_case", replay=True)
             return _create(manifest, resolved, replace, principal, idem)
         finally:
@@ -564,7 +564,7 @@ def create_app(
             report = {**report, "client_case_id": str(client_ref)}
         if audit_log is None and protected():
             raise HTTPException(503, "журнал аудита не настроен: задайте MANDAT_API_JOURNAL")
-        # Порядок (M-10): stage в хранилище → запись журнала → commit. Отчёт виден (GET) и 200 уходит только после
+        # Порядок: stage в хранилище → запись журнала → commit. Отчёт виден (GET) и 200 уходит только после
         # commit. Сбой между шагами оставляет «ожидающую» запись, которую сверка (reconcile) подтверждает, если
         # запись журнала этой попытки есть, и отбрасывает, если её нет. Это не распределённая транзакция и не
         # exactly-once: журнал и хранилище остаются двумя системами, а повтор без Idempotency-Key после
@@ -605,7 +605,7 @@ def create_app(
         if not committed:
             raise HTTPException(409, "запись вытеснена другой попыткой: повторите запрос")
         # Кейс без автоматического решения сразу встаёт в очередь разбора. При replace=true разбор начинается
-        # заново по новому отчёту (M-09): прежний разбор уходит в «superseded» и в журнал (review_reset).
+        # заново по новому отчёту: прежний разбор уходит в «superseded» и в журнал (review_reset).
         # Сбой записи не отменяет кейс: разбор создастся при первом действии, но до того кейса нет в очереди,
         # поэтому сбой пишется в журнал сервера.
         try:
@@ -623,7 +623,7 @@ def create_app(
             return
         previous, version = stored
         if previous.get("report_hash") == fresh["report_hash"] and not previous.get("erased"):
-            return  # тот же отчёт: разбор продолжается; после удаления кейса (P4-13) разбор начинается заново
+            return  # тот же отчёт: разбор продолжается; после удаления кейса разбор начинается заново
         fresh = review_api.reset(fresh, previous, version)
         if audit_log is not None:
             journal.append(
@@ -643,7 +643,7 @@ def create_app(
         shared.review_put(case_id, fresh, version)
 
     def close_review_for_erase(case_id: str, reason: str) -> None:
-        """Разбор удалённого кейса закрывается без истории: в ней бывают слова сотрудников о человеке (P4-13).
+        """Разбор удалённого кейса закрывается без истории: в ней бывают слова сотрудников о человеке.
 
         Версия продолжает расти, поэтому решения по прежним версиям не спутать с новыми, если кейс с тем же
         ``case_id`` загрузят снова: ``seed_review`` тогда начнёт разбор заново.
@@ -666,14 +666,14 @@ def create_app(
                     raise
 
     def read_logged(case_id: str, principal: Principal, action: str, *, replay: bool = False) -> dict[str, Any]:
-        """Отчёт кейса для чтения; чтение пишется в журнал аудита (P4-11).
+        """Отчёт кейса для чтения; чтение пишется в журнал аудита.
 
         В отчёте ФИО, ИНН и СНИЛС людей, поэтому кто, когда и какой кейс открыл, — событие безопасности, как
         создание кейса и допуск: 152-ФЗ, ст. 19, ч. 2; приказ ФСТЭК № 21, меры группы РСБ; ГОСТ Р 57580.1.
         Журнал недоступен — отчёт не выдаётся: чтение ПДн без записи о нём недоказуемо. Без журнала отчёт
         выдаётся только на стенде; в защищённом режиме — 503, как и при создании кейса. В записи — только
         идентификатор кейса, роль и хеш отчёта, без самих данных. ``replay`` — отчёт отдаёт повтор запроса
-        по ``Idempotency-Key`` (P6-02): это тоже чтение, и в записи это видно.
+        по ``Idempotency-Key``: это тоже чтение, и в записи это видно.
         """
         report = visible(case_id, principal)
         if audit_log is None:
@@ -710,7 +710,7 @@ def create_app(
 
     @app.post("/v1/cases/{case_id}/erase", dependencies=[Depends(strict_json_object)])
     def erase_case(case_id: str, body: EraseBody, principal: Principal = Depends(writer)) -> dict[str, Any]:
-        """Удалить отчёт кейса с ПДн по основанию из 152-ФЗ (P4-13). Только администратор.
+        """Удалить отчёт кейса с ПДн по основанию из 152-ФЗ. Только администратор.
 
         Порядок: запись в журнал, закрытие разбора без истории, удаление отчёта. Сбой журнала — ничего не удалено.
         В журнале остаются кейс, хеш отчёта, основание, категории ПДн и система, без самих данных: это выгрузка из
@@ -878,7 +878,7 @@ def create_app(
             raise HTTPException(503, "в защищённом режиме допуск требует общего хранилища и журнала аудита")
         fields = body.request
         if principal.audiences and fields.audience not in principal.audiences:
-            # Учётная запись одного канала не расходует удостоверения другого; nonce не тронут (P6-05).
+            # Учётная запись одного канала не расходует удостоверения другого; nonce не тронут.
             raise ApiProblem(
                 403,
                 "учётной записи не разрешён этот получатель удостоверения (audience)",
@@ -940,7 +940,7 @@ def create_app(
                 )
             except (ValueError, OSError, journal.JournalKeyMissing) as exc:
                 # Допуск без записи в журнал не выдаётся: в защищённом режиме решение должно быть доказуемо.
-                # nonce, который занял этот допуск, освобождается: иначе повтор получил бы «уже допущен» (B6).
+                # nonce, который занял этот допуск, освобождается: иначе повтор получил бы «уже допущен».
                 cause = f"journal: {type(exc).__name__}"
                 if allowed:
                     try:

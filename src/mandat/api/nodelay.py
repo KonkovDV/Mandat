@@ -1,4 +1,4 @@
-"""HTTP-протокол uvicorn с TCP_NODELAY на каждом соединении (R2-PERF-3).
+"""HTTP-протокол uvicorn с TCP_NODELAY на каждом соединении.
 
 С ``--workers N`` uvicorn сам создаёт слушающий сокет с ``proto=0``, и asyncio не включает на
 принятых соединениях TCP_NODELAY (``base_events._set_nodelay`` проверяет ``proto == IPPROTO_TCP``).

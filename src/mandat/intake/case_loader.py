@@ -35,7 +35,7 @@ class CaseError(ValueError):
 
 
 # Поля манифеста по docs/api/case-manifest.schema.json. Совпадение списков со схемой держит
-# tests/test_b5_manifest_unknown_fields.py: правка одного без другого валит тест.
+# tests/test_manifest_unknown_fields.py: правка одного без другого валит тест.
 MANIFEST_FIELDS = frozenset(
     {
         "case_id",
@@ -318,7 +318,7 @@ def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, 
 
 
 def _read_regular(target: Path, limit: int) -> bytes:
-    """Чтение обычного файла без гонки «проверил — открыл» (S-4, CWE-367).
+    """Чтение обычного файла без гонки «проверил — открыл» (CWE-367).
 
     Файл открывается с ``O_NOFOLLOW`` (подменённая после проверки символическая ссылка не открывается)
     и ``O_NONBLOCK`` (FIFO не вешает процесс на открытии). Тип и размер проверяются ``fstat`` по уже

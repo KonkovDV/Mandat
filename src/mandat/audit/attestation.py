@@ -91,7 +91,7 @@ def _read_signing_key(path: Path) -> Ed25519PrivateKey:
 
 
 def load_or_create_key(path: Path) -> Ed25519PrivateKey:
-    """Открытый PEM: только demo/dev/test. В защищённом режиме — ``signing.signer_from_env`` (RT-05)."""
+    """Открытый PEM: только demo/dev/test. В защищённом режиме — ``signing.signer_from_env``."""
     from mandat.services.env_policy import protected
 
     if protected():
@@ -175,7 +175,7 @@ def issue(
 
     ``audience`` — система банка, для которой выпущено удостоверение; ``nonce`` — одноразовый номер запроса
     операции. Вместе с суммой и токеном представителя они привязывают удостоверение к одному запросу
-    (``authorize_operation`` с ``OperationRequest``, M-04).
+    (``authorize_operation`` с ``OperationRequest``).
     """
     moment = now or datetime.now(UTC)
     if moment.tzinfo is None:
@@ -272,7 +272,7 @@ def _object(credential: dict[str, Any], name: str) -> dict[str, Any]:
 
     Удостоверение приходит от системы банка как недоверенный ввод. ``proof`` или ``credentialSubject``
     другого типа раньше роняли проверку на ``.get``, и API отвечало 503 «хранилище недоступно» вместо
-    отказа (P4-02). Пустой объект даёт обычные причины отказа: нет подписи, нет вердикта.
+    отказа. Пустой объект даёт обычные причины отказа: нет подписи, нет вердикта.
     """
     value = credential.get(name)
     return value if isinstance(value, dict) else {}
@@ -404,7 +404,7 @@ NONCE_USED = "nonce уже использован: повтор запроса"
 
 @dataclass(frozen=True)
 class OperationRequest:
-    """Запрос операции, к которому должно быть привязано удостоверение (M-04)."""
+    """Запрос операции, к которому должно быть привязано удостоверение."""
 
     operation: str
     amount_rub: int | None
@@ -553,9 +553,9 @@ def authorize_operation(
     """Допуск операции по удостоверению: подлинность + статус + вердикт confirmed + привязка к запросу.
 
     Успех ``validate_attestation`` при вердикте refuted/needs_review недостаточен для операции.
-    В pilot/prod обязателен ``seen`` (high-watermark списков) и учитывается ``operation_risk`` (M-13).
+    В pilot/prod обязателен ``seen`` (high-watermark списков) и учитывается ``operation_risk``.
     В pilot/prod обязателен и ``request``: операция, сумма, представитель, ``audience`` и одноразовый ``nonce``
-    сверяются с удостоверением (M-04); ``consume_nonce(nonce)`` возвращает True только при первом использовании.
+    сверяются с удостоверением; ``consume_nonce(nonce)`` возвращает True только при первом использовании.
     На стенде без ``request`` привязка не проверяется.
     """
     from mandat.services.env_policy import protected
@@ -585,7 +585,7 @@ def authorize_operation(
         problems.append(f"вердикт {verdict!r} не разрешает операцию: нужен confirmed")
     if request is None:
         if protected():
-            problems.append("нет запроса операции: в защищённом режиме удостоверение привязывается к запросу (M-04)")
+            problems.append("нет запроса операции: в защищённом режиме удостоверение привязывается к запросу")
         return problems
     if problems:
         return problems  # nonce не расходуется на удостоверении, которое и так не проходит

@@ -84,7 +84,7 @@ jobs:
       # Вся цепочка одной командой: допуск, повтор, завышенная сумма, захват, отказ до платежа, доказательство журнала.
       - run: mandat showcase --out var/showcase
 
-  # Тесты хранилищ и CAS разбора (M-09b) на настоящем Redis, а не на fakeredis. Образ закреплён по digest.
+  # Тесты хранилищ и CAS разбора на настоящем Redis, а не на fakeredis. Образ закреплён по digest.
   redis:
     runs-on: ubuntu-latest
     permissions:
@@ -112,11 +112,11 @@ jobs:
       - run: python -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
       - run: python -m pip install --no-deps --no-build-isolation -e .
       - name: store tests against real Redis
-        run: python -m pytest tests/test_storage.py tests/test_m09b_review_store.py tests/test_m09c_review_api.py --junitxml=var/junit-redis.xml
+        run: python -m pytest tests/test_storage.py tests/test_review_store.py tests/test_review_api.py --junitxml=var/junit-redis.xml
       - name: no skipped tests
         run: python scripts/check_no_skips.py var/junit-redis.xml
 
-  # Полный pytest и на Windows (A4, #99): владелец работает на Windows, локальная проверка должна видеть то же,
+  # Полный pytest и на Windows (#99): владелец работает на Windows, локальная проверка должна видеть то же,
   # что CI. check_no_skips здесь не нужен: POSIX-тесты (O_NOFOLLOW, FIFO, права 0600) на Windows пропускаются законно.
   windows:
     runs-on: windows-latest
@@ -175,7 +175,7 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
 
-  # M-03: пилотный compose-оверлей поднимается с постоянным томом, healthcheck по /readyz, данные переживают рестарт.
+  # Пилотный compose-оверлей поднимается с постоянным томом, healthcheck по /readyz, данные переживают рестарт.
   # Это smoke-проверка конфигурации, а не подтверждение готовности к пилоту.
   compose-pilot:
     runs-on: ubuntu-latest
