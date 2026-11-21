@@ -3,7 +3,6 @@
 //   node build_deck.js ../../evidence.json ../slides/Mandat_VTB.pptx
 //   python finish_deck.py ../slides/Mandat_VTB.pptx      # цвета темы, язык, alt-текст, метаданные
 //
-// Бриф колоды — BRIEF.md: драматургия, дизайн-система, правила данных и чек-лист приёмки.
 // Оформление — палитра ВТБ и шрифт Golos Text (ParaType, OFL): фирменный VTB Group UI лицензирован
 // только для Группы ВТБ. Графика рисуется в graphics.js. Числа рынка и эффекта — из открытых источников
 // и допущений команды; каждое записано в CLAIMS_REGISTRY.md с источником или командой воспроизведения.
@@ -156,7 +155,7 @@ const ST = {
   nd: { label: "НЕДОСТАТОЧНО ДАННЫХ", base: HEX.accent6, tint: "E8ECF3", text: "3B4864", icon: "CircleHelp" },
 };
 
-// ---------- Русская типографика: неразрывные пробелы (BRIEF.md, раздел 6) ----------
+// ---------- Русская типографика: неразрывные пробелы ----------
 const NB = " ";
 const LETTER = "А-Яа-яЁёA-Za-z";
 function typo(input) {
