@@ -1,0 +1,19 @@
+# Поиск секретов по всей истории git (задача CI secret-scan). Правила gitleaks по умолчанию плюс точечные исключения:
+# каждое исключение — не секрет, и объяснено ниже. Новое исключение добавляется только с таким же объяснением.
+title = "Mandat"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Аннотации типов вида «key: Ed25519PrivateKey | Signer»: имя класса, а не значение ключа. Исключение действует на само совпадение, а не на строку: секрет, записанный в той же строке, проверка ловит"
+regexTarget = "match"
+regexes = ['''key: Ed25519(Private|Public)Key''']
+
+[[allowlists]]
+description = "Опубликованный тестовый вектор W3C vc-di-eddsa (eddsa-jcs-2022, коммит 13e70705): ключ из спецификации"
+paths = ['''^tests/vectors/eddsa-jcs-2022/keyPair\.json$''']
+
+[[allowlists]]
+description = "Пример из спецификации Standard Webhooks (тест test_sign официальной библиотеки): секрет и id сообщения"
+regexes = ['''whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw''', '''msg_p5jXN8AQM9LWM0D4loKWxJek''']

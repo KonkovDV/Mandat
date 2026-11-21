@@ -1,0 +1,44 @@
+services:
+  mandat:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      # Нужен хотя бы один из двух. Если нет ни того ни другого, mandat serve сразу выходит с ошибкой.
+      MANDAT_API_TOKEN: ${MANDAT_API_TOKEN:-}
+      MANDAT_API_USERS: ${MANDAT_API_USERS:-}
+      MANDAT_API_DOCS: ${MANDAT_API_DOCS:-}
+      MANDAT_API_RATE_PER_MIN: ${MANDAT_API_RATE_PER_MIN:-120}
+      MANDAT_API_STORE: ${MANDAT_API_STORE:-}
+      MANDAT_WEBHOOK_SECRET: ${MANDAT_WEBHOOK_SECRET:-}
+      # Режим задаётся явно: demo/dev/test для стенда, pilot/prod для защищённого контура.
+      # В pilot и prod mandat serve не стартует без MANDAT_JOURNAL_KEY, MANDAT_PII_KEY и MANDAT_STORE_KEY.
+      MANDAT_ENV: ${MANDAT_ENV:?задайте MANDAT_ENV в .env (demo, dev, test, pilot или prod)}
+      MANDAT_JOURNAL_KEY: ${MANDAT_JOURNAL_KEY:-}
+      MANDAT_PII_KEY: ${MANDAT_PII_KEY:-}
+      MANDAT_STORE_KEY: ${MANDAT_STORE_KEY:-}
+      MANDAT_STORE_KEY_PREVIOUS: ${MANDAT_STORE_KEY_PREVIOUS:-}
+      MANDAT_APPROVALS: ${MANDAT_APPROVALS:-}
+      MANDAT_APPROVAL_KEYS: ${MANDAT_APPROVAL_KEYS:-}
+      MANDAT_ATTESTATION_KEYRING: ${MANDAT_ATTESTATION_KEYRING:-}
+      MANDAT_STATUS_DIR: ${MANDAT_STATUS_DIR:-}
+      MANDAT_REPRESENTATIVE_KEY_FILE: ${MANDAT_REPRESENTATIVE_KEY_FILE:-}
+      MANDAT_SIGNER: ${MANDAT_SIGNER:-file}
+      MANDAT_SIGNING_KEY_PASSPHRASE: ${MANDAT_SIGNING_KEY_PASSPHRASE:-}
+      MANDAT_LLM_BASE_URL: ${MANDAT_LLM_BASE_URL:-}
+      MANDAT_LLM_MODEL: ${MANDAT_LLM_MODEL:-local-model}
+      MANDAT_LLM_API_KEY: ${MANDAT_LLM_API_KEY:-}
+      MANDAT_LLM_ALLOWED_HOSTS: ${MANDAT_LLM_ALLOWED_HOSTS:-127.0.0.1,localhost}
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/var
+    security_opt:
+      - no-new-privileges:true
+    # CIS Docker Benchmark 5.3, 5.10, 5.28: без capabilities, с потолком памяти, CPU и числа процессов.
+    cap_drop:
+      - ALL
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 256
+    restart: unless-stopped

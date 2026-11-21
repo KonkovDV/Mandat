@@ -1,0 +1,382 @@
+/* Оформление документов пакета аналитики: A4, Golos Text, палитра колоды (submission/deck/theme.json).
+   Шрифты подключает build_docs.py (@font-face с путём к submission/deck/fonts), колонтитул — тоже он:
+   в нём название документа и версия. */
+
+:root {
+  --navy: #0A2973;
+  --cobalt: #004CBC;
+  --sky: #00AAFF;
+  --text: #0B1F44;
+  --text2: #42557A;
+  --muted: #5E6D8C;
+  --soft: #F3F6FB;
+  --line: #DCE4F0;
+  --blue: #E6F0FF;
+  --blueline: #C9DCFA;
+  --zebra: #F8FAFD;
+  --ok: #0B6B44;
+  --ok-t: #E2F4EB;
+  --rv: #7A4E00;
+  --rv-t: #FFF1D4;
+  --no: #A3161B;
+  --no-t: #FDE6E7;
+  --nd: #3B4864;
+  --nd-t: #E8ECF3;
+}
+
+@page {
+  size: A4;
+  margin: 17mm 17mm 19mm 17mm;
+}
+
+@page cover {
+  margin: 0;
+  @bottom-left { content: none; }
+  @bottom-right { content: none; }
+}
+
+html {
+  font-family: "Golos Text", Arial, sans-serif;
+  font-size: 9.7pt;
+  line-height: 1.46;
+  color: var(--text);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  font-kerning: normal;
+}
+
+body { margin: 0; }
+
+/* ---------- обложка ---------- */
+
+.cover {
+  page: cover;
+  position: relative;
+  width: 210mm;
+  height: 296.5mm;
+  overflow: hidden;
+  color: #fff;
+  background: var(--navy);
+  break-after: page;
+}
+
+.cover .bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cover .graph {
+  position: absolute;
+  right: -14mm;
+  top: 64mm;
+  width: 124mm;
+  opacity: 0.9;
+}
+
+.cover .brand {
+  position: absolute;
+  left: 20mm;
+  top: 20mm;
+  display: flex;
+  align-items: center;
+  gap: 4mm;
+  font-size: 15pt;
+  font-weight: 600;
+  letter-spacing: 0.2pt;
+}
+
+.cover .brand img { width: 13mm; }
+
+.cover .kicker {
+  position: absolute;
+  left: 20mm;
+  top: 104mm;
+  font-size: 10pt;
+  font-weight: 600;
+  letter-spacing: 1.2pt;
+  text-transform: uppercase;
+  color: #9FD8FF;
+}
+
+.cover .title {
+  position: absolute;
+  left: 20mm;
+  top: 113mm;
+  width: 120mm;
+  font-size: 34pt;
+  line-height: 1.08;
+  font-weight: 600;
+}
+
+.cover .subtitle {
+  position: absolute;
+  left: 20mm;
+  top: 165mm;
+  width: 112mm;
+  font-size: 12.5pt;
+  line-height: 1.4;
+  color: #DCEBFF;
+}
+
+.cover .meta {
+  position: absolute;
+  left: 20mm;
+  right: 20mm;
+  bottom: 18mm;
+  display: grid;
+  grid-template-columns: 1.1fr 1.4fr 1fr;
+  gap: 6mm;
+  font-size: 8.6pt;
+  line-height: 1.4;
+  color: #DCEBFF;
+  border-top: 0.3mm solid rgba(255, 255, 255, 0.28);
+  padding-top: 4mm;
+}
+
+.cover .meta b {
+  display: block;
+  color: #fff;
+  font-weight: 600;
+  margin-bottom: 0.6mm;
+}
+
+/* ---------- текст ---------- */
+
+h1 {
+  font-size: 18pt;
+  line-height: 1.18;
+  font-weight: 600;
+  color: var(--navy);
+  margin: 9mm 0 3.6mm;
+  break-after: avoid;
+}
+
+main > h1:first-child, .toc + h1 { margin-top: 0; }
+.pb { break-before: page; }
+h1.pb { margin-top: 0; }
+
+h2 {
+  font-size: 12.6pt;
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--navy);
+  margin: 6.5mm 0 2.4mm;
+  break-after: avoid;
+}
+
+h3 {
+  font-size: 10.4pt;
+  font-weight: 600;
+  color: var(--cobalt);
+  margin: 4.5mm 0 1.6mm;
+  break-after: avoid;
+}
+
+p { margin: 0 0 2.4mm; orphans: 3; widows: 3; }
+ul, ol { margin: 0 0 2.6mm; padding-left: 5mm; }
+li { margin: 0 0 1.1mm; }
+li > p { margin: 0; }
+strong { font-weight: 600; }
+em { font-style: normal; color: var(--text2); }
+a { color: var(--cobalt); text-decoration: none; }
+hr { border: 0; border-top: 0.3mm solid var(--line); margin: 5mm 0; }
+
+code {
+  font-family: "DejaVu Sans Mono", "Liberation Mono", monospace;
+  font-size: 8.2pt;
+  background: var(--soft);
+  border-radius: 1mm;
+  padding: 0.1mm 1mm;
+}
+
+pre {
+  font-family: "DejaVu Sans Mono", "Liberation Mono", monospace;
+  font-size: 8pt;
+  line-height: 1.45;
+  background: var(--soft);
+  border-radius: 2mm;
+  padding: 3mm 4mm;
+  white-space: pre-wrap;
+  break-inside: avoid;
+  margin: 1mm 0 3.5mm;
+}
+
+pre code { background: none; padding: 0; font-size: inherit; }
+
+.lead { font-size: 11.6pt; line-height: 1.45; color: var(--text); margin-bottom: 4mm; }
+
+/* ---------- оглавление ---------- */
+
+.toc { margin: 0 0 6mm; break-inside: avoid; }
+.toc h2 { margin-top: 0; }
+.toc ul { list-style: none; padding: 0; margin: 0; columns: 2; column-gap: 8mm; }
+.toc ul ul { display: none; }
+.toc li { margin: 0 0 1.4mm; break-inside: avoid; }
+.toc a { color: var(--text); }
+.toc a .n { color: var(--cobalt); font-weight: 600; display: inline-block; min-width: 6mm; }
+
+/* ---------- блоки ---------- */
+
+.main {
+  background: var(--blue);
+  border-radius: 3mm;
+  padding: 4mm 5.5mm 2.6mm;
+  margin: 0 0 5mm;
+  break-inside: avoid;
+}
+
+.main > p:first-child {
+  font-size: 8.4pt;
+  font-weight: 600;
+  letter-spacing: 1pt;
+  text-transform: uppercase;
+  color: var(--cobalt);
+  margin-bottom: 2mm;
+}
+
+.main ul { padding-left: 4.6mm; }
+.main li { margin-bottom: 1.6mm; }
+
+.conclusion {
+  background: var(--navy);
+  color: #fff;
+  border-radius: 3mm;
+  padding: 3.6mm 5.5mm;
+  margin: 2mm 0 5mm;
+  break-inside: avoid;
+  font-size: 10.4pt;
+  line-height: 1.42;
+}
+
+.conclusion p { margin: 0; }
+.conclusion strong { color: #fff; }
+.conclusion a { color: #9FD8FF; }
+
+.box {
+  background: var(--soft);
+  border-radius: 3mm;
+  padding: 3.6mm 5mm 1.6mm;
+  margin: 1mm 0 4.5mm;
+  break-inside: avoid;
+}
+
+.box > p:first-child { font-weight: 600; color: var(--navy); margin-bottom: 1.6mm; }
+
+.src, .note {
+  font-size: 7.6pt;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+div.src { margin: -2mm 0 4mm; }
+div.src p { margin: 0 0 0.8mm; }
+
+.cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+.cols2 > div > :first-child { margin-top: 0; }
+
+/* ---------- плитки чисел ---------- */
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3mm;
+  margin: 1mm 0 5mm;
+  break-inside: avoid;
+}
+
+.kpis.k3 { grid-template-columns: repeat(3, 1fr); }
+.kpis.k2 { grid-template-columns: repeat(2, 1fr); }
+
+.kpi {
+  background: var(--soft);
+  border-radius: 2.5mm;
+  padding: 3.2mm 3.6mm 3mm;
+}
+
+.kpi .v {
+  font-size: 19pt;
+  line-height: 1.1;
+  font-weight: 600;
+  color: var(--navy);
+  margin-bottom: 1.4mm;
+  white-space: nowrap;
+}
+
+.kpi .v small { font-size: 10pt; font-weight: 600; color: var(--navy); }
+.kpi .l { font-size: 8.4pt; line-height: 1.35; color: var(--text); }
+.kpi .s { font-size: 7pt; line-height: 1.3; color: var(--muted); margin-top: 1.2mm; }
+
+/* ---------- метки статуса чисел ---------- */
+
+.tag {
+  display: inline-block;
+  font-size: 7pt;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.9mm 1.6mm;
+  border-radius: 1.2mm;
+  white-space: nowrap;
+  vertical-align: 0.3mm;
+}
+
+.tag.fact { background: var(--ok-t); color: var(--ok); }
+.tag.sec { background: var(--blue); color: var(--cobalt); }
+.tag.asm { background: var(--rv-t); color: var(--rv); }
+.tag.hyp { background: var(--nd-t); color: var(--nd); }
+.tag.repo { background: var(--navy); color: #fff; }
+
+/* ---------- таблицы ---------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1mm 0 3.6mm;
+  font-size: 8.3pt;
+  line-height: 1.36;
+  font-variant-numeric: tabular-nums;
+}
+
+table.keep { break-inside: avoid; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+
+th {
+  background: var(--navy);
+  color: #fff;
+  font-weight: 600;
+  text-align: left;
+  padding: 1.6mm 2mm;
+  vertical-align: bottom;
+}
+
+td {
+  padding: 1.35mm 2mm;
+  border-bottom: 0.25mm solid var(--line);
+  vertical-align: top;
+}
+
+tbody tr:nth-child(even) td { background: var(--zebra); }
+td strong { color: var(--navy); }
+table caption { display: none; }
+
+/* ---------- графики ---------- */
+
+figure {
+  margin: 2mm 0 4.5mm;
+  break-inside: avoid;
+}
+
+figure svg.chart { display: block; width: 100%; height: auto; }
+
+figcaption { margin-bottom: 2.4mm; }
+figcaption .t { display: block; font-weight: 600; color: var(--navy); font-size: 10pt; }
+figcaption .d { display: block; font-size: 8.3pt; color: var(--text2); margin-top: 0.4mm; }
+figure .src { margin-top: 1.6mm; }
+
+/* ---------- источники в конце документа ---------- */
+
+.sources table { font-size: 7.6pt; }
+.sources td:first-child { white-space: nowrap; font-weight: 600; color: var(--navy); }
