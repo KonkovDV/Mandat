@@ -1,4 +1,4 @@
-"""Регрессии red-team 14.10.2026 (docs/audit/REDTEAM-2026-10-14.md)."""
+"""Регрессии red-team 14.10.2026."""
 
 from __future__ import annotations
 

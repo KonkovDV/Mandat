@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="$csp">
 <title>Мандат — проверка полномочий представителя компании</title>
-<meta name="description" content="Можно ли этому человеку провести эту операцию компании сегодня. МЧД, выписка ЕГРЮЛ и устав сходятся в одну цепочку; $rules&nbsp;$rules_word показывают норму и поле документа; сомнение не становится «да».">
+<meta name="description" content="Можно ли этому человеку провести эту операцию компании сегодня. МЧД, выписка ЕГРЮЛ и устав сходятся в одну цепочку; $rules&nbsp;$rules_word показывают норму и поле документа; если данных не хватает, «да» не будет.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0b1426" media="(prefers-color-scheme: dark)">
@@ -13,150 +14,195 @@
 <meta property="og:locale" content="ru_RU">
 <meta property="og:site_name" content="Мандат">
 <meta property="og:title" content="Мандат — можно ли этому человеку провести эту операцию компании сегодня?">
-<meta property="og:description" content="МЧД, выписка ЕГРЮЛ и устав сходятся в одну цепочку полномочий. Один ответ с доказательством: норма, поле документа, дата.">
+<meta property="og:description" content="МЧД, выписка ЕГРЮЛ и устав сходятся в одну цепочку полномочий. Ответ с доказательством: норма, поле документа, дата.">
 <meta property="og:url" content="$site_url">
 <meta property="og:image" content="${site_url}og.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Мандат: цепочка полномочий компании и вердикт проверки">
 <meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="$site_url">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="preload" href="assets/fonts/GolosText-Regular.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="assets/fonts/GolosText-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/Manrope-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/CormorantGaramond-SemiBoldItalic-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
+<script src="js/theme.js"></script>
+<script type="module" src="js/scrub.js"></script>
 </head>
 <body>
-<a class="skip" href="#main">К содержанию</a>
-<header class="top">
-  <div class="wrap bar">
-    <a class="brand" href="#top" aria-label="Мандат — в начало страницы"><img src="favicon.svg" alt="" width="28" height="28"> Мандат</a>
-    <nav aria-label="Разделы">
-      <a href="#sprint">Спринт 2</a>
-      <a href="#how">Как работает</a>
-      <a href="#value">Ценность</a>
-      <a href="#proof">Доказательства</a>
-      <a href="#data">Защита данных</a>
-      <a href="#pilot">Пилот</a>
-      <a href="#law">Закон завтра</a>
-      <a href="#demo">Демо</a>
-    </nav>
-  </div>
-</header>
+$header
 
 <main id="main">
-<section class="hero" id="top">
+<section class="hero">
   <div class="wrap hero-grid">
     <div class="hero-copy">
-      <p class="kicker">Трек ВТБ «Финтех без границ» · спринт 2</p>
-      <h1>Можно ли этому человеку провести эту операцию компании сегодня?</h1>
-      <p class="lead">«Мандат» сводит машиночитаемую доверенность, выписку ЕГРЮЛ и устав в одну цепочку полномочий и даёт один ответ с доказательством: норма, поле документа, дата. $rules&nbsp;$rules_word, четыре вердикта, и сомнение никогда не становится «да».</p>
+      <p class="kicker">Трек ВТБ «Финтех без границ» · полуфинал</p>
+      <h1>Можно ли этому человеку провести эту операцию компании <em class="serif">сегодня?</em></h1>
+      <p class="lead">Представитель приносит в банк машиночитаемую доверенность. «Мандат» сводит её с выпиской ЕГРЮЛ и уставом в одну цепочку полномочий на дату операции и отвечает с доказательством: поле документа, запись реестра, статья закона. Если данных не хватает, «да» не будет.</p>
       <p class="cta">
-        <a class="btn primary" href="reports/05_director_changed.html">Открыть отчёт по кейсу</a>
-        <a class="btn" href="materials/Mandat_VTB.pdf">Презентация, PDF</a>
-        <a class="btn" href="$repo">Код на GitHub</a>
+        <a class="btn primary" href="cases.html">Разобрать кейс</a>
+        <a class="btn" href="showcase.html">Захват по шагам</a>
+        <a class="btn" href="pitch.html">Слайды</a>
       </p>
     </div>
-    <figure class="chain" aria-labelledby="chain-caption">
+    <figure class="hero-art">
+      <picture class="anna">
+        <img src="img/anna-hero-480.webp" srcset="img/anna-hero-480.webp 480w, img/anna-hero-960.webp 960w" sizes="(max-width: 860px) min(74vw, 340px), 340px" width="480" height="720" alt="Анна, амбассадор «Мандата», в тёмно-синем костюме" fetchpriority="high">
+      </picture>
+      <div class="chain">
       <svg viewBox="0 0 360 452" role="img" aria-labelledby="chain-caption">
-        <defs>
-          <linearGradient id="g-ok" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#1fb57a"/><stop offset="1" stop-color="#1a9f68"/></linearGradient>
-        </defs>
-        <g class="link" style="--i:1"><path d="M180 82v34"/></g>
-        <g class="link" style="--i:2"><path d="M180 176v34"/></g>
-        <g class="link" style="--i:3"><path d="M180 270v34"/></g>
-        <g class="link" style="--i:4"><path d="M180 364v30"/></g>
-        <g class="node" style="--i:0"><rect x="22" y="22" width="316" height="60" rx="16"/><text x="44" y="48" class="t1">Компания</text><text x="44" y="68" class="t2">ИНН и сведения ЕГРЮЛ на дату операции</text></g>
-        <g class="node" style="--i:1"><rect x="22" y="116" width="316" height="60" rx="16"/><text x="44" y="142" class="t1">Руководитель</text><text x="44" y="162" class="t2">по ЕГРЮЛ: действует без доверенности</text></g>
-        <g class="node" style="--i:2"><rect x="22" y="210" width="316" height="60" rx="16"/><text x="44" y="236" class="t1">Доверенность</text><text x="44" y="256" class="t2">реестр ФНС, срок, полномочие на операцию</text></g>
-        <g class="node" style="--i:3"><rect x="22" y="304" width="316" height="60" rx="16"/><text x="44" y="330" class="t1">Передоверие</text><text x="44" y="350" class="t2">разрешено и не шире исходной МЧД</text></g>
-        <g class="node verdict" style="--i:4"><rect x="22" y="394" width="316" height="52" rx="26" fill="url(#g-ok)"/><path class="tick" d="M48 420l8 8 16-17"/><text x="86" y="426" class="t1">Подтверждено на дату</text></g>
+        <g class="link d1"><path d="M180 82v34"/></g>
+        <g class="link d2"><path d="M180 176v34"/></g>
+        <g class="link d3"><path d="M180 270v34"/></g>
+        <g class="link d4"><path d="M180 364v30"/></g>
+        <g class="node d0"><rect x="22" y="22" width="316" height="60" rx="16"/><text x="44" y="48" class="t1">Компания</text><text x="44" y="68" class="t2">ИНН и сведения ЕГРЮЛ на дату операции</text></g>
+        <g class="node d1"><rect x="22" y="116" width="316" height="60" rx="16"/><text x="44" y="142" class="t1">Руководитель</text><text x="44" y="162" class="t2">по ЕГРЮЛ: действует без доверенности</text></g>
+        <g class="node d2"><rect x="22" y="210" width="316" height="60" rx="16"/><text x="44" y="236" class="t1">Доверенность</text><text x="44" y="256" class="t2">реестр ФНС, срок, полномочие на операцию</text></g>
+        <g class="node d3"><rect x="22" y="304" width="316" height="60" rx="16"/><text x="44" y="330" class="t1">Передоверие</text><text x="44" y="350" class="t2">разрешено и не шире исходной МЧД</text></g>
+        <g class="node verdict d4"><rect x="22" y="394" width="316" height="52" rx="26"/><path class="tick" d="M48 420l8 8 16-17"/><text x="86" y="426" class="t1">Подтверждено на дату</text></g>
       </svg>
-      <figcaption id="chain-caption" class="sr-only">Цепочка полномочий: компания, руководитель по ЕГРЮЛ, доверенность в реестре ФНС, передоверие; если каждое звено подтверждено на дату операции, ответ — «подтверждено».</figcaption>
+      <p id="chain-caption" class="sr-only">Цепочка полномочий: компания, руководитель по ЕГРЮЛ, доверенность в реестре ФНС, передоверие. Если каждое звено держится на дату операции, ответ — «подтверждено».</p>
+      </div>
+      <figcaption class="credit">Анна — вымышленный амбассадор «Мандата»</figcaption>
     </figure>
   </div>
   <div class="wrap">
-    <ul class="kpi" aria-label="Цифры на $as_of">
+    <ul class="kpi" aria-label="Цифры сборки">
       <li><b>$false_confirmed из $negatives</b><span>ложных «подтверждено» на кейсах, где подтверждать нельзя; верхняя граница 95&nbsp;% — $upper95&nbsp;%</span></li>
-      <li><b>$cases</b><span>$cases_word $defect_types&nbsp;$defect_word, совпадение с ожидаемым вердиктом — каждый</span></li>
-      <li><b>$chains</b><span>$chains_word передоверия: решения совпали с независимой реализацией на Cedar</span></li>
-      <li><b>$median_ms&nbsp;мс</b><span>медиана проверки кейса без сети; 95&nbsp;% кейсов — быстрее $p95_ms&nbsp;мс</span></li>
+      <li><b>$auto_share&nbsp;%</b><span>проверочного корпуса решается без человека, ошибок среди этих решений нет</span></li>
+      <li><b>$cases</b><span>$cases_word $defect_types&nbsp;$defect_word: каждый дал ожидаемый вердикт</span></li>
+      <li><b>$median_ms&nbsp;мс</b><span>медиана проверки кейса без сети; 95&nbsp;% кейсов быстрее $p95_ms&nbsp;мс</span></li>
       <li><b>$tests</b><span>$tests_word на Linux и Windows, покрытие $coverage&nbsp;%</span></li>
     </ul>
+    <p class="fine">Числа собраны кодом в <a href="$repo/blob/main/evidence.json">evidence.json</a> <time datetime="$as_of">$as_of_ru</time>. Корпус синтетический: он проверяет логику правил, а точность на документах банка покажет пилот.</p>
   </div>
 </section>
 
-<section id="sprint" class="sec">
+<section id="date" class="sec">
   <div class="wrap">
-    <p class="kicker">Полуфинал · 16–29.11.2026</p>
-    <h2 class="reveal">Спринт 2: ответ на каждый критерий</h2>
-    <p class="reveal">Фокус спринта по условиям трека — довести MVP, посчитать финансовую модель и показать защиту данных. Шесть критериев, сто баллов; у каждого — что сделано и где проверить.</p>
-    <ol class="criteria">
-      <li class="reveal"><span class="pts">0–18</span><b>Данные, безопасность и комплаенс</b><span>Ядро без внешней сети, ПДн — метками до модели; каждое чтение и удаление отчёта — в журнале с HMAC и деревом Меркла; правило утверждает только подпись юриста; pip-audit, Trivy, CodeQL, gitleaks и SBOM.</span><a href="#data">Защита данных</a></li>
-      <li class="reveal"><span class="pts">0–22</span><b>Техническая реализация и масштабирование</b><span>$rules&nbsp;$rules_word и четыре вердикта, CLI и HTTP API, допуск операции для ДБО с одноразовым nonce, Redis и несколько машин; медиана проверки — $median_ms&nbsp;мс.</span><a href="#how">Как работает</a></li>
-      <li class="reveal"><span class="pts">0–22</span><b>Оценка ценности: unit-экономика, эффект и ROI</b><span>Проверка полномочий вручную — около $unit_manual&nbsp;₽, с «Мандатом» — около $unit_mandat&nbsp;₽; разовые затраты ВТБ окупаются за $payback.</span><a href="#value">Ценность для банка</a></li>
-      <li class="reveal"><span class="pts">0–16</span><b>Зрелость решения и прогресс</b><span>За спринт: подпись юриста под правилом, нормы по первоисточнику, допуск ДБО, показ захвата, полный прогон тестов на Linux и Windows и атака на собственные механизмы до сдачи.</span><a href="$repo/blob/main/submission/FORM_SPRINT2.md">Результаты спринта</a></li>
-      <li class="reveal"><span class="pts">0–12</span><b>Подтверждённость проблемы и рынка</b><span>$incidents_h1 операций без согласия у юрлиц за I&nbsp;полугодие 2026 года на $loss_h1_bln&nbsp;млрд&nbsp;₽ — данные Банка России; рынок оценён двумя способами.</span><a href="#pain">Проблема</a></li>
-      <li class="reveal"><span class="pts">0–10</span><b>Реалистичность пилота</b><span>Шесть недель в тени на праве подписи платёжных документов; пилот останавливается при первом ложном «подтверждено». Пакет для юриста и календарь норм до 2028 года.</span><a href="#pilot">Пилот</a></li>
-    </ol>
-    <p class="note">Критерии и баллы — <a href="https://fintechacademy.ru/task-1">fintechacademy.ru/task-1</a>; подробные ответы со ссылками — в <a href="$repo/blob/main/submission/README.md#критерии-спринта-2">плане сдачи</a>.</p>
+    <p class="kicker">Одна доверенность — шесть ответов</p>
+    <h2 class="reveal">Сдвиньте дату операции, и ответ изменится</h2>
+    <p class="sub reveal">Кейс 14: тот же представитель, та же МЧД, та же выписка. Меняется только день, когда представитель хочет подписать платёж на $scrub_amount&nbsp;₽. Ответ на каждый день посчитало ядро «Мандата» при сборке этой страницы.</p>
+    <div class="scrub" id="scrub" hidden>
+      <div class="scrub-head">
+        <label for="scrub-day" class="scrub-date"><span class="note">Дата операции</span> <output id="scrub-out" for="scrub-day"></output></label>
+        <div class="chips" id="scrub-jumps" role="group" aria-label="Перейти к дате"></div>
+      </div>
+      <div class="scrub-track" id="scrub-track">
+        <input type="range" id="scrub-day" min="0" max="1" step="1" value="0">
+      </div>
+      <div class="scrub-result">
+        <div class="scrub-chain" id="scrub-chain" aria-hidden="true"></div>
+        <div class="scrub-card" id="scrub-card" aria-live="polite"></div>
+      </div>
+    </div>
+    <div class="table-wrap" id="scrub-table">
+      <table>
+        <caption class="sr-only">Ответ ядра по датам операции для кейса 14</caption>
+        <thead><tr><th scope="col">Дата операции</th><th scope="col">Ответ</th><th scope="col">Почему</th></tr></thead>
+        <tbody>
+$scrub_rows
+        </tbody>
+      </table>
+    </div>
   </div>
 </section>
 
-<section id="pain" class="sec alt">
+<section id="sprint" class="sec alt">
+  <div class="wrap">
+    <p class="kicker">Где мы сейчас</p>
+    <h2 class="reveal">Полуфинал. Решение № 2 загружаем до 29 ноября</h2>
+    <ol class="stages reveal" aria-label="Этапы соревнования">
+$stages
+    </ol>
+    <h3 class="reveal">Шесть критериев спринта 2 и что мы показываем по каждому</h3>
+    <p class="reveal">Фокус спринта по условиям трека: довести MVP, посчитать финансовую модель и показать защиту данных. Сто баллов на шесть критериев, по ним выбирают финалистов.</p>
+    <ol class="criteria">
+      <li class="reveal"><span class="pts">0–18</span><b>Данные, безопасность и комплаенс</b><span>Ядро работает без внешней сети. ФИО и номера становятся метками до модели. Каждое чтение и удаление отчёта записано в журнал, отчёты в хранилище зашифрованы, правило утверждает только подпись юриста.</span><a href="#data">Защита данных</a></li>
+      <li class="reveal"><span class="pts">0–22</span><b>Техническая реализация и масштабирование</b><span>$rules&nbsp;$rules_word, четыре вердикта, CLI и HTTP API с ролями. ДБО спрашивает допуск к платежу, одноразовый nonce, общее хранилище Redis для нескольких машин. Медиана проверки — $median_ms&nbsp;мс.</span><a href="cases.html">Кейсы</a></li>
+      <li class="reveal"><span class="pts">0–22</span><b>Оценка ценности: unit-экономика, эффект и ROI</b><span>Вручную проверка полномочий стоит около $unit_manual&nbsp;₽, с «Мандатом» — около $unit_mandat&nbsp;₽. Разовые затраты ВТБ окупаются за $payback.</span><a href="economics.html">Калькулятор</a></li>
+      <li class="reveal"><span class="pts">0–16</span><b>Зрелость решения и прогресс</b><span>За спринт: подпись юриста под правилом, нормы по первоисточнику, допуск ДБО, захват до платежа одной командой, полный прогон тестов на Linux и Windows и атака на собственные механизмы до сдачи.</span><a href="$repo/blob/main/submission/FORM_SPRINT2.md">Результаты спринта</a></li>
+      <li class="reveal"><span class="pts">0–12</span><b>Подтверждённость проблемы и рынка</b><span>$incidents_h1 операций без согласия у юрлиц за I&nbsp;полугодие 2026 года на $loss_h1_bln&nbsp;млрд&nbsp;₽ по данным Банка России. Рынок посчитан двумя способами.</span><a href="#pain">Проблема</a></li>
+      <li class="reveal"><span class="pts">0–10</span><b>Реалистичность пилота</b><span>Шесть недель в тени на праве подписи платёжных документов. Пилот останавливается при первом ложном «подтверждено». Пакет для юриста и календарь норм до 2028 года.</span><a href="pilot.html">Пилот</a></li>
+    </ol>
+    <a class="more" href="criteria.html">Все критерии: спринт 1, спринт 2, спринт 3 и условия трека</a>
+  </div>
+</section>
+
+<section id="pain" class="sec">
   <div class="wrap two">
     <div class="reveal">
       <h2>Захват компании начинается с полномочия</h2>
-      <p>Чужой человек получает доверенность, меняет руководителя в реестре или приносит отменённую МЧД — и подписывает платёж от имени компании. Сотрудник банка сверяет три источника вручную, а ошибка стоит денег клиента и репутации банка.</p>
-      <p class="stat"><b>$incidents_h1</b> операций без согласия клиента у юрлиц за I&nbsp;полугодие 2026 года на <b>$loss_h1_bln&nbsp;млрд&nbsp;₽</b> — по обзорам Банка России.</p>
+      <p>Мошенник меняет директора в реестре по поддельным документам, выписывает себе доверенность или приходит с уже отменённой МЧД. Потом подписывает платёж от имени компании. Сотрудник банка сверяет три источника вручную и ошибается в обе стороны: пропустит захват — компания теряет деньги, откажет законному директору — банк проигрывает суд.</p>
+      <p class="stat"><b>$incidents_h1</b> операций без согласия клиента у юрлиц за I&nbsp;полугодие 2026 года на <b>$loss_h1_bln&nbsp;млрд&nbsp;₽</b>. Источник — обзоры Банка России.</p>
     </div>
     <div class="reveal">
       <h2>Что делает «Мандат»</h2>
-      <p>Перед операцией проверяет, что полномочие действует сегодня: доверенность в реестре, руководитель по ЕГРЮЛ тот же, передоверие разрешено и не шире исходной доверенности, устав не ограничивает сделку, компания не в банкротстве. Ответ видит сотрудник, а ДБО получает допуск одной операции.</p>
+      <p>Перед операцией проверяет, что полномочие держится именно в этот день. Доверенность есть в реестре и не отменена. Подписал её тот, кто был директором на дату выдачи. Передоверие разрешено и не шире исходной доверенности. Устав не ограничивает сделку, компания не банкротится.</p>
+      <p>Сотрудник видит ответ и норму. ДБО получает допуск ровно на одну операцию.</p>
     </div>
+  </div>
+</section>
+
+<section id="try" class="sec alt">
+  <div class="wrap">
+    <p class="kicker">Попробуйте сами</p>
+    <h2 class="reveal">Восемь страниц, на которых всё можно потрогать</h2>
+    <ul class="tour">
+      <li class="reveal"><a href="cases.html"><img class="tour-art" src="img/icon-cases.webp" width="341" height="341" alt="" loading="lazy"><b>$demo_count кейсов</b><span>Выберите кейс и посмотрите, на чём держится ответ: даты, проверки, норма и следующий шаг.</span><i>Разобрать кейс</i></a></li>
+      <li class="reveal"><a href="showcase.html"><img class="tour-art" src="img/icon-showcase.webp" width="341" height="341" alt="" loading="lazy"><b>Захват до платежа</b><span>Семь шагов сценария: допуск, отказ повтору и лишней сумме, признаки захвата и отказ следующему платежу.</span><i>Запустить сценарий</i></a></li>
+      <li class="reveal"><a href="verify.html"><img class="tour-art" src="img/icon-verify.webp" width="341" height="341" alt="" loading="lazy"><b>Проверка в браузере</b><span>Подпись удостоверения, его статус и запись журнала проверяет ваш браузер, без доступа к базе.</span><i>Проверить подпись</i></a></li>
+      <li class="reveal"><a href="economics.html"><img class="tour-art" src="img/icon-economics.webp" width="341" height="341" alt="" loading="lazy"><b>Калькулятор эффекта</b><span>Подвигайте допущения модели: доли событий, минуты на кейс, долю ВТБ. Окупаемость пересчитается.</span><i>Посчитать</i></a></li>
+      <li class="reveal"><a href="pilot.html"><img class="tour-art" src="img/icon-pilot.webp" width="341" height="341" alt="" loading="lazy"><b>Пилот и масштаб</b><span>Шесть недель в тени, стоп-критерий, ворота от финала до второго банка.</span><i>Открыть план</i></a></li>
+      <li class="reveal"><a href="law.html"><img class="tour-art" src="img/icon-law.webp" width="341" height="341" alt="" loading="lazy"><b>Закон завтра</b><span>Выберите дату и посмотрите, какие правила пакета опираются на действующие акты.</span><i>Сдвинуть дату</i></a></li>
+      <li class="reveal"><a href="criteria.html"><img class="tour-art" src="img/icon-criteria.webp" width="341" height="341" alt="" loading="lazy"><b>Критерии трека</b><span>Каждый критерий спринтов 1–3: что показываем и где проверить.</span><i>Сверить</i></a></li>
+      <li class="reveal"><a href="pitch.html"><img class="tour-art" src="img/icon-search.webp" width="341" height="341" alt="" loading="lazy"><b>Слайды</b><span>Презентация целиком, у каждого слайда свой адрес и текст выступления.</span><i>Листать</i></a></li>
+    </ul>
   </div>
 </section>
 
 <section id="how" class="sec">
   <div class="wrap">
-    <h2 class="reveal">Как работает</h2>
+    <h2 class="reveal">Как это работает</h2>
     <ol class="steps">
-      <li class="reveal"><b>Документы</b><span>МЧД в формате XML, выписка ЕГРЮЛ, устав, статус в реестре ФНС, сведения о банкротстве.</span></li>
-      <li class="reveal"><b>Цепочка</b><span>Компания → руководитель → доверенность → передоверие: каждое звено с датой и полем документа.</span></li>
-      <li class="reveal"><b>Правила</b><span>$rules&nbsp;$rules_word как данные: у каждого норма закона, поле документа и тест. Юрист банка утверждает правило подписью.</span></li>
-      <li class="reveal"><b>Ответ</b><span>Вердикт, список недостающего, подписанное удостоверение W3C VC и запись в журнале с деревом Меркла.</span></li>
+      <li class="reveal"><b>Документы</b><span>МЧД в XML, выписка ЕГРЮЛ, устав, статус в реестре ФНС, сведения о банкротстве.</span></li>
+      <li class="reveal"><b>Цепочка</b><span>Компания → руководитель → доверенность → передоверие. У каждого звена дата и поле документа.</span></li>
+      <li class="reveal"><b>Правила</b><span>$rules&nbsp;$rules_word лежат данными. У каждого норма закона, поле документа и тест. Утверждает правило юрист банка, своей подписью.</span></li>
+      <li class="reveal"><b>Ответ</b><span>Вердикт, список того, чего не хватает, подписанное удостоверение и запись в журнале.</span></li>
     </ol>
-    <div class="verdicts" role="list">
-      <span role="listitem" class="badge ok">подтверждено</span>
-      <span role="listitem" class="badge no">опровергнуто</span>
-      <span role="listitem" class="badge review">на разбор</span>
-      <span role="listitem" class="badge gap">недостаточно данных</span>
-    </div>
-    <p class="note">Модель ИИ только цитирует устав дословно и подсказывает; вердикт выносят правила и сотрудник. Подсказка модели в отчёте помечена справкой и на вердикт не влияет.</p>
+    <ul class="verdicts" aria-label="Четыре ответа">
+      <li class="badge ok">подтверждено</li>
+      <li class="badge no">опровергнуто</li>
+      <li class="badge review">на разбор</li>
+      <li class="badge gap">недостаточно данных</li>
+    </ul>
+    <p class="note">Модель ИИ включается по желанию банка и работает в его контуре. Она приносит дословную цитату из устава, а вердикт выносят правила. Без цитаты факта нет.</p>
     <h3 class="reveal">Допуск платежа для ДБО</h3>
-    <p class="reveal"><code>POST /v1/operations/authorize</code>: компания, день, сумма, представитель, получатель и одноразовый nonce. Из восьми одновременных повторов проходит один; повтор после потерянного ответа получает отказ с временем первого допуска. Сценарий <code>mandat showcase</code> показывает, как захват компании останавливается до списания денег.</p>
+    <p class="reveal">ДБО присылает в <code>POST /v1/operations/authorize</code> удостоверение и запрос одной операции: компания, день, сумма, представитель, получатель и одноразовый nonce. Допуск выдаётся только служебной учётной записи системы банка. Из восьми одновременных повторов проходит один, а повтор после потерянного ответа получает отказ со временем первого допуска.</p>
   </div>
 </section>
 
-<section id="value" class="sec alt">
+<section id="value" class="sec lux">
   <div class="wrap">
-    <h2 class="reveal">Ценность для банка</h2>
-    <p class="reveal">Финансовая модель на формулах, три сценария; ниже — базовый. Доли событий и минуты на кейс — допущения команды, пилот калибрует их на данных банка.</p>
+    <h2 class="reveal">Ценность <em class="serif">для банка</em></h2>
+    <p class="reveal">Финансовая модель на формулах, три сценария. Ниже базовый. Доли событий и минуты на кейс — допущения команды, пилот заменит их цифрами банка.</p>
     <ul class="value">
       <li class="reveal"><b>≈$unit_manual&nbsp;₽</b><span>стоит одна проверка полномочий вручную</span></li>
-      <li class="reveal"><b>≈$unit_mandat&nbsp;₽</b><span>затраты банка на «Мандат» на одну проверку — в $unit_ratio&nbsp;раза меньше</span></li>
+      <li class="reveal"><b>≈$unit_mandat&nbsp;₽</b><span>тратит банк на одну проверку с «Мандатом», в $unit_ratio&nbsp;раза меньше</span></li>
       <li class="reveal"><b>$payback</b><span>окупаются разовые затраты ВТБ</span></li>
       <li class="reveal"><b>$prevented&nbsp;млн&nbsp;₽</b><span>предотвращённого ущерба в год; высвобождается $fte&nbsp;$fte_word</span></li>
     </ul>
-    <p class="note">Модель, рынок и план внедрения — <a href="materials/Mandat_analytics_all.pdf">пакет аналитики</a>; пересчёт одной проверки — <code>python scripts/effect_model.py --unit</code>.</p>
+    <a class="more" href="economics.html">Пересчитать на своих допущениях</a>
   </div>
 </section>
 
 <section id="proof" class="sec">
   <div class="wrap">
-    <h2 class="reveal">Доказательства, которые можно повторить</h2>
-    <p>Все числа на этой странице собирает код в <a href="$repo/blob/main/evidence.json">evidence.json</a> на $as_of: движок $engine, пакет правил $pack_version. Корпус синтетический: он проверяет логику правил, а не точность на документах банка — её покажет пилот.</p>
+    <h2 class="reveal">Каждое число можно повторить</h2>
+    <p>Движок $engine, пакет правил $pack_version. Команды из таблицы дают те же числа на вашей машине.</p>
     <div class="table-wrap reveal">
     <table>
       <caption class="sr-only">Проверки, результаты и команды повторения</caption>
@@ -173,97 +219,62 @@
   </div>
 </section>
 
-<section id="data" class="sec">
+<section id="data" class="sec alt">
   <div class="wrap two">
     <div class="reveal">
       <h2>Данные клиента не покидают банк</h2>
       <ul class="ticks">
-        <li>Ядро работает без внешней сети, развёртывание — в контуре банка (Docker, пилотный compose).</li>
-        <li>В модель уходят только строки устава, где ФИО, паспорт, СНИЛС и ИНН заменены метками.</li>
-        <li>Журнал решений: хеш-цепочка и HMAC, корень Меркла уходит приёмнику, которого выбирает банк; решение о допуске пишется в журнал без ИНН представителя.</li>
-        <li>Каждое чтение отчёта с ПДн — в журнале: если отчёты утекли, видно, кто их открывал. Нет журнала — нет отчёта.</li>
-        <li>Кейс удаляется по основанию из 152-ФЗ; запись об удалении — выгрузка из журнала по приказу Роскомнадзора № 179. <a href="$repo/blob/main/docs/DATA_PROTECTION_LAW.md">Какие нормы применимы</a>.</li>
-        <li>Удостоверения — Ed25519 по образцу W3C Data Integrity, со списком статусов и отзывом.</li>
+        <li>Ядро работает без внешней сети и ставится в контур банка: Docker и пилотный compose.</li>
+        <li>В модель уходят только строки устава о полномочиях. ФИО, паспорт, СНИЛС и ИНН к этому моменту уже метки.</li>
+        <li>Отчёты и разборы в хранилище зашифрованы AES-256-GCM. Шифр привязан к кейсу и его владельцу: подменённая запись даёт отказ, а не чужие данные.</li>
+        <li>Каждое чтение отчёта с ПДн пишется в журнал. Если отчёты утекли, видно, кто их открывал. Нет журнала — нет отчёта.</li>
+        <li>Кейс удаляется по основанию из 152-ФЗ, запись об удалении служит выгрузкой из журнала по приказу Роскомнадзора № 179. <a href="$repo/blob/main/docs/DATA_PROTECTION_LAW.md">Какие нормы применимы</a>.</li>
+        <li>Журнал сервера маскирует номера карт, паспортов и телефонов, в том числе в адресе запроса.</li>
       </ul>
     </div>
     <div class="reveal">
       <h2>Цепочка поставки</h2>
       <ul class="ticks">
-        <li>Зависимости — из lock-файлов с хешами; pip-audit и Trivy на каждый PR и по расписанию.</li>
-        <li>SBOM CycloneDX и подписанное происхождение сборки для каждого коммита в <code>main</code>.</li>
-        <li>CodeQL, OpenSSF Scorecard и поиск секретов gitleaks по всей истории git.</li>
-        <li>Действия CI закреплены по SHA, у токена — минимальные права. Эта страница не загружает ничего со сторонних сайтов и обходится без скриптов.</li>
+        <li>Зависимости ставятся только из lock-файлов с хешами. pip-audit и Trivy проверяют каждый PR и ещё дважды в неделю.</li>
+        <li>Для каждого коммита в <code>main</code> собираются SBOM CycloneDX и подписанное происхождение сборки.</li>
+        <li>CodeQL, OpenSSF Scorecard и gitleaks по всей истории git.</li>
+        <li>Действия CI закреплены по SHA, у токена минимальные права. Сайт ничего не грузит со сторонних адресов: это запрещает его политика CSP.</li>
       </ul>
     </div>
   </div>
 </section>
 
-<section id="pilot" class="sec alt">
+<section id="pilot" class="sec">
   <div class="wrap">
     <h2 class="reveal">Пилот: шесть недель в тени</h2>
-    <p class="reveal">«Мандат» проверяет те же пакеты, что и сотрудники банка, но на выдачу прав не влияет. Операция — право подписи платёжных документов в интернет-банке для представителя по МЧД.</p>
+    <p class="reveal">«Мандат» проверяет те же пакеты, что и сотрудники банка, но на выдачу прав не влияет. Операция одна: право подписи платёжных документов в интернет-банке для представителя по МЧД.</p>
     <ol class="timeline">
-      <li class="reveal"><b>Неделя 1</b><span>Протокол, регламент операции, коды полномочий, метрики и пороги приёмки; юрист утверждает правила подписью.</span></li>
-      <li class="reveal"><b>Недели 2–5</b><span>Параллельная проверка 50–100 обезличенных пакетов; каждое расхождение с сотрудником — в журнал.</span></li>
-      <li class="reveal"><b>Неделя 6</b><span>Независимая разметка расхождений, замер времени и точности, акт: продолжать или остановить.</span></li>
+      <li class="reveal"><b>Неделя 1</b><span>Протокол, регламент операции, коды полномочий, метрики и пороги приёмки. Юрист утверждает правила подписью.</span></li>
+      <li class="reveal"><b>Недели 2–5</b><span>Параллельная проверка 50–100 обезличенных пакетов. Каждое расхождение с сотрудником идёт в журнал.</span></li>
+      <li class="reveal"><b>Неделя 6</b><span>Независимая разметка расхождений, замер времени и точности, решение: продолжать или остановить.</span></li>
     </ol>
-    <p class="note reveal">Стоп-критерий — первое ложное «подтверждено». От банка нужны владелец процесса, регламент операции, обезличенные пакеты или тестовый контур и юрист. Подробно — <a href="$repo/blob/main/docs/PILOT.md">план пилота</a>.</p>
+    <p class="note reveal">Стоп-критерий — первое ложное «подтверждено». <a href="pilot.html">План пилота и масштабирования</a>.</p>
   </div>
 </section>
 
-<section id="law" class="sec">
-  <div class="wrap">
-    <h2 class="reveal">Закон завтра</h2>
-    <p class="reveal">С 01.09.2027 доверенность представляется по единой форме на Госуслугах (315-ФЗ), с 27.07.2027 юрлицо может пройти реструктуризацию долгов (253-ФЗ), а 01.03.2028 утрачивают силу приказы Минцифры № 856 и № 857 о классификаторе полномочий и формах доверенностей. Пакет правил знает эти сроки: правило, чей акт утратил силу, «подтверждено» не даёт, пока юрист не пересверит пакет. Даты — по текстам на publication.pravo.gov.ru.</p>
-    <div class="table-wrap reveal">
-    <table>
-      <caption class="sr-only">Акты, сроки действия и правила, которые на них опираются</caption>
-      <thead><tr><th scope="col">Акт</th><th scope="col">Вступает в силу</th><th scope="col">Действует до</th><th scope="col">Правила</th></tr></thead>
-      <tbody>
-$law_rows
-      </tbody>
-    </table>
-    </div>
-    <p class="note">Ближайшие даты — <code>mandat law-calendar --on ГГГГ-ММ-ДД --days 365</code>; код 1 значит, что пакет правил просрочен. Подробно — в <a href="$repo/blob/main/docs/REGULATORY.md#календарь-изменений">календаре изменений</a>.</p>
-  </div>
-</section>
-
-<section id="demo" class="sec alt">
-  <div class="wrap">
-    <h2 class="reveal">Демо: 14 кейсов, отчёты собраны этим коммитом</h2>
-    <p>Отчёты — те же HTML-карточки, что видит сотрудник; открываются на телефоне и компьютере, в светлой и тёмной теме. Документы синтетические.</p>
-    <div class="table-wrap reveal">
-    <table class="demo">
-      <caption class="sr-only">Демо-кейсы и вердикты на стенде</caption>
-      <thead><tr><th scope="col">Кейс</th><th scope="col">Вердикт на стенде</th></tr></thead>
-      <tbody>
-$demo_rows
-      </tbody>
-    </table>
-    </div>
-  </div>
-</section>
-
-<section id="materials" class="sec">
+<section id="materials" class="sec alt">
   <div class="wrap">
     <h2 class="reveal">Материалы</h2>
     <ul class="links reveal">
-      <li><a href="materials/Mandat_VTB.pdf">Презентация, PDF</a></li>
-      <li><a href="materials/Mandat_analytics_all.pdf">Пакет аналитики: проект, финансовая модель, рынок, план внедрения</a></li>
+      <li><a href="materials/Mandat_VTB.pdf">Презентация, PDF</a> · <a href="materials/Mandat_VTB.pptx">PPTX</a></li>
+      <li><a href="materials/Mandat_demo.mp4">Видео-демо, две минуты</a></li>
+      <li><a href="materials/Mandat_analytics_all.pdf">Пакет аналитики: проект, модель, рынок, план внедрения</a></li>
+      <li><a href="materials/Mandat_financial_model.xlsx">Финансовая модель, Excel</a></li>
       <li><a href="$repo#readme">README и запуск одной командой</a></li>
       <li><a href="$repo/blob/main/docs/legal/README.md">Пакет для юриста банка: карточка нормы на каждое правило</a></li>
-      <li><a href="$repo/blob/main/LIMITS.md">Границы: что стенд не делает</a></li>
+      <li><a href="$repo/blob/main/LIMITS.md">Границы: чего стенд не делает</a></li>
       <li><a href="$repo/blob/main/SECURITY.md">Безопасность</a></li>
     </ul>
   </div>
 </section>
 </main>
 
-<footer class="foot">
-  <div class="wrap">
-    <p>«Мандат» — стенд, а не юридическое заключение: все правила — черновики, пока юрист банка не утвердит их подписью. Данные на странице и в отчётах синтетические. Сборка $as_of, $engine.</p>
-    <p><a href="#top">Наверх</a></p>
-  </div>
-</footer>
+<script type="application/json" id="page-data">$data</script>
+$footer
 </body>
 </html>
