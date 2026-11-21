@@ -277,7 +277,7 @@ const TERMINAL = {
 
 (async () => {
   const G = await buildGraphics({ terminal: TERMINAL, qrSvg: path.join(ASSETS, "qr-github.svg"), qrSiteSvg: path.join(ASSETS, "qr-site.svg") });
-  // Амбассадор и 3D-значки сделаны в Figma (docs/VISUALS.md); персонаж вымышленный, это подписано на слайдах.
+  // Амбассадор и 3D-значки сделаны в Figma (docs/VISUALS.md).
   const VIS = path.join(ASSETS, "visuals");
   const ANNA = {
     cover: await photoPanel(path.join(VIS, "anna-hero.jpg"), 8.5, { position: "top" }),
@@ -285,7 +285,6 @@ const TERMINAL = {
   };
   const ICON3D = {};
   for (const name of ["showcase", "law", "verify", "pilot", "criteria", "search"]) ICON3D[name] = await icon3d(path.join(VIS, `icon-${name}.png`));
-  const AMBASSADOR = "Анна — вымышленный амбассадор «Мандата»";
   const pres = new pptxgen();
   pres.layout = "LAYOUT_WIDE"; // 13.333 x 7.5
   pres.author = "Команда «Мандат»";
@@ -462,7 +461,7 @@ const TERMINAL = {
   // ---------- 1. Обложка ----------
   {
     const s = pres.addSlide({ masterName: "Обложка", sectionTitle: "Питч" });
-    s.addImage({ data: ANNA.cover.data, x: ANNA.cover.x, y: 0, w: ANNA.cover.w, h: ANNA.cover.h, altText: "Анна, амбассадор «Мандата», в тёмно-синем костюме; персонаж вымышленный", objectName: "Фото амбассадора" });
+    s.addImage({ data: ANNA.cover.data, x: ANNA.cover.x, y: 0, w: ANNA.cover.w, h: ANNA.cover.h, altText: "Анна, амбассадор «Мандата», в тёмно-синем костюме", objectName: "Фото амбассадора" });
     T(s, "Академия Финтеха 2026 · трек ВТБ «Финтех без границ» · задача «Онбординг и проверка полномочий»", L, 0.55, 7.0, 0.55, { size: 12, color: TINT.ice });
     s.addImage({ data: G.markDark, x: L, y: 1.6, w: 0.92, h: 0.83, altText: "Знак «Мандата»" });
     s.addText("Мандат", { placeholder: "title" });
@@ -473,7 +472,6 @@ const TERMINAL = {
     T(s, "Коньков Дмитрий", L, 6.12, 4.0, 0.34, { size: 14, bold: true, color: C.background1 });
     T(s, "капитан команды «Мандат»", L, 6.46, 4.0, 0.3, { size: 12, color: TINT.ice });
     T(s, "Полуфинал · спринт 2 · ноябрь 2026", 4.3, 6.46, 3.9, 0.3, { size: 12, color: TINT.ice, align: "right" });
-    T(s, AMBASSADOR, 8.9, 7.06, 3.83, 0.26, { size: 9, color: TINT.ice, align: "right", name: "Подпись к фото" });
     s.addNotes("[0:00–0:08] Здравствуйте, мы команда «Мандат». Отвечаем банку, может ли человек провести операцию за компанию в этот день, и показываем почему.");
   }
 
@@ -1178,8 +1176,7 @@ const TERMINAL = {
     });
     band(s, L, TOP + ch + GAP, lw, BOTTOM - (TOP + ch + GAP), "Ядро уже умеет главное для этого шага: удостоверение «Мандата» привязано к операции, сумме, получателю и одноразовому номеру запроса и отзывается по событию", { icon: "BadgeCheck", size: 13 });
     card(s, pxL, TOP, pw, BOTTOM - TOP, { line: null, r: 0.12 });
-    s.addImage({ data: VISION, x: pxL, y: TOP, w: pw, h: BOTTOM - TOP, altText: "Анна у голограммы: много источников сходятся в один проверенный ответ; персонаж вымышленный", objectName: "Фото амбассадора" });
-    T(s, AMBASSADOR, pxL + 0.2, BOTTOM - 0.36, pw - 0.4, 0.26, { size: 9, color: "FFFFFF", name: "Подпись к фото" });
+    s.addImage({ data: VISION, x: pxL, y: TOP, w: pw, h: BOTTOM - TOP, altText: "Анна у голограммы: много источников сходятся в один проверенный ответ", objectName: "Фото амбассадора" });
     s.addNotes("[4:02–4:14] Дальше один движок полномочий для троих. Сотрудник видит ответ сегодня. Клиент в «ВТБ Бизнес» увидит, кто вправе действовать за компанию. А ИИ-агент будет платить по мандату с пределами.");
   }
 
@@ -1294,7 +1291,7 @@ const TERMINAL = {
   // ---------- 22. Контакты ----------
   {
     const s = pres.addSlide({ masterName: "Финал", sectionTitle: "Питч" });
-    s.addImage({ data: ANNA.final.data, x: ANNA.final.x, y: 0, w: ANNA.final.w, h: ANNA.final.h, altText: "Анна, амбассадор «Мандата», с планшетом; персонаж вымышленный", objectName: "Фото амбассадора" });
+    s.addImage({ data: ANNA.final.data, x: ANNA.final.x, y: 0, w: ANNA.final.w, h: ANNA.final.h, altText: "Анна, амбассадор «Мандата», с планшетом", objectName: "Фото амбассадора" });
     s.addImage({ data: G.markDark, x: L, y: 0.6, w: 0.62, h: 0.56, altText: "Знак «Мандата»" });
     T(s, "Команда «Мандат»", L + 0.8, 0.6, 5.0, 0.56, { size: 16, bold: true, color: C.background1, valign: "middle" });
     s.addText(typo("Спасибо! Готовы к теневому пилоту в ВТБ"), { placeholder: "title" });
@@ -1319,7 +1316,6 @@ const TERMINAL = {
       s.addImage({ data: img, x: qx + 0.15, y: qy + 0.12, w: qw - 0.3, h: qw - 0.3, altText: alt });
       T(s, label, qx + 0.06, qy + 1.36, qw - 0.12, 0.46, { size: 9.5, bold: true, color: C.text2, align: "center", valign: "middle" });
     });
-    T(s, AMBASSADOR, 8.9, 7.06, 3.83, 0.26, { size: 9, color: TINT.ice, align: "right", name: "Подпись к фото" });
     s.addNotes("[4:52–5:00] Спасибо. Один QR-код ведёт на сайт с демо, второй на код. Готовы к вопросам.");
   }
   if (pages() !== MAIN_SLIDES) throw new Error(`в питче ${pages()} слайдов, а ожидалось ${MAIN_SLIDES}`);

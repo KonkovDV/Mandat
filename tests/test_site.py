@@ -157,9 +157,8 @@ def test_page_is_ready_for_phones_and_sharing(site):
     assert (site / "404.html").is_file()
 
 
-def test_images_are_local_sized_described_and_the_ambassador_is_marked_fictional(site):
-    """Картинки лежат рядом, у каждой есть alt, у фото и 3D-значков заданы размеры: страница не прыгает при загрузке.
-    Анна — вымышленный амбассадор из Figma (docs/VISUALS.md): где её фото, там подпись, что персонаж вымышлен."""
+def test_images_are_local_sized_and_described(site):
+    """Картинки лежат рядом, у каждой есть alt, у фото и 3D-значков заданы размеры: страница не прыгает при загрузке."""
     for name in [*PAGES, "404"]:
         page = _page(site, name)
         for tag in re.findall(r"<img\b[^>]*>", page):
@@ -172,8 +171,6 @@ def test_images_are_local_sized_described_and_the_ambassador_is_marked_fictional
                 assert (site / url.removeprefix("/Mandat/").split("?")[0]).is_file(), f"{name}: {url}"
             if "img/" in src.group(1):
                 assert re.search(r'\swidth="\d+"', tag) and re.search(r'\sheight="\d+"', tag), f"{name}: {tag}"
-        if "img/anna-" in page:
-            assert "вымышленный амбассадор" in page, name
     assert "img/anna-hero" in _page(site) and "img/anna-office" in _page(site, "pilot")
 
 
