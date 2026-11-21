@@ -1174,12 +1174,18 @@ const TERMINAL = {
       ["dmitrij.jpg", "Коньков Дмитрий", "Капитан · архитектура и правила", "Автор открытых проектов AeroBIM и SynAPS. Ядро на правилах, граф полномочий, реестр утверждений"],
       ["elena.jpg", "Конькова Елена", "Системный инженер · измерение и качество", "Методика оценки, корпус и разметка, воспроизводимость сборки, протокол пилота"],
     ];
+    // В исходных фото портрет обведён тёмным фоном и неоновой рамкой. Берём квадрат 450 px внутри рамки,
+    // круг даёт rounding; верх кадра подобран под каждую голову, чтобы над ней остался воздух.
+    const CROP_TOP = { "dmitrij.jpg": 54, "elena.jpg": 66 };
+    const faces = await Promise.all(people.map(async ([img]) => {
+      const buf = await sharp(path.join(ASSETS, img)).extract({ left: 77, top: CROP_TOP[img], width: 450, height: 450 }).jpeg({ quality: 92 }).toBuffer();
+      return "image/jpeg;base64," + buf.toString("base64");
+    }));
     const pw = (W - GAP) / 2, ph = 2.75;
     people.forEach(([img, name, role, desc], i) => {
       const x = L + i * (pw + GAP);
       card(s, x, TOP, pw, ph);
-      s.addShape(pres.shapes.OVAL, { x: x + 0.3, y: TOP + 0.38, w: 1.98, h: 1.98, fill: { color: TINT.blue }, line: { color: HEX.accent2, width: 2.5 }, objectName: "Рамка фото" });
-      s.addImage({ path: path.join(ASSETS, img), x: x + 0.39, y: TOP + 0.47, w: 1.8, h: 1.8, rounding: true, altText: `Фото: ${name}` });
+      s.addImage({ data: faces[i], x: x + 0.3, y: TOP + 0.38, w: 1.98, h: 1.98, rounding: true, altText: `Фото: ${name}` });
       T(s, name, x + 2.6, TOP + 0.45, pw - 2.85, 0.42, { size: 19, bold: true, color: C.text2 });
       T(s, role, x + 2.6, TOP + 0.9, pw - 2.85, 0.5, { size: 13, bold: true, color: C.accent1 });
       T(s, desc, x + 2.6, TOP + 1.42, pw - 2.85, 1.15, { size: 13, color: C.text1 });
