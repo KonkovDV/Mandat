@@ -9,6 +9,7 @@
 const fs = require("fs");
 const path = require("path");
 const pptxgen = require("pptxgenjs");
+const sharp = require("sharp");
 const { buildGraphics } = require("./graphics");
 
 const EVIDENCE = process.argv[2] || path.join(__dirname, "..", "..", "evidence.json");
@@ -128,7 +129,10 @@ const C14 = (() => {
   const poa = fs.readFileSync(path.join(CASE14, "poa-root.xml"), "utf8");
   const attr = (name) => (poa.match(new RegExp(`${name}="([^"]+)"`)) || [])[1];
   const [prev, next] = egrul.executives;
-  return { prev, next, issued: attr("ДатаВыдДовер"), until: attr("СрокДейст"), op: kase.operation, poa: Object.keys(kase.registry)[0] };
+  return {
+    prev, next, issued: attr("ДатаВыдДовер"), until: attr("СрокДейст"), op: kase.operation, poa: Object.keys(kase.registry)[0],
+    who: kase.requester.full_name, org: kase.organization.name,
+  };
 })();
 
 // ---------- Сценарий mandat showcase для слайда «Захват до платежа»: шаги — из отчёта самой команды ----------
@@ -624,25 +628,37 @@ const TERMINAL = {
   {
     const s = slide("Контент", "Питч", "РЕШЕНИЕ", "Один вопрос — четыре ответа, и неизвестное никогда не становится «да»",
       "«Мандат» проверяет полномочия, а не личность: идентификацию по 115-ФЗ проводят существующие каналы банка (КЭП, ЕБС, офис)");
-    card(s, L, TOP, W, 0.72, { fill: C.text2, line: null });
+    const qh = 0.92;
+    card(s, L, TOP, W, qh, { fill: C.text2, line: null });
     const q = (t, hl) => ({ text: t, options: hl ? { color: HEX.accent2, bold: true } : {} });
     s.addText([q("Вправе ли "), q("X", 1), q(" совершить операцию "), q("O", 1), q(" от имени компании "), q("Y", 1), q(" на дату "), q("t", 1), q("?")],
-      { x: L, y: TOP, w: W, h: 0.72, isTextBox: true, margin: 0, fontSize: 21, bold: true, color: C.background1, align: "center", valign: "middle", objectName: "Вопрос" });
+      { x: L, y: TOP + 0.08, w: W, h: 0.5, isTextBox: true, margin: 0, fontSize: 21, bold: true, color: C.background1, align: "center", valign: "middle", objectName: "Вопрос" });
+    // Тот же вопрос на демо-кейсе 14: значения берутся из case.json
+    const short = (n) => n.replace(/^(\S+) (\S)\S* (\S)\S*$/, "$1 $2. $3.");
+    T(s, [
+      q("демо-кейс 14:  "), q("X", 1), q(` — ${short(C14.who)},  `), q("O", 1), q(` — платёж на ${C14.op.amount_rub.toLocaleString("ru-RU")} ₽,  `),
+      q("Y", 1), q(` — ${C14.org},  `), q("t", 1), q(` — ${ruDate(C14.op.date)}`),
+    ], L, TOP + 0.57, W, 0.26, { size: 11.5, color: TINT.ice, align: "center", valign: "middle", name: "Пример: демо-кейс 14" });
     const items = [
       ["ok", "Все обязательные проверки пройдены", "рекомендацию роли и подписанное удостоверение"],
       ["no", "Найдено нарушение", "звено цепочки, норму закона и что запросить у клиента"],
       ["rv", "Спорная ситуация", "досье для сотрудника, приоритет P1–P3 и срок разбора"],
       ["nd", "Источник не ответил или нет документа", "список недостающего — вместо «да»"],
     ];
-    const cw = (W - GAP * 3) / 4, cy = TOP + 0.95, ch = 2.78;
+    const cw = (W - GAP * 3) / 4, cy = TOP + qh + 0.3, ch = 2.58;
+    // Один вопрос расходится на четыре ответа
+    const forkY = TOP + qh + 0.14;
+    vline(s, L + W / 2, TOP + qh, forkY - TOP - qh, TINT.blueLine, 1.5);
+    s.addShape(pres.shapes.LINE, { x: L + cw / 2, y: forkY, w: 3 * (cw + GAP), h: 0, line: { color: TINT.blueLine, width: 1.5 }, objectName: "Разветвление" });
+    items.forEach((_, i) => vline(s, L + i * (cw + GAP) + cw / 2, forkY, cy - forkY, TINT.blueLine, 1.5));
     items.forEach(([k, head, gets], i) => {
       const x = L + i * (cw + GAP);
       card(s, x, cy, cw, ch);
-      dot(s, x + 0.25, cy + 0.22, 0.5, ST[k].base, ST[k].icon);
-      pill(s, x + 0.25, cy + 0.86, k, { size: 9.5, h: 0.3 });
-      T(s, head, x + 0.25, cy + 1.26, cw - 0.5, 0.56, { size: 14, bold: true, color: C.text2 });
-      T(s, "Банк получает", x + 0.25, cy + 1.84, cw - 0.5, 0.22, { size: 10.5, bold: true, color: TINT.muted });
-      T(s, gets, x + 0.25, cy + 2.06, cw - 0.5, 0.66, { size: 12, color: C.text1 });
+      dot(s, x + 0.25, cy + 0.2, 0.46, ST[k].base, ST[k].icon);
+      pill(s, x + 0.25, cy + 0.76, k, { size: 9.5, h: 0.3 });
+      T(s, head, x + 0.25, cy + 1.12, cw - 0.5, 0.52, { size: 14, bold: true, color: C.text2 });
+      T(s, "Банк получает", x + 0.25, cy + 1.66, cw - 0.5, 0.22, { size: 10.5, bold: true, color: TINT.muted });
+      T(s, gets, x + 0.25, cy + 1.88, cw - 0.5, 0.64, { size: 11.5, color: C.text1 });
     });
     const steps = [
       ["01", "Принять", "МЧД XML, ЕГРЮЛ, устав, бумажная доверенность"],
@@ -689,17 +705,33 @@ const TERMINAL = {
     T(s, "Хеш набора правил и входов — в отчёте: одинаковые документы дают одинаковый хеш. Решение пишется в журнал.", L + 0.3, TOP + 4.32, cw - 0.6, 0.55, { size: 11.5, color: TINT.muted });
     const rx = L + cw + 0.28, rw = R - rx;
     T(s, "Та же компания — другие факты", rx, TOP, rw, 0.32, { size: 14, bold: true, color: C.text2 });
-    const alt = [
-      ["rv", "НА РАЗБОР · P1 · 4 Ч", "Директор сменился 19 дней назад", "Свежая смена — первый шаг возможного захвата: уточнить у нового директора, при признаках — в антифрод"],
-      ["no", "ОПРОВЕРГНУТО", "Основную МЧД отменили, осталось передоверие", "С прекращением доверенности теряет силу и передоверие — п. 3 ст. 188 ГК РФ"],
-    ];
-    alt.forEach(([k, lab, head, t], i) => {
-      const y = TOP + 0.45 + i * 2.27, h = 2.08;
-      card(s, rx, y, rw, h);
-      T(s, head, rx + 0.28, y + 0.22, rw - 0.56, 0.6, { size: 14, bold: true, color: C.text2 });
-      pill(s, rx + 0.28, y + 0.84, k, { label: lab, size: 9.5 });
-      T(s, t, rx + 0.28, y + 1.28, rw - 0.56, 0.75, { size: 12, color: C.text1 });
-    });
+    const ah = 2.2, a1 = TOP + 0.45, a2 = a1 + ah + 0.12, x0 = rx + 0.28, x1 = R - 0.28;
+    // Свежая смена: шкала 45 дней до операции, окно 30 дней (ADR-002), смена за 19 дней до t
+    card(s, rx, a1, rw, ah);
+    T(s, "Директор сменился 19 дней назад", x0, a1 + 0.2, x1 - x0, 0.32, { size: 14, bold: true, color: C.text2, valign: "middle" });
+    pill(s, x0, a1 + 0.6, "rv", { label: "НА РАЗБОР · P1 · 4 Ч", size: 9.5 });
+    const dpp = (x1 - x0) / 45, wx = x1 - 30 * dpp, dx = x1 - 19 * dpp, ty = a1 + 1.26;
+    T(s, "окно «свежей» смены · 30 дней", wx, ty - 0.27, x1 - wx, 0.2, { size: 9, bold: true, color: ST.rv.text, valign: "middle" });
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: x0, y: ty, w: x1 - x0, h: 0.07, rectRadius: 0.035, fill: { color: ST.nd.tint }, line: { type: "none" }, objectName: "Шкала дней до операции" });
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: wx, y: ty, w: x1 - wx, h: 0.07, rectRadius: 0.035, fill: { color: HEX.accent4 }, line: { type: "none" }, objectName: "Окно свежей смены" });
+    s.addShape(pres.shapes.DIAMOND, { x: dx - 0.1, y: ty - 0.065, w: 0.2, h: 0.2, fill: { color: HEX.accent4 }, line: { color: "FFFFFF", width: 1.5 }, objectName: "Смена руководителя" });
+    s.addShape(pres.shapes.OVAL, { x: x1 - 0.08, y: ty - 0.045, w: 0.16, h: 0.16, fill: { color: HEX.dk2 }, line: { type: "none" }, objectName: "Дата операции" });
+    T(s, "смена · за 19 дн. до t", dx - 0.9, ty + 0.13, 1.8, 0.2, { size: 9, bold: true, color: ST.rv.text, align: "center", valign: "middle" });
+    T(s, "t", x1 - 0.3, ty + 0.13, 0.3, 0.2, { size: 9.5, bold: true, color: C.text2, align: "right", valign: "middle" });
+    T(s, "Свежая смена — первый шаг возможного захвата: уточнить у нового директора, при признаках — в антифрод", x0, a1 + 1.62, x1 - x0, 0.54, { size: 11, color: C.text1 });
+    // Отмена основной МЧД: передоверие теряет силу вместе с ней
+    card(s, rx, a2, rw, ah);
+    T(s, "Основную МЧД отменили, осталось передоверие", x0, a2 + 0.16, x1 - x0, 0.52, { size: 14, bold: true, color: C.text2, valign: "middle" });
+    pill(s, x0, a2 + 0.74, "no", { size: 9.5 });
+    const cy2 = a2 + 1.16, chipH = 0.32, aw = 1.36, bw = 2.0;
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: x0, y: cy2, w: aw, h: chipH, rectRadius: 0.08, fill: { color: ST.no.tint }, line: { color: "F6B9BC", width: 0.75 }, objectName: "Основная МЧД отменена" });
+    dot(s, x0 + 0.06, cy2 + 0.05, 0.22, ST.no.base, "X");
+    T(s, "МЧД отменена", x0 + 0.34, cy2, aw - 0.38, chipH, { size: 9.5, bold: true, color: ST.no.text, valign: "middle" });
+    arrow(s, x0 + aw + 0.06, cy2 + chipH / 2, x1 - bw - x0 - aw - 0.12, HEX.accent5, 1.5);
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: x1 - bw, y: cy2, w: bw, h: chipH, rectRadius: 0.08, fill: { color: "FFFFFF" }, line: { color: HEX.accent5, width: 1, dashType: "dash" }, objectName: "Передоверие без силы" });
+    dot(s, x1 - bw + 0.06, cy2 + 0.05, 0.22, ST.no.base, "Ban");
+    T(s, "передоверие без силы", x1 - bw + 0.34, cy2, bw - 0.38, chipH, { size: 9.5, bold: true, color: ST.no.text, valign: "middle" });
+    T(s, "С прекращением доверенности теряет силу и передоверие — п. 3 ст. 188 ГК РФ", x0, a2 + 1.62, x1 - x0, 0.54, { size: 11, color: C.text1 });
     s.addNotes("[1:46–2:02] Каждая строка вердикта — с доказательством: ГРН записи ЕГРЮЛ, путь до поля МЧД, норма. Та же компания, но директор сменился 19 дней назад, — на разбор с приоритетом P1 и сроком четыре часа. А если отменили основную доверенность, передоверие теряет силу — опровергнуто. Это не макет — покажу живой вывод.");
   }
 
@@ -707,21 +739,33 @@ const TERMINAL = {
   {
     const s = slide("Контент", "Питч", "ПРОДУКТ СЕГОДНЯ", `Работает сегодня: ${DEMOS}, удостоверения и журнал — одной командой`,
       `Скриншот и вывод — настоящие, сняты с ./run-demo.sh при сборке колоды (capture_demo.js); «…» — пропущенные строки. Сценарий показа — docs/DEMO.md. v${N.version}, evidence.json от ${N.asOf}`);
-    const shot = { w: 1576, h: 1082 };
-    const fw = 6.3, barH = 0.34, imgW = fw - 0.12, imgH = imgW * (shot.h / shot.w), fh = barH + imgH + 0.1;
+    const shot = await sharp(path.join(ASSETS, "demo-card-14.jpg")).metadata();
+    const fw = 6.0, barH = 0.34, imgW = fw - 0.12, imgH = imgW * (shot.height / shot.width), fh = barH + imgH + 0.1;
     card(s, L, TOP, fw, fh, { r: 0.1, name: "Окно браузера" });
     s.addShape(pres.shapes.RECTANGLE, { x: L + 0.02, y: TOP + 0.02, w: fw - 0.04, h: barH - 0.02, fill: { color: "EEF2F8" }, line: { type: "none" }, objectName: "Панель браузера" });
     ["FF6B6B", "FFC35A", "5FD39A"].forEach((c, i) => s.addShape(pres.shapes.OVAL, { x: L + 0.16 + i * 0.18, y: TOP + 0.11, w: 0.12, h: 0.12, fill: { color: c }, line: { type: "none" }, objectName: "Кнопка окна" }));
     s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: L + 0.8, y: TOP + 0.06, w: fw - 1.0, h: 0.22, rectRadius: 0.11, fill: { color: "FFFFFF" }, line: { type: "none" }, objectName: "Адресная строка" });
     T(s, "var/demo/14_old_director_charter_cleared.html", L + 0.92, TOP + 0.06, fw - 1.2, 0.22, { size: 9, color: TINT.text2, valign: "middle" });
     s.addImage({ path: path.join(ASSETS, "demo-card-14.jpg"), x: L + 0.06, y: TOP + barH + 0.04, w: imgW, h: imgH, altText: "Скриншот карточки вердикта демо-кейса 14: «ПОДТВЕРЖДЕНО», сильнейшее возражение — смена руководителя с нормой п. 1 ст. 188 ГК РФ, операция на 480 000 ₽ 20.10.2026, организация и сигнал мониторинга" });
-    T(s, "Карточка сотрудника: вердикт, сильнейшее возражение с нормой, операция и сигнал мониторинга — без ручной сводки", L, TOP + fh + 0.1, fw, BOTTOM - TOP - fh - 0.1, { size: 11.5, color: TINT.text2, valign: "middle" });
+    // Метки на скриншоте: доли ширины и высоты кадра capture_demo.js (вердикт, возражение, стороны, сигналы)
+    const ix = L + 0.06, iy = TOP + barH + 0.04;
+    [[0.31, 0.232], [0.966, 0.278], [0.962, 0.472], [0.162, 0.782]].forEach(([fx, fy], i) => {
+      const mx = ix + fx * imgW - 0.15, my = iy + fy * imgH - 0.15;
+      s.addShape(pres.shapes.OVAL, { x: mx, y: my, w: 0.3, h: 0.3, fill: { color: HEX.accent1 }, line: { color: "FFFFFF", width: 2 }, shadow: shadow(), objectName: `Метка ${i + 1}` });
+      T(s, String(i + 1), mx, my, 0.3, 0.3, { size: 11, bold: true, color: C.background1, align: "center", valign: "middle" });
+    });
+    ["вердикт", "сильнейшее возражение с нормой", "операция, организация, заявитель", "сигнал мониторинга"].forEach((t, i) => {
+      const lx = L + (i % 2) * (fw / 2), ly = TOP + fh + 0.1 + Math.floor(i / 2) * 0.27;
+      s.addShape(pres.shapes.OVAL, { x: lx, y: ly + 0.02, w: 0.2, h: 0.2, fill: { color: HEX.accent1 }, line: { type: "none" }, objectName: "Метка легенды" });
+      T(s, String(i + 1), lx, ly + 0.02, 0.2, 0.2, { size: 8.5, bold: true, color: C.background1, align: "center", valign: "middle" });
+      T(s, t, lx + 0.28, ly, fw / 2 - 0.32, 0.24, { size: 10.5, color: TINT.text2, valign: "middle", name: "Легенда скриншота" });
+    });
     const rx = L + fw + GAP, rw = R - rx;
     const th = rw * G.terminalRatio;
     s.addImage({ data: G.terminal, x: rx, y: TOP, w: rw, h: th, altText: "Вывод терминала: mandat demo — 14 кейсов совпали с ожиданием, журнал цел; удостоверение действует; после событий захвата — тревога possible_takeover и статус «приостановлено», код 3" });
     const ly = TOP + th + 0.12, lh = BOTTOM - ly;
     card(s, rx, ly, rw, lh);
-    T(s, "Демо в 4 шага", rx + 0.25, ly + 0.1, rw - 0.5, 0.3, { size: 13, bold: true, color: C.text2 });
+    T(s, "Демо в 4 шага", rx + 0.25, ly + 0.07, rw - 0.5, 0.3, { size: 13, bold: true, color: C.text2 });
     const demo = [
       "01_ok: устав не разобран — на разбор",
       "10 и 05: давняя смена — сигнал, свежая — разбор",
@@ -729,7 +773,7 @@ const TERMINAL = {
       "журнал: доказательство одной записи",
     ];
     s.addText(demo.map((t, i) => ({ text: typo(t), options: { bullet: { type: "number" }, breakLine: i < demo.length - 1 } })),
-      { x: rx + 0.25, y: ly + 0.42, w: rw - 0.45, h: lh - 0.46, isTextBox: true, margin: 0, fontSize: 11, color: C.text1, paraSpaceAfter: 1, valign: "top", objectName: "Шаги демо" });
+      { x: rx + 0.25, y: ly + 0.37, w: rw - 0.45, h: lh - 0.4, isTextBox: true, margin: 0, fontSize: 10.5, color: C.text1, paraSpaceAfter: 0, valign: "top", objectName: "Шаги демо" });
     s.addNotes("[2:02–2:18] Продукт работает сегодня, одной командой. Слева — настоящая карточка кейса: вердикт, сильнейшее возражение с нормой и сигнал мониторинга. Справа — терминал: все 14 демо-кейсов дают ожидаемый вердикт, журнал цел. Удостоверение действует; после событий захвата монитор поднимает тревогу, и то же удостоверение уже приостановлено.");
   }
 
@@ -744,6 +788,11 @@ const TERMINAL = {
     const lw = 8.0, h = BOTTOM - TOP;
     card(s, L, TOP, lw, h);
     const rowH = (h - 0.2) / SHOW.steps.length, cx = L + 0.42;
+    // Событие захвата и отказ после него — главное на слайде: строки подсвечены, итог залит цветом
+    const hot = (i) => i >= SHOW.steps.length - 2;
+    SHOW.steps.forEach((step, i) => {
+      if (hot(i)) s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: L + 0.12, y: TOP + 0.1 + i * rowH + 0.03, w: lw - 0.24, h: rowH - 0.06, rectRadius: 0.1, fill: { color: STEP[step.outcome].tint }, line: { type: "none" }, objectName: `Подсветка: ${step.outcome}` });
+    });
     vline(s, cx, TOP + 0.1 + rowH / 2, rowH * (SHOW.steps.length - 1), TINT.blueLine, 2);
     // Причина шага — дословно из отчёта; если не помещается рядом с плашкой, берётся одна её часть с «…».
     const fit = (text, width) => {
@@ -759,8 +808,8 @@ const TERMINAL = {
       T(s, String(i + 1), cx - 0.17, y + (rowH - 0.34) / 2, 0.34, 0.34, { size: 11, bold: true, color: C.background1, align: "center", valign: "middle" });
       T(s, step.title, L + 0.8, y + 0.05, lw - 1.0, 0.3, { size: 11.5, bold: true, color: C.text2, valign: "middle" });
       const pw = pillW(step.outcome, 9);
-      s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: L + 0.8, y: y + 0.36, w: pw, h: 0.26, rectRadius: 0.13, fill: { color: st.tint }, line: { type: "none" }, objectName: `Итог шага: ${step.outcome}` });
-      T(s, step.outcome, L + 0.8, y + 0.36, pw, 0.26, { size: 9, bold: true, color: st.text, align: "center", valign: "middle" });
+      s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: L + 0.8, y: y + 0.36, w: pw, h: 0.26, rectRadius: 0.13, fill: { color: hot(i) ? st.base : st.tint }, line: { type: "none" }, objectName: `Итог шага: ${step.outcome}` });
+      T(s, step.outcome, L + 0.8, y + 0.36, pw, 0.26, { size: 9, bold: true, color: hot(i) ? "FFFFFF" : st.text, align: "center", valign: "middle" });
       const dx = L + 0.8 + pw + 0.15, dw = L + lw - 0.2 - dx;
       if (step.detail) T(s, fit(step.detail, dw), dx, y + 0.36, dw, 0.26, { size: 10.5, color: TINT.text2, valign: "middle" });
     });
@@ -832,23 +881,35 @@ const TERMINAL = {
       ["Gavel", `${RULES} с нормой`, "выносят вердикт"],
       ["UserCheck", "Человек", "разбирает спорное; клиент может оспорить"],
     ];
-    const gap = 0.3, fw = (W - gap * 4) / 5, fh = 2.0;
+    const gap = 0.3, fw = (W - gap * 4) / 5, fh = 1.92;
     flow.forEach(([ic, head, t], i) => {
       const x = L + i * (fw + gap);
-      const hl = i === 3;
-      card(s, x, TOP, fw, fh, hl ? { fill: C.text2, line: null } : {});
-      tile(s, x + 0.2, TOP + 0.2, 0.48, ic, hl ? { fill: TINT.navyTile, icon: "light" } : {});
+      const hl = i === 3, model = i === 1;
+      // Модель только советует (пунктир), правила решают (заливка)
+      card(s, x, TOP, fw, fh, hl ? { fill: C.text2, line: null } : model ? { fill: TINT.blue, line: HEX.accent1, lw: 1.25, dash: "dash", shadow: false } : {});
+      tile(s, x + 0.2, TOP + 0.2, 0.48, ic, hl ? { fill: TINT.navyTile, icon: "light" } : model ? { fill: "FFFFFF" } : {});
+      if (hl || model) {
+        const role = model ? "советует" : "решают", rw = pillTextW(role, 9) + 0.3;
+        s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: x + fw - 0.16 - rw, y: TOP + 0.3, w: rw, h: 0.28, rectRadius: 0.14, fill: { color: model ? "FFFFFF" : HEX.accent2 }, line: { type: "none" }, objectName: `Роль: ${role}` });
+        T(s, role, x + fw - 0.16 - rw, TOP + 0.3, rw, 0.28, { size: 9, bold: true, color: model ? HEX.accent1 : HEX.dk2, align: "center", valign: "middle" });
+      }
       T(s, head, x + 0.2, TOP + 0.76, fw - 0.36, 0.5, { size: 13.5, bold: true, color: hl ? C.background1 : C.text2 });
       T(s, t, x + 0.2, TOP + 1.28, fw - 0.36, 0.68, { size: 12, color: hl ? TINT.ice : C.text1 });
       if (i < flow.length - 1) arrow(s, x + fw + 0.04, TOP + fh / 2, gap - 0.08, HEX.accent1, 1.75);
     });
-    const by = TOP + fh + GAP;
-    card(s, L, by, W, 0.62, { fill: TINT.blue, line: TINT.blueLine, shadow: false });
+    // Ветка шлюза: факт без дословной цитаты дальше не идёт
+    const gx = L + 2 * (fw + gap), ry = TOP + fh + 0.16;
+    vline(s, gx + fw / 2, TOP + fh, 0.16, HEX.accent5, 1.5, "dash");
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: gx, y: ry, w: fw, h: 0.34, rectRadius: 0.08, fill: { color: ST.no.tint }, line: { color: "F6B9BC", width: 0.75 }, objectName: "Факт без цитаты отброшен" });
+    dot(s, gx + 0.08, ry + 0.06, 0.22, ST.no.base, "X");
+    T(s, "нет цитаты → отброшен", gx + 0.38, ry, fw - 0.44, 0.34, { size: 9.5, bold: true, color: ST.no.text, valign: "middle" });
+    const by = ry + 0.34 + 0.18, bh = 0.5;
+    card(s, L, by, W, bh, { fill: TINT.blue, line: TINT.blueLine, shadow: false });
     T(s, [
       { text: "В логике Кодекса этики в сфере ИИ на финансовом рынке (Банк России, 2025). ", options: { bold: true, color: HEX.dk2 } },
       { text: "По сообщениям СМИ, ВТБ присоединился к Кодексу в августе 2026" },
-    ], L + 0.3, by, W - 0.6, 0.62, { size: 13, valign: "middle" });
-    const py = by + 0.62 + GAP, ph = BOTTOM - py, pw = (W - GAP * 3) / 4;
+    ], L + 0.3, by, W - 0.6, bh, { size: 12, valign: "middle" });
+    const py = by + bh + 0.2, ph = BOTTOM - py, pw = (W - GAP * 3) / 4;
     const pr = [
       ["Eye", "Прозрачность", "у каждого вывода — норма и ссылка на поле документа; отчёт называет источник каждого факта"],
       ["Users", "Человек в контуре", "человекоцентричность: спорное решает сотрудник, автоматический вердикт клиент может оспорить у человека"],
@@ -860,7 +921,7 @@ const TERMINAL = {
       card(s, x, py, pw, ph);
       tile(s, x + 0.2, py + 0.16, 0.4, ic);
       T(s, head, x + 0.7, py + 0.16, pw - 0.85, 0.4, { size: 13.5, bold: true, color: C.text2, valign: "middle" });
-      T(s, t, x + 0.2, py + 0.66, pw - 0.38, ph - 0.7, { size: 12, color: C.text1 });
+      T(s, t, x + 0.2, py + 0.62, pw - 0.38, ph - 0.66, { size: 11.5, color: C.text1 });
     });
     s.addNotes("[2:56–3:08] Про ИИ. Модель только предлагает факт из устава с дословной цитатой: нет цитаты — нет факта. Вердикт выносят правила, спорное решает человек, клиент может оспорить. Модель в контуре банка, по умолчанию выключена, провайдер сменный — с учётом закона об ИИ.");
   }
