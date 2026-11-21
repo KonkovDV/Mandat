@@ -8,7 +8,7 @@
 ./run-demo.sh        # Linux, macOS или WSL; или mandat demo, если пакет уже установлен
 ```
 
-На Windows запускайте в WSL: без него `mandat` пока не стартует из-за `fcntl` (задача A4, [#99](https://github.com/KonkovDV/Mandat/issues/99)). Откройте в браузере `var/demo/01_ok.html`, `var/demo/10_old_director_poa.html` и `var/demo/05_director_changed.html`. Каталог `var/` в git не хранится, без этой команды показывать нечего. Если сеть в зале пропадёт, страницы уже на диске.
+На Windows — `.\run-demo.ps1` или WSL. Откройте в браузере `var/demo/01_ok.html`, `var/demo/10_old_director_poa.html` и `var/demo/05_director_changed.html`. Каталог `var/` в git не хранится, без этой команды показывать нечего. Если сеть в зале пропадёт, страницы уже на диске.
 
 Не запускайте `mandat monitor` заранее: повтор события ничего не меняет, и на сцене переход статуса будет не виден.
 
