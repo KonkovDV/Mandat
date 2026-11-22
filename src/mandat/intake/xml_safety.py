@@ -50,6 +50,10 @@ def safe_fromstring(data: bytes | str) -> Element:
     except LookupError as exc:
         # Неизвестная кодировка в прологе (encoding="…") — ошибка входа, а не сбой сервера.
         raise XmlRejected(f"XML в неизвестной кодировке: {exc}") from exc
+    except ValueError as exc:
+        # Многобайтовая кодировка в прологе (UTF-32, Shift_JIS, UTF-16LE): expat отвечает ValueError.
+        # Нашёл фаззер fuzz/fuzz_emchd.py; до исправления исключение уходило мимо XmlRejected.
+        raise XmlRejected(f"XML в неподдерживаемой кодировке: {exc}") from exc
     count = sum(1 for _ in root.iter())
     if count > MAX_ELEMENTS:
         raise XmlRejected(f"слишком много элементов ({count} > {MAX_ELEMENTS})")

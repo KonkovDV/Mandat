@@ -1,0 +1,69 @@
+# Фаззинг разбора входа (fuzz/fuzz_*.py) в ClusterFuzzLite. На PR фаззер 5 минут гоняет цели, которые задевает
+# изменение, раз в неделю — полчаса всё подряд с накопленным корпусом. Найденное падение валит задачу и
+# оставляет вход-воспроизведение в артефактах. Действия закреплены по SHA тега v1.
+name: cflite
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "fuzz/**"
+      - ".clusterfuzzlite/**"
+      - "requirements/runtime.lock"
+      - ".github/workflows/cflite.yml"
+  schedule:
+    - cron: "41 3 * * 1"
+  workflow_dispatch:
+
+# По умолчанию у токена нет прав; задачам выдаётся только чтение.
+permissions: {}
+
+jobs:
+  pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      group: cflite-pr-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: build fuzzers
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: python
+          sanitizer: address
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: fuzz the change
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 300
+          mode: code-change
+          sanitizer: address
+
+  batch:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      group: cflite-batch
+      cancel-in-progress: false
+    steps:
+      - name: build fuzzers
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: python
+          sanitizer: address
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: fuzz everything
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 1800
+          mode: batch
+          sanitizer: address

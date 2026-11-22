@@ -65,7 +65,7 @@ MAX_FIELD_NAME = 60
 def unknown_fields(manifest: dict[str, Any]) -> tuple[str, ...]:
     """Пути полей, которых нет в контракте манифеста: ``registy``, ``operation.amout_rub``, ``documents[0].pth``.
 
-    Загрузчик такие поля не читает. Опечатка ``registy`` делала реестр недоступным без единого слова (#105).
+    Загрузчик такие поля не читает. Опечатка ``registy`` делала реестр недоступным без единого слова.
     Поля записи реестра проверяет ``_registry_entries``: там лишнее поле — ошибка в любом режиме.
     """
     found = [str(key) for key in manifest if key not in MANIFEST_FIELDS]
@@ -189,7 +189,7 @@ def _subdelegation_forms(value: Any) -> dict[str, str]:
 
 
 # RFC 7493 (I-JSON) и каноническая запись RFC 8785 точны только для целых до 2**53 − 1. Большая сумма проходила
-# приём, а удостоверение на неё не выпускалось (#132): теперь это ошибка входа, как в JSON Schema манифеста.
+# приём, а удостоверение на неё не выпускалось: теперь это ошибка входа, как в JSON Schema манифеста.
 MAX_AMOUNT_RUB = 2**53 - 1
 
 
@@ -381,7 +381,7 @@ def load_case_inline(manifest: dict[str, Any]) -> Case:
         if isinstance(content, (dict, list)):
             return json.dumps(content, ensure_ascii=False).encode("utf-8")
         if not isinstance(content, str):
-            raise ValueError("content должен быть строкой или JSON-объектом")
+            raise CaseError("content должен быть строкой или JSON-объектом")
         return content.encode("utf-8")
 
     return load_case_from_manifest(manifest, read)
