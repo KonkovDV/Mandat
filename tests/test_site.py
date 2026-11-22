@@ -35,7 +35,9 @@ def _page(site, name: str = "index") -> str:
 
 
 def _data(site, name: str):
-    block = re.search(r'<script type="application/json" id="page-data">(.*?)</script>', _page(site, name), re.S)
+    block = re.search(
+        r'<script type="application/json" id="page-data">(.*?)</script[^>]*>', _page(site, name), re.S | re.I
+    )
     assert block is not None, name
     return json.loads(block.group(1))
 
@@ -56,7 +58,9 @@ def test_every_page_has_csp_menu_footer_and_no_template_leftovers(site):
     """Каждая страница: политика CSP, меню с текущей страницей, подвал с коммитом сборки, подстановки закрыты."""
     for name in PAGES:
         page = _page(site, name)
-        assert "$" not in re.sub(r'<script type="application/json"[^>]*>.*?</script>', "", page, flags=re.S), name
+        assert "$" not in re.sub(
+            r'<script type="application/json"[^>]*>.*?</script[^>]*>', "", page, flags=re.S | re.I
+        ), name
         assert f'<meta http-equiv="Content-Security-Policy" content="{build_site.CSP}">' in page, name
         assert page.count('aria-current="page"') == 1, name
         assert "Сборка" in page and "Код на GitHub" in page, name
@@ -80,7 +84,7 @@ def test_pages_make_no_external_requests_and_run_no_inline_scripts(site):
     css = (site / "style.css").read_text(encoding="utf-8")
     for name in PAGES:
         page = _page(site, name)
-        for tag in re.findall(r"<script\b[^>]*>", page):
+        for tag in re.findall(r"<script\b[^>]*>", page, re.I):
             if 'type="application/json"' in tag:
                 continue
             src = re.search(r'\ssrc="([^"]+)"', tag)

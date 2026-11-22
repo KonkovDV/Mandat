@@ -679,8 +679,8 @@ const TERMINAL = {
     // Тот же вопрос на демо-кейсе 14: значения берутся из case.json
     const short = (n) => n.replace(/^(\S+) (\S)\S* (\S)\S*$/, "$1 $2. $3.");
     T(s, [
-      q("демо-кейс 14:  "), q("X", 1), q(` — ${short(C14.who)},  `), q("O", 1), q(` — платёж на ${C14.op.amount_rub.toLocaleString("ru-RU")} ₽,  `),
-      q("Y", 1), q(` — ${C14.org},  `), q("t", 1), q(` — ${ruDate(C14.op.date)}`),
+      q("демо-кейс 14: "), q("X", 1), q(` — ${short(C14.who)} · `), q("O", 1), q(` — платёж на ${C14.op.amount_rub.toLocaleString("ru-RU")} ₽ · `),
+      q("Y", 1), q(` — ${C14.org} · `), q("t", 1), q(` — ${ruDate(C14.op.date)}`),
     ], L, TOP + 0.57, W, 0.26, { size: 11.5, color: TINT.ice, align: "center", valign: "middle", name: "Пример: демо-кейс 14" });
     const items = [
       ["ok", "Все обязательные проверки пройдены", "рекомендацию роли и подписанное удостоверение"],

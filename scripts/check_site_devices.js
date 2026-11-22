@@ -37,8 +37,10 @@ function serve(root) {
     let rel = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
     if (!rel.startsWith("/Mandat/")) { res.writeHead(404).end(); return; }
     rel = rel.slice("/Mandat".length).replace(/\/$/, "/index.html");
-    const file = path.join(root, rel);
-    if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    // Путь из адреса не выходит за корень сайта: сравнение с нормализованным корнем и разделителем.
+    const base = path.resolve(root);
+    const file = path.resolve(base, "." + rel);
+    if (!file.startsWith(base + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
       res.writeHead(404, { "Content-Type": TYPES[".html"] });
       fs.createReadStream(path.join(root, "404.html")).pipe(res);
       return;

@@ -800,7 +800,7 @@ def _header(active: str) -> str:
 </header>"""
 
 
-TEXT_NODE = re.compile(r"(<script\b.*?</script|<code>.*?</code)|>([^<]+)(?=<)", re.S)
+TEXT_NODE = re.compile(r"(<script\b.*?</script|<code>.*?</code)|>([^<]+)(?=<)", re.S | re.I)
 
 
 def _typo(page: str) -> str:
@@ -1058,12 +1058,17 @@ def _stamp(out: Path) -> None:
     """Версия в адресах стилей и скриптов: ?v= и 8 знаков SHA-256 файла. Браузер со старым кэшем не покажет
     новую страницу со старыми стилями. Сначала версии получают импорты модулей, потом сами страницы."""
     scripts = sorted((out / "js").glob("*.js"))
+    # Переводы строк — \n до подсчёта версий: на Windows запись в текстовом режиме дала бы \r\n,
+    # и версия в импорте разошлась бы с байтами файла.
+    for script in scripts:
+        script.write_text(script.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
     leaf = {p.name: _version(p) for p in scripts}
     for script in scripts:
         text = script.read_text(encoding="utf-8")
         script.write_text(
             IMPORT.sub(lambda m: f"{m.group(1)}{m.group(2)}./{m.group(3)}?v={leaf[m.group(3)]}{m.group(2)}", text),
             encoding="utf-8",
+            newline="\n",
         )
     for page in out.glob("*.html"):
         text = page.read_text(encoding="utf-8")
@@ -1072,7 +1077,7 @@ def _stamp(out: Path) -> None:
             target = out / m.group(2).removeprefix("/Mandat/")
             return f"{m.group(1)}{m.group(2)}?v={_version(target)}{m.group(3)}"
 
-        page.write_text(ASSET.sub(versioned, text), encoding="utf-8")
+        page.write_text(ASSET.sub(versioned, text), encoding="utf-8", newline="\n")
 
 
 def main(argv: list[str] | None = None) -> int:
