@@ -216,7 +216,7 @@ def test_multiprocess_revoke_allocate(tmp_path):
     assert check_status(cred, sd, key.public_key(), now=NOW)["revocation"] is True
 
 
-# --- Review blockers on PR #18 ---
+# --- Review blockers ---
 
 
 def test_two_issuers_same_snapshot_same_index_conflict_is_not_silent_merge(tmp_path, monkeypatch):

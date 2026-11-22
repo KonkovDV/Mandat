@@ -545,7 +545,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from mandat.services.env_policy import key_problem, require_attestation_status
 
     try:
-        require_attestation_status()  # #112: выключенная проверка статуса в pilot/prod — ошибка конфигурации
+        require_attestation_status()  # выключенная проверка статуса в pilot/prod — ошибка конфигурации
         problem = access_problem() or key_problem() or missing_anchor_problem()
     except ValueError as exc:
         problem = str(exc)

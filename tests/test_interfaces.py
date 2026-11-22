@@ -147,7 +147,7 @@ def test_rules_doc_is_up_to_date(root: Path):
 
 
 def test_rules_doc_profile_table_matches_the_profiles(root: Path):
-    """#111: ячейки demo и strict таблицы групп совпадают с mandatory и waived профиля."""
+    """Ячейки demo и strict таблицы групп совпадают с mandatory и waived профиля."""
     from mandat.domain.verdict import CHECK_LABEL_RU, PROFILES
 
     labels = {label: check for check, label in CHECK_LABEL_RU.items()}

@@ -67,7 +67,7 @@ def require_attestation_status() -> bool:
     """Нужна ли обязательная проверка статуса удостоверения.
 
     В pilot/prod (и любом защищённом режиме) — да, и выключить её нельзя: значение ``0`` там — ошибка
-    конфигурации ``ValueError``, как и ослабление ``MANDAT_STATUS_MAX_AGE_BY_RISK`` (#112). Переменная
+    конфигурации ``ValueError``, как и ослабление ``MANDAT_STATUS_MAX_AGE_BY_RISK``. Переменная
     ``MANDAT_REQUIRE_ATTESTATION_STATUS=1/0`` включает и выключает проверку только на стенде.
     """
     raw = __import__("os").environ.get("MANDAT_REQUIRE_ATTESTATION_STATUS", "").strip().lower()

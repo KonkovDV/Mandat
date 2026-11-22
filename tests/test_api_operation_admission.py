@@ -334,7 +334,7 @@ def test_moment_is_the_server_clock_not_a_request_field(issuer, tmp_path):
     assert any("дата операции" in p for p in answer["problems"]), answer
 
 
-# --- #160: повтор после потерянного ответа --------------------------------------------------------------
+# --- Повтор после потерянного ответа --------------------------------------------------------------
 
 URL = "/v1/operations/authorize"
 

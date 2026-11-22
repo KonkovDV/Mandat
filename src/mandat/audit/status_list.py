@@ -161,7 +161,7 @@ def _lock_path(directory: Path) -> Path:
     return directory / ".registry.lock"
 
 
-# Блокировка файла за одной парой функций (#99): flock на POSIX, msvcrt.locking на Windows.
+# Блокировка файла за одной парой функций: flock на POSIX, msvcrt.locking на Windows.
 if sys.platform == "win32":  # pragma: no cover — проверяется задачей CI windows
     import msvcrt
 

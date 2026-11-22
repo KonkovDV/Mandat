@@ -36,8 +36,8 @@ jobs:
       # Зависимости только из lock-файла с хешами, сам пакет поверх без зависимостей.
       - run: python -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
       - run: python -m pip install --no-deps --no-build-isolation -e .
-      - run: python -m ruff check src tests scripts tools
-      - run: python -m ruff format --check src tests scripts tools
+      - run: python -m ruff check src tests scripts tools fuzz
+      - run: python -m ruff format --check src tests scripts tools fuzz
       - run: python -m mypy
       - name: tests with coverage threshold
         run: python -m pytest --cov=mandat --cov-report=term --cov-report=json:var/coverage.json --junitxml=var/junit.xml
@@ -116,7 +116,7 @@ jobs:
       - name: no skipped tests
         run: python scripts/check_no_skips.py var/junit-redis.xml
 
-  # Полный pytest и на Windows (#99): владелец работает на Windows, локальная проверка должна видеть то же,
+  # Полный pytest и на Windows: владелец работает на Windows, локальная проверка должна видеть то же,
   # что CI. check_no_skips здесь не нужен: POSIX-тесты (O_NOFOLLOW, FIFO, права 0600) на Windows пропускаются законно.
   windows:
     runs-on: windows-latest

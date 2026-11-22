@@ -126,7 +126,7 @@ def test_monitor_revokes_and_suspends_attestations(root: Path, tmp_path: Path, m
 def test_monitor_revokes_only_the_directors_own_attestation_on_director_change(
     root: Path, tmp_path: Path, monkeypatch, capsys
 ):
-    """#124: смена руководителя отзывает удостоверение цепочки eio_direct, удостоверения по МЧД не трогает."""
+    """Смена руководителя отзывает удостоверение цепочки eio_direct, удостоверения по МЧД не трогает."""
     monkeypatch.chdir(root)
     demo = tmp_path / "demo"
     assert main(["demo", "--out", str(demo)]) == 0

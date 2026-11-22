@@ -286,7 +286,7 @@ def test_failing_nonce_store_means_refusal(tmp_path):
 
 
 def test_term_without_a_next_day_gives_a_zero_window_not_an_exception():
-    """#126: у 9999-12-31 нет следующих суток. Раньше выпуск падал с OverflowError."""
+    """У 9999-12-31 нет следующих суток. Раньше выпуск падал с OverflowError."""
     report = _report()
     report["chain"]["documents"] = [{"number": "poc", "effective_until": "9999-12-31"}]
     cred = attestation.issue(report, Ed25519PrivateKey.generate(), now=NOW)
@@ -307,7 +307,7 @@ def test_term_without_a_next_day_gives_a_zero_window_not_an_exception():
     ],
 )
 def test_unreadable_term_gives_a_zero_window_not_thirty_days(documents):
-    """#126: нечитаемый срок не оставляет 30-дневное окно, как будто срока не было."""
+    """Нечитаемый срок не оставляет 30-дневное окно, как будто срока не было."""
     report = _report()
     report["chain"]["documents"] = documents
     cred = attestation.issue(report, Ed25519PrivateKey.generate(), now=NOW)
@@ -322,7 +322,7 @@ def test_document_without_a_term_keeps_the_thirty_day_window():
 
 
 def test_power_of_attorney_until_9999_12_31_is_verified_and_issued():
-    """Сквозной путь #126: разбор МЧД принимает 9999-12-31, проверка и выпуск не падают."""
+    """Сквозной путь: разбор МЧД принимает 9999-12-31, проверка и выпуск не падают."""
     from dataclasses import replace
     from datetime import date
 

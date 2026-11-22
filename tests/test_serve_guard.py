@@ -150,7 +150,7 @@ def test_runtime_image_drops_pip():
 
 @pytest.mark.parametrize("value", ["0", "false", "off"])
 def test_status_check_cannot_be_turned_off_in_pilot(monkeypatch, value, tmp_path, capsys):
-    """#112: в pilot переключатель не выключает проверку статуса, а serve и attest-verify видят ошибку конфигурации."""
+    """В pilot переключатель не выключает проверку статуса, а serve и attest-verify видят ошибку конфигурации."""
     from datetime import UTC, datetime
 
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey

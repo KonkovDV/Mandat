@@ -97,7 +97,7 @@ def test_status_list_with_duplicate_key_is_rejected(tmp_path) -> None:
 
 @pytest.mark.parametrize("text", ["1e309", "-1e309", '{"n": 1e309}', "[1, 2e400]"])
 def test_overflow_to_infinity_is_rejected(text: str) -> None:
-    """#122, RFC 7493 разд. 2.2: число вне IEEE 754 — ошибка входа, а не бесконечность."""
+    """RFC 7493 разд. 2.2: число вне IEEE 754 — ошибка входа, а не бесконечность."""
     with pytest.raises(StrictJsonError, match="NaN"):
         strict_loads(text)
     assert strict_loads("1.7976931348623157e308") == 1.7976931348623157e308

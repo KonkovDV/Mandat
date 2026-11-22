@@ -237,7 +237,7 @@ def _director_change(new_eio_inn: object) -> dict:
 
 
 def test_director_change_ends_the_directors_own_right_but_not_a_power_of_attorney():
-    """#124: полномочие руководителя без МЧД — сама должность (п. 1 ст. 53 ГК РФ); МЧД смена не прекращает."""
+    """Полномочие руководителя без МЧД — сама должность (п. 1 ст. 53 ГК РФ); МЧД смена не прекращает."""
     alerts = {a.kind: a for a in evaluate(*parse_events(_director_change("new")))}
     assert alerts["eio_changed"].affected_rights == ("by-poa",)
     assert alerts["eio_changed"].attestation_action is None

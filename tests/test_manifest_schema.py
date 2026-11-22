@@ -85,7 +85,7 @@ INVALID = {
 # Дубли id схема JSON выразить не может (uniqueItems сравнивает объекты целиком): их ловит только загрузчик.
 SCHEMA_CANNOT = {"duplicate document id"}
 
-# Неизвестные поля (#105): схема отвергает их всегда, загрузчик — в защищённом режиме; на стенде он предупреждает.
+# Неизвестные поля: схема отвергает их всегда, загрузчик — в защищённом режиме; на стенде он предупреждает.
 UNKNOWN_FIELDS = {
     "unknown top-level field": lambda m: (m.__setitem__("registy", m.pop("registry")), m)[1],
     "unknown operation field": _set(("operation", "amout_rub"), 100),

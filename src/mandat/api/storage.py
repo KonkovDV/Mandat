@@ -346,7 +346,7 @@ class SQLiteStore:
             CREATE TABLE IF NOT EXISTS watermarks (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
             """
         )
-        # Файлы старого формата (#160): у таблицы seen нет столбца value. Строки first_seen остаются со значением NULL.
+        # Файлы старого формата: у таблицы seen нет столбца value. Строки first_seen остаются со значением NULL.
         columns = {row[1] for row in self._db().execute("PRAGMA table_info(seen)")}
         if "value" not in columns:
             self._db().execute("ALTER TABLE seen ADD COLUMN value TEXT")

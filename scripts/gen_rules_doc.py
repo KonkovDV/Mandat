@@ -44,7 +44,7 @@ def render_rules_doc() -> str:
     demo, strict = PROFILES["demo"], PROFILES["strict"]
 
     def mark(check: str) -> str:
-        # Снятие сильнее обязательности: группа из waived без ответа источника «да» не мешает (verdict.fold, #111).
+        # Снятие сильнее обязательности: группа из waived без ответа источника «да» не мешает (verdict.fold).
         return " | ".join(profile_cell(profile, check) for profile in (demo, strict))
 
     waived = "; ".join(

@@ -1,5 +1,5 @@
-"""Полный аудит 31.10.2026: отказ вместо исключения на чужих символах, строгий read-back якоря (#131),
-сумма кейса в пределах I-JSON (#132), длина proofValue до декодирования base58.
+"""Полный аудит 31.10.2026: отказ вместо исключения на чужих символах, строгий read-back якоря,
+сумма кейса в пределах I-JSON, длина proofValue до декодирования base58.
 
 До исправления 14 из 21 теста падали. Остальные 7 держат то, что уже работало: обычный ответ read-back,
 ответ не-объект, ИНН кириллицей и предельную сумму в удостоверении.
@@ -129,7 +129,7 @@ def test_non_ascii_witness_mac_is_reported_as_tampering(tmp_path):
     assert "подпись свидетеля" in check.reason
 
 
-# --- K-03 (#131): ответ read-back разбирается строго и с пределом размера -------------------------------
+# --- K-03: ответ read-back разбирается строго и с пределом размера -------------------------------
 
 
 class _Answer:
@@ -152,7 +152,7 @@ def _sink(body: bytes) -> anchor.WebhookSink:
 
 
 def test_readback_answer_deeper_than_the_limit_is_not_parsed():
-    """#131: глубина 100 000 роняла проверку якоря RecursionError, а не «не разбирается»."""
+    """Глубина 100 000 роняла проверку якоря RecursionError, а не «не разбирается»."""
     stmt = {"segment": 1}
     body = b"[" * 100_000 + b"]" * 100_000
     problem = _sink(body).remote_problem(stmt, {"sha256": anchor.digest(stmt), "delivery_id": "anchor-1"})
@@ -184,7 +184,7 @@ def test_good_readback_answer_still_passes():
     assert _sink(body).remote_problem(stmt, receipt) is None
 
 
-# --- K-04 (#132): сумма кейса в пределах точных целых I-JSON --------------------------------------------
+# --- K-04: сумма кейса в пределах точных целых I-JSON --------------------------------------------
 
 
 def _manifest(amount):
@@ -197,7 +197,7 @@ def _manifest(amount):
 
 
 def test_amount_above_max_safe_integer_is_rejected_at_intake():
-    """#132: такой кейс проходил приём, а удостоверение на него не выпускалось."""
+    """Такой кейс проходил приём, а удостоверение на него не выпускалось."""
     with pytest.raises(CaseError, match="amount_rub"):
         load_case_inline(_manifest(2**53))
     assert load_case_inline(_manifest(2**53 - 1)).operation.amount_rub == 2**53 - 1

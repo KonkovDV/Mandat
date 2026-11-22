@@ -200,7 +200,7 @@ class WebhookSink:
         verify_with = self.readback_key or self.secret
         if not response_signature_ok(verify_with, answer_headers, body, datetime.now(UTC), request_id):
             return "подпись ответа read-back не сходится"
-        # Строгий разбор (#131): глубина больше 64, повтор ключа и NaN — «не разбирается», а не RecursionError.
+        # Строгий разбор: глубина больше 64, повтор ключа и NaN — «не разбирается», а не RecursionError.
         try:
             row = strict_loads(body)
             stored = row["statement"]
