@@ -64,7 +64,7 @@
 3. `python submission/deck/import_visuals.py ПАПКА` — JPEG для колоды в `submission/deck/assets/visuals/`, WebP двух
    ширин для `srcset` в `site/img/`, значки по клеткам листа, превью ссылки `site/og.jpg`.
 4. `make deck` — колода, PDF, проверка вёрстки `qa_deck.py`, слайды для сайта. Затем
-   `python scripts/build_site.py --out _site` и `node scripts/check_site_devices.js _site`: девять устройств,
+   `python scripts/build_site.py --out _site`, `(cd scripts && npm ci)` и `node scripts/check_site_devices.js _site`: девять устройств,
    светлая и тёмная тема, разрывы слов, WCAG 2.2 AA.
 
 ## Промты

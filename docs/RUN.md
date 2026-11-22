@@ -185,10 +185,11 @@ python scripts/build_site.py --out _site
 Вёрстка проверяется на матрице устройств — от сложенного Galaxy Z Fold (280 px) до монитора 2560 px, в светлой и тёмной теме, с каждым из 14 отчётов демо:
 
 ```bash
+(cd scripts && npm ci)
 node scripts/check_site_devices.js _site
 ```
 
-Скрипт отдаёт сайт по HTTP, как GitHub Pages, и ищет горизонтальную прокрутку, неудачные запросы, ошибки в консоли, незагруженный шрифт, битые якоря, картинки без `alt` и цели касания ниже 40 px. Нужен Playwright с Chromium, как для видео-демо; Safari и Firefox этим скриптом не проверяются.
+Скрипт отдаёт сайт по HTTP, как GitHub Pages, и ищет горизонтальную прокрутку, неудачные запросы, ошибки в консоли, незагруженный шрифт, битые якоря, картинки без `alt` и цели касания ниже 40 px. Playwright и axe-core ставит `npm ci` из `scripts/package-lock.json`, axe-core проверяет каждую страницу на WCAG 2.2 AA; в CI то же делает задача `devices` в `pages.yml`. Safari и Firefox этим скриптом не проверяются.
 
 Задача CI `pages` собирает сайт на каждом PR и push в `main`. Публикация включается владельцем один раз: Settings → Pages → Source: GitHub Actions, затем Settings → Secrets and variables → Actions → Variables → `PAGES_ENABLED` = `true`. До этого публикация пропускается, а проверки остаются зелёными.
 

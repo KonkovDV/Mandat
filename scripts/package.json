@@ -1,0 +1,9 @@
+{
+  "name": "mandat-site-check",
+  "private": true,
+  "description": "Проверка сайта на устройствах и WCAG 2.2 AA: Playwright и axe-core",
+  "devDependencies": {
+    "axe-core": "4.10.2",
+    "playwright": "1.63.0"
+  }
+}
