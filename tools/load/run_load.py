@@ -81,7 +81,7 @@ class Server:
         }
         env.pop("MANDAT_API_USERS", None)
         # Журнал сервера — в файл, не в PIPE: непрочитанный PIPE заполняется (64 КБ) предупреждениями
-        # uvicorn о превышении limit_concurrency, и сервер блокируется на записи в stderr (R3-LOAD-1).
+        # uvicorn о превышении limit_concurrency, и сервер блокируется на записи в stderr.
         workdir.mkdir(parents=True, exist_ok=True)
         self.log = (workdir / "server.log").open("wb")
         self.proc = subprocess.Popen(  # noqa: S603

@@ -35,6 +35,30 @@ jobs:
         with:
           path: _site
 
+  # Сайт на девяти устройствах в светлой и тёмной теме, сценарии в браузере и WCAG 2.2 AA (Playwright и axe-core
+  # из scripts/package-lock.json). Отдельная задача: публикацию она не держит, но красный результат виден на PR.
+  devices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --require-hashes -r requirements/pip.lock
+      - run: python -m pip install --require-hashes -r requirements/runtime.lock -r requirements/build.lock
+      - run: python -m pip install --no-deps --no-build-isolation -e .
+      - run: python scripts/build_site.py --out _site
+      - name: Playwright and axe-core from the lock file
+        working-directory: scripts
+        run: |
+          npm ci --no-audit --no-fund
+          npx --no-install playwright install --with-deps chromium
+      - name: devices, scenarios and WCAG 2.2 AA
+        run: node scripts/check_site_devices.js _site
+
   deploy:
     needs: build
     # Публикация — когда владелец включит Pages (Settings → Pages → Source: GitHub Actions) и задаст переменную

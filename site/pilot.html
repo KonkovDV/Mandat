@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="$csp">
+<title>Пилот и масштаб — Мандат</title>
+<meta name="description" content="Сценарий пилота и масштабирования «Мандата»: шесть недель в тени на одной операции ВТБ, критерии продолжения, ворота G0–G4, рост от одной операции к банкам второго уровня.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1426" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Мандат — пилот и масштабирование">
+<meta property="og:image" content="${site_url}og.jpg">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="style.css">
+<script src="js/theme.js"></script>
+<script type="module" src="js/pilot.js"></script>
+</head>
+<body>
+$header
+
+<main id="main">
+<section class="hero slim">
+  <div class="wrap">
+    <img class="page-art" src="img/icon-pilot.webp" width="341" height="341" alt="">
+    <p class="kicker">Спринт 3 · сценарий пилота и масштабирования</p>
+    <h1>От одной операции в тени до второго банка</h1>
+    <p class="lead">Пилот начинается с одной операции ВТБ и шести недель, за которые «Мандат» ни на что не влияет. Каждый следующий шаг открывают ворота с измеримыми критериями. Стоп-критерий на всех этапах один: первое ложное «подтверждено».</p>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <figure class="banner">
+      <img src="img/anna-office-768.webp" srcset="img/anna-office-768.webp 768w, img/anna-office-1536.webp 1536w" sizes="(max-width: 1180px) 100vw, 1120px" width="768" height="512" alt="Анна за столом в банковском офисе проверяет документ на планшете" loading="lazy">
+      <figcaption><b>Пилот идёт <em class="serif">рядом с сотрудниками</em></b><span>Те же пакеты, те же решения и журнал каждого расхождения. На клиентов и выдачу прав пилот не влияет.</span></figcaption>
+    </figure>
+    <h2>Шесть недель в тени</h2>
+    <p class="sub">Операция — право подписи платёжных документов в интернет-банке для представителя по МЧД. «Мандат» проверяет те же пакеты, что и сотрудники, а на выдачу прав не влияет.</p>
+    <div class="weeks" id="weeks" role="tablist" aria-label="Недели пилота">
+      <button type="button" role="tab" id="w1" aria-controls="week-1" aria-selected="true"><b>Неделя 1</b><span>договориться о правилах игры</span></button>
+      <button type="button" role="tab" id="w2" aria-controls="week-2" aria-selected="false"><b>Недели 2–5</b><span>проверять параллельно с людьми</span></button>
+      <button type="button" role="tab" id="w3" aria-controls="week-3" aria-selected="false"><b>Неделя 6</b><span>решить, продолжать ли</span></button>
+    </div>
+    <div class="card panel" id="week-1" role="tabpanel" aria-labelledby="w1">
+      <h3>Неделя 1: протокол до первого кейса</h3>
+      <ul class="ticks">
+        <li>Подписываем протокол: регламент операции, коды полномочий, метрики и пороги приёмки. Всё фиксируется до старта, чтобы потом не подгонять.</li>
+        <li>Юрист банка утверждает правила подписанной записью, в том числе окно «свежей» смены руководителя.</li>
+        <li>Владелец процесса назначает куратора. Созвон раз в неделю.</li>
+        <li>Ставим «Мандат» в контур банка: Docker, без внешней сети, ключи в HSM банка.</li>
+      </ul>
+      <p class="note"><b>Результат:</b> подписанный протокол.</p>
+    </div>
+    <div class="card panel" id="week-2" role="tabpanel" aria-labelledby="w2">
+      <h3>Недели 2–5: те же пакеты, что у сотрудников</h3>
+      <ul class="ticks">
+        <li>50–100 обезличенных пакетов или тестовый контур. Если данных нет, эксперты банка размечают наш синтетический корпус.</li>
+        <li>Каждое расхождение с решением сотрудника записывается в журнал вместе с нормой и полем документа.</li>
+        <li>Хронометраж: сколько минут уходит на кейс вручную и с карточкой «Мандата».</li>
+        <li>В первые две недели доли событий и минуты на кейс заменяют допущения модели.</li>
+      </ul>
+      <p class="note"><b>Результат:</b> журнал расхождений и промежуточный отчёт.</p>
+    </div>
+    <div class="card panel" id="week-3" role="tabpanel" aria-labelledby="w3">
+      <h3>Неделя 6: независимая разметка и решение</h3>
+      <ul class="ticks">
+        <li>Расхождения размечают два эксперта банка независимо друг от друга.</li>
+        <li>Считаем ложные «подтверждено», полноту опровержений, долю решений без человека и время на кейс.</li>
+        <li>Владелец процесса, риск и юрист решают: продолжать или остановить.</li>
+      </ul>
+      <p class="note"><b>Результат:</b> акт с решением.</p>
+    </div>
+    <div class="card planner" id="planner" hidden>
+      <h3>Календарь пилота от вашей даты</h3>
+      <p class="note">Выберите понедельник старта, и шесть недель встанут на календарь. 1 марта 2027 года — плановый старт по воротам G1.</p>
+      <div class="chips" id="starts" role="group" aria-label="Понедельник старта"></div>
+      <ol class="plan" id="plan" aria-live="polite"></ol>
+      <p class="cta"><button class="btn small" type="button" id="copy-plan">Скопировать план</button></p>
+      <p class="fine">Сроки — в календарных неделях от понедельника старта. Праздники и переносы рабочих дней не учтены.</p>
+    </div>
+  </div>
+</section>
+
+<section class="sec alt">
+  <div class="wrap two">
+    <div>
+      <h2>Когда продолжаем</h2>
+      <p class="note">Пороги согласуем с банком до старта.</p>
+      <ul class="ticks">
+        <li>Ни одного ложного «подтверждено» за весь пилот, верхняя граница 95&nbsp;% ниже порога банка.</li>
+        <li>Каждое расхождение с сотрудником разобрано.</li>
+        <li>Доля кейсов без ручного разбора не ниже порога, ошибки среди них не выше порога.</li>
+        <li>Согласие «Мандата» с экспертами не ниже согласия экспертов между собой.</li>
+        <li>Проверка пакета быстрее ручной, и сотрудники принимают карточку как достаточное обоснование.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Что нужно от банка</h2>
+      <ol class="ticks">
+        <li>Владелец процесса и куратор.</li>
+        <li>Регламент операции: чек-лист сотрудника и типовые причины отказа.</li>
+        <li>50–100 обезличенных пакетов или тестовый контур.</li>
+        <li>Базовые цифры для расчёта эффекта: события в год, минуты на кейс, доля возвратов.</li>
+        <li>Выгрузка классификатора полномочий из ЕСНСИ и коды, которые банк принимает для операции.</li>
+        <li>Юрист, который утвердит правила.</li>
+        <li>Контур для установки. Модель для устава — по желанию банка.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <h2>Ворота: каждый переход — решение по критериям</h2>
+    <p class="sub">Пять горизонтов от финала соревнования до тиражирования. Нажмите на ворота, чтобы увидеть критерии и запасной путь.</p>
+    <ol class="gates" id="gates" role="tablist" aria-label="Ворота перехода">
+      <li role="presentation"><button type="button" role="tab" id="G0" aria-controls="gate-G0" aria-selected="true">G0</button><b>Пилот интересен банку</b><span>финал, 11.12.2026</span></li>
+      <li role="presentation"><button type="button" role="tab" id="G1" aria-controls="gate-G1" aria-selected="false">G1</button><b>Старт пилота</b><span>≈01.03.2027</span></li>
+      <li role="presentation"><button type="button" role="tab" id="G2" aria-controls="gate-G2" aria-selected="false">G2</button><b>Итог пилота</b><span>неделя 6, ≈15.04.2027</span></li>
+      <li role="presentation"><button type="button" role="tab" id="G3" aria-controls="gate-G3" aria-selected="false">G3</button><b>Эксплуатация</b><span>≈01.11.2027</span></li>
+      <li role="presentation"><button type="button" role="tab" id="G4" aria-controls="gate-G4" aria-selected="false">G4</button><b>Тиражирование</b><span>≈30.06.2028</span></li>
+    </ol>
+    <div class="card panel gate-card" id="gate-G0" role="tabpanel" aria-labelledby="G0">
+      <dl><dt>Критерии</dt><dd>У ВТБ есть владелец процесса, протокол пилота готов.</dd><dt>Кто решает</dt><dd>жюри, Акселератор ВТБ</dd><dt>Если «нет»</dt><dd>продолжаем интервью и ищем владельца процесса</dd></dl>
+    </div>
+    <div class="card panel gate-card" id="gate-G1" role="tabpanel" aria-labelledby="G1">
+      <dl><dt>Критерии</dt><dd>Подписан протокол, есть метрики и пороги, 50–100 обезличенных пакетов или разметка корпуса, юрист утвердил правила операции.</dd><dt>Кто решает</dt><dd>владелец процесса ВТБ</dd><dt>Если «нет»</dt><dd>переносим старт; качество меряем на корпусе, который разметили эксперты банка</dd></dl>
+    </div>
+    <div class="card panel gate-card" id="gate-G2" role="tabpanel" aria-labelledby="G2">
+      <dl><dt>Критерии</dt><dd>Критерии продолжения выполнены, измеренный эффект не ниже консервативного сценария модели.</dd><dt>Кто решает</dt><dd>владелец процесса, риск, юрист</dd><dt>Если «нет»</dt><dd>дорабатываем правила и повторяем на новой выборке или останавливаемся; при малом эффекте — ниже цена или подписка только на мониторинг</dd></dl>
+    </div>
+    <div class="card panel gate-card" id="gate-G3" role="tabpanel" aria-labelledby="G3">
+      <dl><dt>Критерии</dt><dd>Анализ уязвимостей пройден, подпись по ГОСТ через СКЗИ, адаптеры к источникам банка, правила утверждены, регламент и обучение сотрудников.</dd><dt>Кто решает</dt><dd>ИБ и ИТ ВТБ</dd><dt>Если «нет»</dt><dd>режим рекомендаций сотруднику без влияния на права</dd></dl>
+    </div>
+    <div class="card panel gate-card" id="gate-G4" role="tabpanel" aria-labelledby="G4">
+      <dl><dt>Критерии</dt><dd>Полгода эксплуатации без ложного «подтверждено», эффект измерен, второй банк в переговорах.</dd><dt>Кто решает</dt><dd>команда и инвесторы</dd><dt>Если «нет»</dt><dd>остаёмся с ВТБ и партнёрами, команду не расширяем</dd></dl>
+    </div>
+  </div>
+</section>
+
+<section class="sec alt">
+  <div class="wrap">
+    <h2>Как растёт «Мандат»</h2>
+    <div class="grid3">
+      <article class="card">
+        <h3>Нагрузка</h3>
+        <p>Проверка кейса — медиана $median_ms&nbsp;мс без сети. Несколько процессов и машин делят одно хранилище Redis: одноразовый nonce расходуется атомарно, повтор не пройдёт и на соседнем сервере. Готовность к трафику показывает <code>/readyz</code>.</p>
+        <p class="fine">Нагрузочного замера на контуре банка пока нет, его даст пилот.</p>
+      </article>
+      <article class="card">
+        <h3>Операции</h3>
+        <p>Сначала одна операция: право подписи платежей по МЧД. С 2028 года — открытие счёта, смена пользователей ДБО, кредиты и гарантии, а для клиента в ДБО — экран «Мои полномочия». Правила лежат данными, новая операция — это новые строки каталога и тесты, а не новое ядро.</p>
+      </article>
+      <article class="card">
+        <h3>Банки</h3>
+        <p>Базовый сценарий модели: договор с $scale_banks_first банком в $scale_year_first году и $scale_banks_last к $scale_year_last, годовая подписка ≈$scale_arr_last&nbsp;млн&nbsp;₽. Команда растёт с $scale_team_first до $scale_team_last человек, операционная прибыль — с $scale_ebitda_year года, до неё нужно ≈$scale_funding&nbsp;млн&nbsp;₽.</p>
+        <p class="fine">Это план модели, а не договорённости с банками.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <h2 id="raci-h">Кто за что отвечает в пилоте</h2>
+    <p class="note">Р — делает, О — отвечает за результат, К — консультирует, И — информируется.</p>
+    <div class="table-wrap">
+      <table class="raci" aria-labelledby="raci-h">
+        <thead><tr><th scope="col">Работа</th><th scope="col">Команда «Мандата»</th><th scope="col">Владелец процесса ВТБ</th><th scope="col">Юрист ВТБ</th><th scope="col">ИБ ВТБ</th><th scope="col">ИТ ВТБ</th><th scope="col">Акселератор ВТБ</th></tr></thead>
+        <tbody>
+          <tr><td>Протокол пилота, метрики и пороги</td><td>Р</td><td>О</td><td>К</td><td>К</td><td>И</td><td>К</td></tr>
+          <tr><td>Утверждение правил и окна «свежей» смены руководителя</td><td>Р</td><td>И</td><td>О</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>Данные: обезличенные пакеты или тестовый контур</td><td>К</td><td>О</td><td>И</td><td>К</td><td>Р</td><td>И</td></tr>
+          <tr><td>Установка в контуре банка</td><td>Р</td><td>И</td><td>—</td><td>К</td><td>О</td><td>И</td></tr>
+          <tr><td>Параллельная проверка и журнал расхождений</td><td>Р</td><td>О</td><td>И</td><td>И</td><td>К</td><td>И</td></tr>
+          <tr><td>Независимая разметка расхождений</td><td>К</td><td>О</td><td>Р</td><td>—</td><td>—</td><td>И</td></tr>
+          <tr><td>Решение по итогам пилота</td><td>К</td><td>О</td><td>К</td><td>К</td><td>К</td><td>И</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Подробно — <a href="$repo/blob/main/docs/PILOT.md">план пилота</a>, <a href="materials/Mandat_analytics_all.pdf">план внедрения в пакете аналитики</a> и <a href="$repo/blob/main/docs/audit/READINESS_GATES.md">ступени готовности</a>. Таблицы — план, а не проведённое исследование: подписанного протокола пока нет.</p>
+  </div>
+</section>
+</main>
+
+$footer
+</body>
+</html>

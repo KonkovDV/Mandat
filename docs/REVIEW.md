@@ -1,6 +1,6 @@
 # Разбор кейса человеком: роли и правила
 
-Как устроен ручной разбор спорного кейса: роли, независимость второго мнения, хранение версий и маршруты HTTP API. Код: `src/mandat/review/state_machine.py`, `src/mandat/api/principals.py`, `src/mandat/api/review.py`; тесты: `tests/test_m09a_review_roles.py`, `tests/test_m09b_review_store.py`, `tests/test_m09c_review_api.py`.
+Как устроен ручной разбор спорного кейса: роли, независимость второго мнения, хранение версий и маршруты HTTP API. Код: `src/mandat/review/state_machine.py`, `src/mandat/api/principals.py`, `src/mandat/api/review.py`; тесты: `tests/test_review_roles.py`, `tests/test_review_store.py`, `tests/test_review_api.py`.
 
 ## Роли
 
@@ -65,14 +65,14 @@
 
 Сравнение и запись атомарны во всех хранилищах: в памяти — под блокировкой процесса, в SQLite — в одной транзакции
 `BEGIN IMMEDIATE` (между процессами на одной машине), в Redis — одним Lua-скриптом (между машинами). Тест
-`tests/test_m09b_review_store.py`: из N параллельных записей с одной версией проходит ровно одна, остальные получают
+`tests/test_review_store.py`: из N параллельных записей с одной версией проходит ровно одна, остальные получают
 конфликт версии; для SQLite — и между процессами.
 
 Хранилище не проверяет переходы и роли: это делает `ReviewCase` (выше). Состояние в памяти не переживает рестарт.
 
 ## API
 
-Код: `src/mandat/api/app.py`, `src/mandat/api/review.py`; тесты: `tests/test_m09c_review_api.py`; контракт —
+Код: `src/mandat/api/app.py`, `src/mandat/api/review.py`; тесты: `tests/test_review_api.py`; контракт —
 `docs/api/openapi.json`. Работает в режиме пользователей (`MANDAT_API_USERS`): у единственного токена стенда роль
 `admin`, а она кейсы не двигает.
 

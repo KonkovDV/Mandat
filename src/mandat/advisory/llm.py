@@ -112,7 +112,7 @@ class OpenAICompatClient:
         host = (parsed.hostname or "").lower()
         if host not in allowed_hosts():
             raise ValueError(f"хост {host!r} не входит в MANDAT_LLM_ALLOWED_HOSTS")
-        # M-06: allowlist хоста ≠ TLS. В pilot/prod — только https, кроме явного
+        # Список разрешённых хостов не заменяет TLS. В pilot/prod — только https, кроме явного
         # небезопасного loopback (локальная модель на 127.0.0.1/localhost).
         from mandat.services.env_policy import protected
 
@@ -192,7 +192,7 @@ def minimize(text: str) -> str:
 
 def charter_messages(text: str, people: Iterable[KnownPerson] = ()) -> list[dict[str, str]]:
     """Запрос к модели: строки о полномочиях, ФИО известных людей — метками ролей, остальные ФИО — ``[ФИО]``
-    (словарь, M-05), затем ``for_model``."""
+    (словарь), затем ``for_model``."""
     # Маркеры границ данных в самом тексте убираются: документ не может «закрыть» блок данных.
     safe = (
         for_model(mask_unknown_names(mask_names(minimize(text), people))).replace(DATA_BEGIN, "").replace(DATA_END, "")

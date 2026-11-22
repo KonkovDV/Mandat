@@ -8,7 +8,7 @@
 
 Хеш и новый токен печатает ``mandat api-user --name ivanova --role operator --expires-in-days 90``.
 
-Жизненный цикл токена (M-12): ``expires_at`` (ISO 8601 с часовым поясом) — после этого момента токен
+Жизненный цикл токена: ``expires_at`` (ISO 8601 с часовым поясом) — после этого момента токен
 не принимается; ``revoked: true`` — токен не принимается сразу. Проверка срока и отзыва действует в
 ЛЮБОМ режиме, если поля заданы. Обязательность ``expires_at`` (и потолок срока ``MAX_TOKEN_TTL_DAYS``
 от момента загрузки списка) — только в pilot/prod и любом защищённом режиме: иначе список не
@@ -38,7 +38,7 @@ from typing import Any
 from mandat.strictjson import strict_loads
 
 # Кто что может. Видеть чужие кейсы могут только аудитор и администратор.
-# dbo — служебная учётная запись системы банка, которая проводит операцию (P6-05): только допуск операции
+# dbo — служебная учётная запись системы банка, которая проводит операцию: только допуск операции
 # по удостоверению для своих audiences; кейсы не создаёт и отчёты с ПДн не читает.
 ROLES = {
     "operator": {"write": True, "see_all": False},
@@ -158,7 +158,7 @@ def parse_users(raw: Any, *, require_expiry: bool | None = None, now: datetime |
 
 
 def _parse_audiences(name: str, role: str, raw: Any, *, required: bool) -> tuple[str, ...]:
-    """``audiences`` учётной записи ДБО (P6-05): непустой список строк. В pilot и prod у роли dbo обязателен."""
+    """``audiences`` учётной записи ДБО: непустой список строк. В pilot и prod у роли dbo обязателен."""
     if raw is None:
         if role == "dbo" and required:
             raise ValueError(f"MANDAT_API_USERS: у {name} нет audiences (обязательны для роли dbo в pilot/prod)")

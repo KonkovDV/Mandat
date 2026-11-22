@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="$csp">
+<title>Критерии трека — Мандат</title>
+<meta name="description" content="Критерии спринтов 1, 2 и 3 трека ВТБ «Финтех без границ» и условия трека: что показывает «Мандат» по каждому и где это проверить.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1426" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Мандат — ответ на каждый критерий трека">
+<meta property="og:image" content="${site_url}og.jpg">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="style.css">
+<script src="js/theme.js"></script>
+<script type="module" src="js/criteria.js"></script>
+</head>
+<body>
+$header
+
+<main id="main">
+<section class="hero slim">
+  <div class="wrap">
+    <img class="page-art" src="img/icon-criteria.webp" width="341" height="341" alt="">
+    <p class="kicker">Академия Финтеха 2026 · трек ВТБ</p>
+    <h1>Ответ на каждый критерий и где его проверить</h1>
+    <p class="lead">Критерии и баллы — со страницы соревнования <a href="https://fintechacademy.ru/task-1">fintechacademy.ru/task-1</a>. Описаний к ним организаторы не дали, поэтому у каждого критерия здесь две части: что показываем и чего пока нет. Таблицы на этой странице собраны из плана сдачи в репозитории и не расходятся с ним.</p>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <div class="tabs" id="tabs" role="tablist" aria-label="Этапы">
+      <button type="button" role="tab" id="t-s1" aria-controls="p-s1" aria-selected="false">Спринт 1 · $sprint1_total баллов</button>
+      <button type="button" role="tab" id="t-s2" aria-controls="p-s2" aria-selected="true">Спринт 2 · $sprint2_total баллов</button>
+      <button type="button" role="tab" id="t-s3" aria-controls="p-s3" aria-selected="false">Спринт 3 и финал</button>
+      <button type="button" role="tab" id="t-c" aria-controls="p-c" aria-selected="false">Условия трека</button>
+    </div>
+    <div class="crit-tools">
+      <input type="search" id="q" placeholder="Найти: защита данных, пилот, рынок…" aria-label="Найти в критериях" hidden>
+      <span class="note" id="found" aria-live="polite"></span>
+    </div>
+
+    <div class="panel" id="p-s1" role="tabpanel" aria-labelledby="t-s1">
+      <h2>Спринт 1 и онлайн-питч</h2>
+      <p class="sub">Фокус: подтвердить проблему, оценить рынок, выбрать метрики ценности, показать движение к MVP. Спринт 1 сдан до 01.11.2026, по сумме спринта и питча команда прошла в полуфинал.</p>
+      <ol class="crit">
+$crit_sprint1
+      </ol>
+    </div>
+
+    <div class="panel" id="p-s2" role="tabpanel" aria-labelledby="t-s2">
+      <h2>Спринт 2, полуфинал</h2>
+      <p class="sub">Фокус: довести MVP, посчитать финансовую модель, показать защиту данных. Загрузка решения № 2 — до 29.11.2026, по этим баллам выбирают финалистов.</p>
+      <ol class="crit">
+$crit_sprint2
+      </ol>
+    </div>
+
+    <div class="panel" id="p-s3" role="tabpanel" aria-labelledby="t-s3">
+      <h2>Спринт 3 и финал</h2>
+      <p class="sub">Фокус спринта 3 (03–08.12.2026): сценарий пилота и масштабирования, финальный питч. Баллов организаторы не опубликовали. Принципы оценки финала: проблема доказана, ценность понятна, решение работает и растёт, команда способна довести проект. Финал — 11.12.2026: работающий MVP, подтверждённый данными.</p>
+      <ol class="crit">
+$crit_final
+      </ol>
+      <a class="more" href="pilot.html">Сценарий пилота и масштабирования</a>
+    </div>
+
+    <div class="panel" id="p-c" role="tabpanel" aria-labelledby="t-c">
+      <h2>Технические условия трека</h2>
+      <p class="sub">Условия одинаковы для всех этапов. Полного соответствия банковским нормативам на соревновании не ждут, но учитывают, можно ли дальше выполнить 152-ФЗ, 115-ФЗ и требования ИБ.</p>
+      <ol class="crit">
+$crit_conditions
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="sec alt">
+  <div class="wrap">
+    <h2>Что сдаём на каждом этапе</h2>
+    <p class="sub">Набор одинаковый для всех трёх загрузок. Ссылки на облачный диск — российский: Яндекс Диск или Облако Mail.</p>
+    <ul class="ticks">
+      <li>Презентация в PPTX или PDF — <a href="pitch.html">слайды</a>.</li>
+      <li>Развёрнутое демо или видео-демо — <a href="showcase.html">сценарий и видео</a>, а также <a href="cases.html">кейсы</a>.</li>
+      <li>Исходный код — <a href="$repo">GitHub</a>.</li>
+      <li>Артефакты аналитики: описание проекта, финансовая модель, оценка рынка, план внедрения — <a href="materials/Mandat_analytics_all.pdf">пакет аналитики</a>.</li>
+      <li>Ключевые результаты спринта — <a href="$repo/blob/main/submission/FORM_SPRINT2.md">тексты формы</a>.</li>
+    </ul>
+  </div>
+</section>
+</main>
+
+$footer
+</body>
+</html>

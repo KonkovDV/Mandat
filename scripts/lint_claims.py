@@ -32,10 +32,9 @@ def pptx_text(path: Path) -> str:
     return " ".join(re.findall(r"<a:t>([^<]*)</a:t>", xml)).replace("\u00a0", " ").replace("\u2011", "-")
 
 
-# Число правил в текстах должно совпадать с пакетом. История (CHANGELOG, записи аудитов) не проверяется.
+# Число правил в текстах должно совпадать с пакетом. История изменений (CHANGELOG) не проверяется.
 RULE_COUNT = re.compile(r"\b(\d+)\*{0,2}\s+\*{0,2}правил[оа]?\b|правило из (\d+)\b")
 RULE_COUNT_SKIP = {"CHANGELOG.md"}
-RULE_COUNT_SKIP_PREFIXES = ("docs/AUDIT_", "docs/audit/")
 
 
 def rule_count_hits() -> list[str]:
@@ -45,7 +44,7 @@ def rule_count_hits() -> list[str]:
     hits = []
     for path in sorted(ROOT.rglob("*.md")):
         rel = path.relative_to(ROOT).as_posix()
-        if path.name in RULE_COUNT_SKIP or rel.startswith(RULE_COUNT_SKIP_PREFIXES):
+        if path.name in RULE_COUNT_SKIP:
             continue
         if any(part in SKIP_DIRS or part.endswith(".egg-info") for part in path.relative_to(ROOT).parts):
             continue
@@ -108,7 +107,8 @@ def count_mismatch(name: str, found: int, expected: int | None, *, deck: bool) -
 # Сданные тексты — запись того, что ушло жюри, с датой среза. Числа автотестов, демо-кейсов и мутаций в них
 # не догоняют evidence.json: иначе каждый новый тест переписывал бы сданную форму. Запрещённые формулировки,
 # число правил и согласование слов проверяются и здесь. Каждый файл обязан назвать дату среза в первых строках.
-DATED_RECORDS = {"submission/FORM_SPRINT1.md": "31.10.2026"}
+# Пример записи: {"submission/FORM_SPRINT2.md": "29.11.2026"}.
+DATED_RECORDS: dict[str, str] = {}
 
 
 def evidence_count_hits() -> list[str]:
@@ -131,7 +131,7 @@ def evidence_count_hits() -> list[str]:
             hits.append(f"{rel}: в первых строках нет «срез на {day}»: без даты файл проверяется как текущий")
     for path in sorted(ROOT.rglob("*.md")):
         rel = path.relative_to(ROOT).as_posix()
-        if path.name in RULE_COUNT_SKIP or rel.startswith(RULE_COUNT_SKIP_PREFIXES):
+        if path.name in RULE_COUNT_SKIP:
             continue
         if any(part in SKIP_DIRS or part.endswith(".egg-info") for part in path.relative_to(ROOT).parts):
             continue
@@ -183,7 +183,7 @@ def form_hits() -> list[str]:
     hits = []
     for path in sorted(ROOT.rglob("*.md")):
         rel = path.relative_to(ROOT).as_posix()
-        if path.name in RULE_COUNT_SKIP or rel.startswith(RULE_COUNT_SKIP_PREFIXES):
+        if path.name in RULE_COUNT_SKIP:
             continue
         if any(part in SKIP_DIRS or part.endswith(".egg-info") for part in path.relative_to(ROOT).parts):
             continue

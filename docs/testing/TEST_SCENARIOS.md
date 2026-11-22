@@ -9,8 +9,8 @@
 | O-1 | Корректная МЧД, руководитель по ЕГРЮЛ, операция покрыта | «на разбор» в demo (КЭП не проверена), «подтверждено» при снятом уставе | корпус: `ok`, `ok_charter_cleared` |
 | O-2 | Руководитель действует без доверенности | на разбор, нужна подпись распоряжения (R-SIG-002) | корпус `ok_director`; `test_eio_direct_needs_instruction_signature_in_strict` |
 | O-3 | Каждый вид вердикта | confirmed / needs_review / refuted / insufficient_data | таблица 5 ниже |
-| O-4 | HTML-карточка: следующий шаг, источники, статус draft, доступность | WCAG 2.2 AA контраст, `scope`, `caption`, `lang` | `tests/test_r2_card.py` |
-| O-5 | Повтор кейса с тем же `case_id` | 409; `replace=true` — перезапись | `tests/test_r2_races.py::test_live_claim_blocks_and_expired_claim_does_not` |
+| O-4 | HTML-карточка: следующий шаг, источники, статус draft, доступность | WCAG 2.2 AA контраст, `scope`, `caption`, `lang` | `tests/test_html_card.py` |
+| O-5 | Повтор кейса с тем же `case_id` | 409; `replace=true` — перезапись | `tests/test_case_races.py::test_live_claim_blocks_and_expired_claim_does_not` |
 
 ## 2. Представитель клиента
 
@@ -20,7 +20,7 @@
 | C-2 | МЧД отозвана в реестре | опровергнуто (R-REG-001) | корпус `revoked`; `test_r_reg_001_revoked_refutes` |
 | C-3 | Передоверие: корректное, шире, дольше, запрещено, без родителя, отозван родитель, передоверитель утратил полномочия | на разбор / опровергнуто / нет данных по R-SUB-001…010 | корпус `ok_subdelegation`, `child_wider`, `child_longer`, `subdelegation_forbidden`, `missing_parent`, `parent_revoked`, `lost_on_subdelegation`, `long_chain*`, `sub_*` |
 | C-4 | Смена руководителя после выдачи МЧД | сигнал, на разбор (R-EIO-002) | корпус `director_changed`, `director_changed_long_ago`, `fresh_director_admin` |
-| C-5 | Ликвидация, реорганизация, прекращение юрлица, банкротство | опровергнуто / на разбор (R-EIO-004, R-BNK-001) | корпус `liquidated`; `tests/test_r2_legal.py` (реорганизация, прекращение) |
+| C-5 | Ликвидация, реорганизация, прекращение юрлица, банкротство | опровергнуто / на разбор (R-EIO-004, R-BNK-001) | корпус `liquidated`; `tests/test_legal_entity_termination.py` (реорганизация, прекращение) |
 | C-6 | Устаревший снимок ЕГРЮЛ, нет статуса, реестр недоступен | недостаточно данных (R-EIO-006, R-REG-001) | корпус `egrul_stale`, `egrul_no_status`, `registry_unavailable` |
 | C-7 | Операция не покрыта полномочием, текстовые полномочия, совместные | опровергнуто / на разбор | корпус `not_covered`, `text_authority`, `joint_powers` |
 
@@ -29,19 +29,19 @@
 | # | Сценарий | Ожидание | Тест |
 |---|---|---|---|
 | A-1 | Подложная МЧД: чужой ОГРН, неверная контрольная сумма, чужой представитель, подпись не ЕИО | опровергнуто | корпус `ogrn_of_other_company`, `bad_checksum`, `wrong_representative`, `signer_not_eio`, `snils_of_other_person` |
-| A-2 | XML-бомба, битый XML, сверхглубокий JSON, превышение размера | отказ без падения | корпус `xml_bomb`, `malformed_xml`; `test_hardening.py`; `test_redteam_2026_10_14.py::test_rt06_*` |
-| A-3 | Подмена файла кейса ссылкой после проверки пути, рост файла после fstat, FIFO | отказ (S-4) | `tests/test_r2_races.py` |
+| A-2 | XML-бомба, битый XML, сверхглубокий JSON, превышение размера | отказ без падения | корпус `xml_bomb`, `malformed_xml`; `test_hardening.py`; `test_redteam_regressions.py::test_rt06_*` |
+| A-3 | Подмена файла кейса ссылкой после проверки пути, рост файла после fstat, FIFO | отказ | `tests/test_case_races.py` |
 | A-4 | Двойник-документ, повтор ЕГРЮЛ, номер-двойник | недостаточно данных | корпус `duplicate_egrul`, `same_number_twin`, `leaf_tie` |
 | A-5 | Подбор токена, отсутствие токена, чужой кейс | 401 / 404, лимит 429 | `test_api_users.py`, нагрузочный `--overload` |
-| A-6 | Подделка журнала между записями | следующая запись отвергается | `tests/test_r2_races.py::test_journal_tampering_between_appends_is_still_caught` |
+| A-6 | Подделка журнала между записями | следующая запись отвергается | `tests/test_case_races.py::test_journal_tampering_between_appends_is_still_caught` |
 | A-7 | Повтор удостоверения, подложенный старый список статусов, удостоверение старым ключом после ротации | отказ | `test_attestation_validation.py`, `tests/test_signing.py::test_rotation_*` |
-| A-8 | Гонка одновременных создания и перезаписи | один выигрывает, остальные 409 | `tests/test_r2_races.py::test_many_concurrent_creates_one_wins`, `test_external_audit_2026_10.py` |
+| A-8 | Гонка одновременных создания и перезаписи | один выигрывает, остальные 409 | `tests/test_case_races.py::test_many_concurrent_creates_one_wins`, `test_hardening_inputs.py` |
 
 ## 4. Администратор
 
 | # | Сценарий | Ожидание | Тест |
 |---|---|---|---|
-| D-1 | Запуск pilot/prod без ключей, с коротким токеном, с открытым PEM | сервис не стартует, код 2 | `test_serve_guard.py`, `test_redteam_2026_10_14.py`, `test_signing.py::test_cli_demo_refuses_plain_key_in_pilot` |
+| D-1 | Запуск pilot/prod без ключей, с коротким токеном, с открытым PEM | сервис не стартует, код 2 | `test_serve_guard.py`, `test_redteam_regressions.py`, `test_signing.py::test_cli_demo_refuses_plain_key_in_pilot` |
 | D-2 | Ротация ключа подписи, отзыв ключа | старые удостоверения проверяются, отозванный ключ — нет | `tests/test_signing.py` |
 | D-3 | HSM / Vault / KMS | подпись сверяется с открытым ключом модуля | `tests/test_signing.py` |
 | D-4 | Нагрузка, перегрузка, выдержка | без ошибок данных, журнал цел, 429 при лимите | `tools/load/run_load.py`, CI `--smoke` |

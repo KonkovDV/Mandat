@@ -114,7 +114,7 @@ def test_server_options_bound_concurrency(monkeypatch):
 
 
 def test_build_backend_is_hash_pinned():
-    """R2-SC-1: setuptools из lock-файла с хешами, сборка без изоляции — pip ничего не скачивает сам."""
+    """Setuptools из lock-файла с хешами, сборка без изоляции — pip ничего не скачивает сам."""
     root = Path(__file__).resolve().parents[1]
     docker = (root / "Dockerfile").read_text(encoding="utf-8")
     ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
@@ -126,7 +126,7 @@ def test_build_backend_is_hash_pinned():
 
 
 def test_every_pip_install_is_hash_pinned():
-    """R3: pip и инструменты CI — тоже из lock-файлов с хешами; незакреплённых установок нет."""
+    """Pip и инструменты CI — тоже из lock-файлов с хешами; незакреплённых установок нет."""
     import re
 
     root = Path(__file__).resolve().parents[1]

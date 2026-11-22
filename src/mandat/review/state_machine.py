@@ -12,7 +12,7 @@
 уходит в очередь, а решавшие его сотрудники и подавший жалобу решать его уже не могут («своё не решать»).
 ``require`` задаёт специализацию, без которой кейс не решить; снять или заменить её нельзя.
 
-Роли и правила переходов (M-09) описаны в docs/REVIEW.md.
+Роли и правила переходов описаны в docs/REVIEW.md.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ TRANSITIONS: dict[tuple[ReviewState, str], ReviewState] = {
     (ReviewState.IN_REVIEW, "reject"): ReviewState.REJECTED,
     (ReviewState.ACCEPTED, "close"): ReviewState.CLOSED,
     (ReviewState.REJECTED, "close"): ReviewState.CLOSED,
-    # Жалоба на решение человека (M-09).
+    # Жалоба на решение человека.
     (ReviewState.ACCEPTED, "appeal"): ReviewState.QUEUED,
     (ReviewState.REJECTED, "appeal"): ReviewState.QUEUED,
     (ReviewState.CLOSED, "appeal"): ReviewState.QUEUED,
@@ -73,7 +73,7 @@ ROLES = ACTING_ROLES | set(SPECIALIZATIONS)
 NON_ACTING_ROLES = {
     "auditor": "только чтение",
     "admin": "управляет пользователями и настройками, кейсы не решает",
-    "dbo": "учётная запись системы банка: только допуск операции (P6-05)",
+    "dbo": "учётная запись системы банка: только допуск операции",
 }
 # Кто может выполнить действие.
 ALLOWED_ROLES: dict[str, frozenset[str]] = {

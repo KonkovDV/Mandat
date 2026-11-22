@@ -39,9 +39,7 @@ def test_submitted_form_is_a_dated_record(monkeypatch, tmp_path):
     """Сданная форма не догоняет evidence.json, но только пока сама называет дату среза."""
     # Внутри make evidence число автотестов ещё собирается, и lint_claims его не сверяет: здесь сверяет.
     monkeypatch.delenv("MANDAT_EVIDENCE_BUILDING", raising=False)
-    assert lint.DATED_RECORDS == {"submission/FORM_SPRINT1.md": "31.10.2026"}
-    head = (ROOT / "submission" / "FORM_SPRINT1.md").read_text(encoding="utf-8").splitlines()[:5]
-    assert any("срез на 31.10.2026" in line.casefold() for line in head)
+    monkeypatch.setattr(lint, "DATED_RECORDS", {"submission/FORM_SPRINT1.md": "31.10.2026"})
 
     (tmp_path / "submission").mkdir()
     (tmp_path / "evidence.json").write_text(

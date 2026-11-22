@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="$csp">
+<title>Кейсы — Мандат</title>
+<meta name="description" content="$demo_count демо-кейсов «Мандата»: вердикт, ось времени полномочий, проверки, норма и следующий шаг для сотрудника банка.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1426" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Мандат — $demo_count демо-кейсов">
+<meta property="og:image" content="${site_url}og.jpg">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="style.css">
+<script src="js/theme.js"></script>
+<script type="module" src="js/cases.js"></script>
+</head>
+<body>
+$header
+
+<main id="main">
+<section class="hero slim">
+  <div class="wrap">
+    <img class="page-art" src="img/icon-cases.webp" width="341" height="341" alt="">
+    <p class="kicker">Демо-кейсы</p>
+    <h1>$demo_count кейсов: на чём держится каждый ответ</h1>
+    <p class="lead">Компания, люди и документы вымышлены, а устроены как настоящие: МЧД в формате ФНС, выписка ЕГРЮЛ, устав. Выберите кейс — появятся даты, проверки и норма. Полная карточка сотрудника открывается по ссылке, она та же, что в банке.</p>
+  </div>
+</section>
+
+<section class="sec alt" id="lab">
+  <div class="wrap">
+    <p class="kicker">Что если</p>
+    <h2>Поменяйте факты кейса 14, ответ даст ядро</h2>
+    <p class="sub">Кейс 14 без изменений — единственное «подтверждено» в демо. Отмените доверенность, сделайте смену директора свежей, уберите отметку юриста об уставе — и посмотрите, что скажет «Мандат». Все 48 сочетаний ядро посчитало при сборке страницы, браузер только показывает ответ.</p>
+    <div class="lab" id="lab-box" hidden>
+      <div class="lab-ctl">
+        <p class="note">Реестр МЧД</p>
+        <div class="seg" id="lab-registry" role="group" aria-label="Статус МЧД в реестре">
+          <button type="button" aria-pressed="true" data-v="active">действует</button>
+          <button type="button" aria-pressed="false" data-v="revoked">отменена</button>
+          <button type="button" aria-pressed="false" data-v="silent">не ответил</button>
+        </div>
+        <p class="note">Факты кейса</p>
+        <div class="chips" id="lab-toggles" role="group" aria-label="Факты кейса">
+          <button class="chip" type="button" aria-pressed="false" data-t="fresh">директор сменился 10 дней назад</button>
+          <button class="chip" type="button" aria-pressed="false" data-t="charter">устав никто не разобрал</button>
+          <button class="chip" type="button" aria-pressed="false" data-t="bankrupt">компания в конкурсном производстве</button>
+          <button class="chip" type="button" aria-pressed="false" data-t="stale">выписке ЕГРЮЛ 45 дней</button>
+        </div>
+        <p class="fine">Порядок, в котором ядро сводит находки: опровержение сильнее нехватки данных, нехватка сильнее разбора, разбор сильнее «да».</p>
+      </div>
+      <div class="scrub-card" id="lab-card" aria-live="polite"></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <h2>Все демо-кейсы</h2>
+    <div class="chips" id="filters" role="group" aria-label="Показать кейсы с вердиктом" hidden></div>
+    <div class="explorer">
+      <ul class="case-list" id="list" aria-label="Кейсы">
+$case_rows
+      </ul>
+      <div class="case-panel" id="panel" aria-live="polite">
+        <p class="note">Скрипты выключены: откройте карточку кейса по ссылке слева. В карточке те же данные, что увидит сотрудник банка.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec alt">
+  <div class="wrap two">
+    <div>
+      <h2>Как читать ответ</h2>
+      <ul class="ticks">
+        <li><b>Подтверждено</b> — все обязательные проверки прошли, возражений нет. Банк получает рекомендацию роли и подписанное удостоверение.</li>
+        <li><b>Опровергнуто</b> — полномочия нет: доверенность отменена, передоверие запрещено, компания в конкурсном производстве. Видно звено и норму.</li>
+        <li><b>На разбор</b> — есть спорное: свежая смена директора, порог в уставе, полномочие записано текстом. Решает человек, у кейса приоритет и срок.</li>
+        <li><b>Недостаточно данных</b> — какой-то источник не ответил. Это не «доверенность действует», а список того, чего не хватает.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Почему «да» только одно</h2>
+      <p>Демо собрано из ловушек: в тринадцати кейсах есть дефект или сомнение. «Подтверждено» выдаётся только при полном доказательстве. В кейсе 14 есть разобранный устав, в кейсе 01 его нет, поэтому 01 идёт к человеку.</p>
+      <p>Смена директора доверенность не прекращает (п.&nbsp;1 ст.&nbsp;188 ГК&nbsp;РФ). Давняя смена — сигнал, свежая — повод для разбора: так начинается захват компании.</p>
+      <a class="more" href="showcase.html">Что происходит дальше, на платеже</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<script type="application/json" id="page-data">$data</script>
+$footer
+</body>
+</html>

@@ -181,9 +181,11 @@ def main(deck: Path) -> int:
         sys.stderr.write("презентация не прошла проверку:\n" + "\n".join(problems) + "\n")
         return 1
     tmp = deck.with_suffix(".tmp.pptx")
+    # Записи-каталоги в архиве не нужны: с ними облачные диски и совместное редактирование не открывают файл.
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as archive:
         for info in infos:
-            archive.writestr(info.filename, parts[info.filename])
+            if not info.is_dir():
+                archive.writestr(info.filename, parts[info.filename])
     tmp.replace(deck)
     print(f"готово: {deck} — тема, язык, alt-текст и метаданные приведены, проверки пройдены")
     return 0

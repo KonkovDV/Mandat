@@ -193,7 +193,7 @@ async function buildGraphics(opts = {}) {
   const out = {};
   const bg = bgDark();
   save("background-dark", bg);
-  out.bgDark = await png(bg, 2560, 1440);
+  out.bgDark = "image/jpeg;base64," + (await darkBackground()).toString("base64");
 
   const hero = heroGraph();
   save("authority-graph", hero.svg);
@@ -223,6 +223,11 @@ async function buildGraphics(opts = {}) {
     save("qr-github", qr);
     out.qr = await png(qr, 600, 600);
   }
+  if (opts.qrSiteSvg) {
+    const qr = fs.readFileSync(opts.qrSiteSvg, "utf8");
+    save("qr-site", qr);
+    out.qrSite = await png(qr, 600, 600);
+  }
 
   // Значки Lucide в два цвета: кобальт на светлой плитке и белый на тёмной или цветной.
   const names = [
@@ -249,4 +254,66 @@ async function buildGraphics(opts = {}) {
   return out;
 }
 
-module.exports = { BRAND, FONT, buildGraphics };
+// ---------- Фото и 3D-значки (исходники — assets/visuals, их пишет import_visuals.py) ----------
+const SLIDE_W = 12192000 / 914400; // LAYOUT_WIDE: 13,333 дюйма
+const BG_W = 2560, BG_H = 1440, BG_PX = BG_W / SLIDE_W; // фон тёмных слайдов: 192 точки на дюйм
+const jpeg = (buf) => "image/jpeg;base64," + buf.toString("base64");
+
+// Фон тёмных слайдов (обложка, раздел, финал). Если есть visuals/bg-lux.jpg из Figma — атласные волны с золотыми
+// нитями; левая половина притемнена под белый текст. Без файла — сетка, нарисованная кодом (bgDark).
+const LUX = path.join(__dirname, "assets", "visuals", "bg-lux.jpg");
+let BG = null;
+async function darkBackground() {
+  if (BG) return BG;
+  if (!fs.existsSync(LUX)) {
+    BG = await sharp(Buffer.from(bgDark()), { density: 144 }).resize(BG_W, BG_H).jpeg({ quality: 92 }).toBuffer();
+    return BG;
+  }
+  const veil = `<svg xmlns="http://www.w3.org/2000/svg" width="${BG_W}" height="${BG_H}"><defs>
+    <linearGradient id="l" x1="0" x2="1"><stop offset="0" stop-color="${BRAND.navyDeep}" stop-opacity="0.62"/><stop offset="0.58" stop-color="${BRAND.navyDeep}" stop-opacity="0"/></linearGradient>
+    <linearGradient id="b" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="${BRAND.navyDeep}" stop-opacity="0.5"/><stop offset="0.35" stop-color="${BRAND.navyDeep}" stop-opacity="0"/></linearGradient></defs>
+    <rect width="${BG_W}" height="${BG_H}" fill="url(#l)"/><rect width="${BG_W}" height="${BG_H}" fill="url(#b)"/></svg>`;
+  BG = await sharp(LUX).resize(BG_W, BG_H, { fit: "cover" }).composite([{ input: Buffer.from(veil) }]).jpeg({ quality: 90, chromaSubsampling: "4:4:4" }).toBuffer();
+  return BG;
+}
+
+// Кадр на тёмном слайде: занимает полосу от xIn до правого края и слева уходит в фон.
+// Под кадр подкладывается тот же кусок фона, что у макета, поэтому шва нет и прозрачность не нужна.
+async function photoPanel(file, xIn, opts = {}) {
+  const left = Math.round(xIn * BG_PX), width = BG_W - left;
+  const bg = await sharp(await darkBackground()).extract({ left, top: 0, width, height: BG_H }).png().toBuffer();
+  const photo = await sharp(file).resize(width, BG_H, { fit: "cover", position: opts.position ?? "top" }).png().toBuffer();
+  const stop = (opts.fade ?? 0.28).toFixed(3);
+  const mask = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${BG_H}"><defs><linearGradient id="f" x1="0" x2="1">
+    <stop offset="0" stop-color="#FFF" stop-opacity="0"/><stop offset="${stop}" stop-color="#FFF" stop-opacity="1"/></linearGradient></defs>
+    <rect width="${width}" height="${BG_H}" fill="url(#f)"/></svg>`;
+  const faded = await sharp(photo).ensureAlpha().composite([{ input: Buffer.from(mask), blend: "dest-in" }]).png().toBuffer();
+  const out = await sharp(bg).composite([{ input: faded }]).jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toBuffer();
+  return { data: jpeg(out), x: xIn, w: SLIDE_W - xIn, h: 7.5 };
+}
+
+// Фото со скруглёнными углами на светлом слайде: углы закрашены цветом фона, файл остаётся JPEG.
+async function roundedPhoto(file, wIn, hIn, rIn, bgHex, opts = {}) {
+  const k = 192, w = Math.round(wIn * k), h = Math.round(hIn * k), r = Math.round(rIn * k);
+  const photo = await sharp(file).resize(w, h, { fit: "cover", position: opts.position ?? "centre" }).png().toBuffer();
+  const mask = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" rx="${r}" fill="#FFF"/></svg>`;
+  const clipped = await sharp(photo).ensureAlpha().composite([{ input: Buffer.from(mask), blend: "dest-in" }]).png().toBuffer();
+  const out = await sharp({ create: { width: w, height: h, channels: 3, background: `#${bgHex}` } })
+    .composite([{ input: clipped }]).jpeg({ quality: 90, chromaSubsampling: "4:4:4" }).toBuffer();
+  return jpeg(out);
+}
+
+// Портрет для круга: квадрат по лицу из исходного кадра (box — левый верхний угол и сторона в точках файла).
+async function squarePhoto(file, box, size = 900) {
+  const out = await sharp(file).extract({ left: box.x, top: box.y, width: box.side, height: box.side })
+    .resize(size, size, { kernel: "lanczos3" }).sharpen({ sigma: 0.6 }).jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toBuffer();
+  return jpeg(out);
+}
+
+// 3D-значок с прозрачным фоном, уменьшенный под слайд.
+async function icon3d(file, size = 256) {
+  const out = await sharp(file).resize(size, size).png({ compressionLevel: 9 }).toBuffer();
+  return "image/png;base64," + out.toString("base64");
+}
+
+module.exports = { BRAND, FONT, buildGraphics, photoPanel, roundedPhoto, squarePhoto, icon3d };

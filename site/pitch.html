@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="$csp">
+<title>Слайды — Мандат</title>
+<meta name="description" content="Презентация «Мандата» для трека ВТБ: $pitch_count слайдов питча и приложение для вопросов жюри. У каждого слайда свой адрес и текст выступления.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1426" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Мандат — презентация для трека ВТБ">
+<meta property="og:image" content="${site_url}og.jpg">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="style.css">
+<script src="js/theme.js"></script>
+<script type="module" src="js/pitch.js"></script>
+</head>
+<body>
+$header
+
+<main id="main">
+<section class="hero slim">
+  <div class="wrap">
+    <figure class="page-art photo">
+      <img src="img/anna-final-480.webp" srcset="img/anna-final-480.webp 480w, img/anna-final-960.webp 960w" sizes="200px" width="480" height="720" alt="Анна, амбассадор «Мандата», с планшетом">
+    </figure>
+    <p class="kicker">Презентация</p>
+    <h1>$pitch_count слайдов на пять минут и приложение для вопросов</h1>
+    <p class="lead">Те же слайды, что в PDF и PPTX, собраны из кода презентации этого коммита. Под каждым слайдом — что говорит докладчик. Листайте стрелками или пробелом, F — во весь экран, у каждого слайда свой адрес: <code>pitch.html#7</code>.</p>
+    <p class="cta">
+      <a class="btn primary" href="materials/Mandat_VTB.pdf">Скачать PDF</a>
+      <a class="btn" href="materials/Mandat_VTB.pptx">Скачать PPTX</a>
+    </p>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <div class="viewer" id="viewer" hidden>
+      <div class="stage" id="stage">
+        <img id="slide-img" alt="" width="1600" height="900">
+      </div>
+      <div class="controls">
+        <button class="btn small" type="button" id="prev" aria-label="Предыдущий слайд">←</button>
+        <button class="btn small" type="button" id="next" aria-label="Следующий слайд">→</button>
+        <button class="btn small" type="button" id="full">Во весь экран</button>
+        <span class="pos" id="cnt" aria-live="polite"></span>
+      </div>
+      <div class="progress" aria-hidden="true"><i id="pg"></i></div>
+      <nav class="thumbs" id="thumbs" aria-label="Слайды"></nav>
+      <div class="notes" id="notes" aria-live="polite"></div>
+    </div>
+    <ol class="slide-list" id="slide-list">
+$slide_items
+    </ol>
+  </div>
+</section>
+</main>
+
+<script type="application/json" id="page-data">$data</script>
+$footer
+</body>
+</html>

@@ -37,7 +37,7 @@ CARDS = ROOT / "docs" / "legal" / "cards"
 INDEX = ROOT / "docs" / "legal" / "README.md"
 QUOTES = ROOT / "docs" / "legal" / "quotes.json"
 REVIEW = ROOT / "docs" / "LEGAL_REVIEW.md"
-TRACE = ROOT / "docs" / "audit" / "LEGAL_TRACEABILITY.md"
+TRACE = ROOT / "docs" / "legal" / "TRACEABILITY.md"
 CORPUS_PER_DEFECT = 6
 CORPUS_SEED = 7
 
@@ -230,7 +230,7 @@ def render_card(
     ]
     if sources:
         lines += [
-            "Источник по [трассировке норм](../../audit/LEGAL_TRACEABILITY.md#источники-норм-и-глубина-их-проверки):",
+            "Источник по [трассировке норм](../TRACEABILITY.md#источники-норм-и-глубина-их-проверки):",
             "",
             "| Источник | Редакция и сила | Как проверен |",
             "|---|---|---|",

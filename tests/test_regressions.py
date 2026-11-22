@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 import json
 import re
 import subprocess
@@ -693,9 +694,17 @@ def test_evidence_matches_current_engine():
         assert report.reproducibility_hash == row["reproducibility_hash"], name
 
 
-# --------------------------------------------------------------------------- материалы для жюри
+# --------------------------------------------------------------------------- гигиена репозитория
 
-_FORBIDDEN_TRACES = re.compile("clau" + "de|anthr" + "opic|co-authored-by|/tmp/|ivan ivanov", re.IGNORECASE)
+_FORBIDDEN_TRACES = re.compile(r"co-authored-by|/tmp/|ivan ivanov", re.IGNORECASE)
+# Запрещённые слова хранятся хешами SHA-256: самих слов в репозитории нет.
+_FORBIDDEN_WORD_DIGESTS = frozenset(
+    {
+        "c857d09db23e6822e3600bc06ad8d58f92ed62bc8efd81c753f77048662cb97d",
+        "c70eca6b0f88f44d81a41311647e50fda1ac454ec04ffd442b0eb4743a993131",
+    }
+)
+_ASCII_WORD = re.compile(r"[a-z]+")
 _SKIP_DIRS = {".git", ".venv", "venv", "var", "build", "dist", "node_modules", "__pycache__"}
 _TEXT_SUFFIXES = {".py", ".md", ".txt", ".json", ".toml", ".yml", ".yaml", ".html", ".cff", ".ps1", ".sh", ".js"}
 
@@ -725,7 +734,12 @@ def _pdf_text(path: Path) -> str:
     return "\n".join(parts)
 
 
-def test_no_assistant_traces_or_local_paths_in_repository():
+def _forbidden_words(text: str) -> list[str]:
+    words = set(_ASCII_WORD.findall(text.lower()))
+    return sorted(w for w in words if hashlib.sha256(w.encode()).hexdigest() in _FORBIDDEN_WORD_DIGESTS)
+
+
+def test_no_coauthor_trailers_or_local_paths_in_repository():
     hits = []
     for path in _repo_files():
         if path.name == Path(__file__).name:
@@ -739,6 +753,7 @@ def test_no_assistant_traces_or_local_paths_in_repository():
         else:
             continue
         hits += [f"{path.relative_to(ROOT)}: {m.group(0)}" for m in _FORBIDDEN_TRACES.finditer(text)]
+        hits += [f"{path.relative_to(ROOT)}: {word}" for word in _forbidden_words(text)]
     assert not hits, "\n".join(hits[:20])
 
 
@@ -747,6 +762,43 @@ def _deck() -> Path:
     if not decks:
         pytest.skip("презентации в репозитории нет")
     return decks[0]
+
+
+def test_deck_archive_has_no_folder_entries():
+    """С записями-каталогами в ZIP презентация не открывается на части облачных дисков."""
+    with zipfile.ZipFile(_deck()) as archive:
+        folders = [i.filename for i in archive.infolist() if i.is_dir()]
+        assert archive.namelist()[0] == "[Content_Types].xml"
+    assert not folders, folders[:5]
+
+
+_REPO_PATH = re.compile(
+    r"(?<![\w/.-])((?:docs|tests|scripts|submission|src|tools|examples|policies|requirements|site)/[\w./-]*[\w/]"
+    r"|[A-Z][A-Z0-9_]*\.md)"
+)
+
+
+def _deck_paragraphs(path: Path) -> str:
+    """Текст слайдов и заметок по абзацам: путь, разбитый на несколько фрагментов, склеивается."""
+    with zipfile.ZipFile(path) as archive:
+        names = [n for n in archive.namelist() if re.match(r"ppt/(slides|notesSlides)/\w+\d+\.xml$", n)]
+        xml = "\n".join(archive.read(n).decode("utf-8") for n in names)
+    paragraphs = ["".join(re.findall(r"<a:t>([^<]*)</a:t>", p)) for p in re.findall(r"<a:p>.*?</a:p>", xml, re.S)]
+    return "\n".join(paragraphs).replace("\u00a0", " ").replace("\u2011", "-")
+
+
+def test_deck_and_analytics_cite_only_existing_files():
+    """Сноски презентации и шаблоны пакета аналитики называют только файлы, которые есть в репозитории."""
+    texts = {_deck().relative_to(ROOT).as_posix(): _deck_paragraphs(_deck())}
+    for template in sorted((ROOT / "submission" / "analytics" / "templates").glob("*.md")):
+        texts[template.relative_to(ROOT).as_posix()] = template.read_text(encoding="utf-8")
+    missing = sorted(
+        f"{name}: {m.group(1)}"
+        for name, text in texts.items()
+        for m in _REPO_PATH.finditer(text)
+        if not (ROOT / m.group(1)).exists()
+    )
+    assert not missing, missing[:10]
 
 
 def test_deck_images_have_meaningful_alt_text():

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="$csp">
+<title>Закон завтра — Мандат</title>
+<meta name="description" content="Календарь норм пакета правил «Мандата»: какие акты действуют на выбранную дату и какие правила перестают давать «подтверждено», пока юрист не пересверит пакет.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1426" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Мандат — закон завтра уже в правилах">
+<meta property="og:image" content="${site_url}og.jpg">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="style.css">
+<script src="js/theme.js"></script>
+<script type="module" src="js/law.js"></script>
+</head>
+<body>
+$header
+
+<main id="main">
+<section class="hero slim">
+  <div class="wrap">
+    <img class="page-art" src="img/icon-law.webp" width="341" height="341" alt="">
+    <p class="kicker">Правовой радар</p>
+    <h1>Закон меняется по расписанию, и правила знают это расписание</h1>
+    <p class="lead">С 01.09.2027 доверенность оформляют по единой форме на Госуслугах (315-ФЗ). С 27.07.2027 юрлицо может пройти реструктуризацию долгов (253-ФЗ). 01.03.2028 утрачивают силу приказы Минцифры № 856 и № 857 о классификаторе полномочий и формах доверенностей. Пакет правил хранит эти сроки: правило, чей акт утратил силу, «подтверждено» не даёт, пока юрист не пересверит пакет.</p>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <h2>Выберите дату</h2>
+    <div class="law-ctl" id="law-ctl" hidden>
+      <input type="range" id="day" aria-label="Дата проверки" min="0" max="100" step="1" value="0">
+      <output id="day-out" for="day"></output>
+    </div>
+    <div class="law-sum" id="law-sum" aria-live="polite"></div>
+    <div id="law-chart"></div>
+    <h2 id="law-h">Акты пакета правил</h2>
+    <p class="note">Даты — по текстам на publication.pravo.gov.ru. Перед пилотом календарь сверяет юрист банка.</p>
+    <div class="crit-tools">
+      <input type="search" id="rule-filter" placeholder="Код правила, например R-FMT-002" aria-label="Показать акты, на которые опирается правило" hidden>
+    </div>
+    <div class="table-wrap">
+    <table aria-labelledby="law-h">
+      <thead><tr><th scope="col">Акт</th><th scope="col">Вступает в силу</th><th scope="col">Действует до</th><th scope="col">Правила</th></tr></thead>
+      <tbody id="law-rows">
+$law_rows
+      </tbody>
+    </table>
+    </div>
+    <p class="note">То же в командной строке: <code>mandat law-calendar --on ГГГГ-ММ-ДД --days 365</code>. Код выхода 1 значит, что пакет правил просрочен. Подробно — <a href="$repo/blob/main/docs/REGULATORY.md#календарь-изменений">календарь изменений</a> и <a href="$repo/blob/main/docs/adr/ADR-010-norm-validity.md">ADR-010</a>.</p>
+  </div>
+</section>
+</main>
+
+<script type="application/json" id="page-data">$data</script>
+$footer
+</body>
+</html>

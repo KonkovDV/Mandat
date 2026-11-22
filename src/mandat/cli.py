@@ -583,7 +583,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def server_options() -> dict[str, Any]:
-    """Защита сервера от перегрузки (OWASP API4:2023, R2-API-2).
+    """Защита сервера от перегрузки (OWASP API4:2023).
 
     ``limit_concurrency`` — сверх этого числа одновременных соединений uvicorn сразу отвечает 503, а не
     копит очередь до таймаутов; ``timeout_keep_alive`` закрывает простаивающие соединения; заголовок
@@ -596,7 +596,7 @@ def server_options() -> dict[str, Any]:
         "timeout_keep_alive": 5,
         "server_header": False,
         "proxy_headers": False,
-        # TCP_NODELAY и при --workers N: иначе +40 мс на запрос по keep-alive (R2-PERF-3, api/nodelay.py).
+        # TCP_NODELAY и при --workers N: иначе +40 мс на запрос по keep-alive (api/nodelay.py).
         "http": "mandat.api.nodelay:NoDelayH11Protocol",
     }
 
@@ -627,7 +627,7 @@ def cmd_api_user(args: argparse.Namespace) -> int:
         print("--audience: только для роли dbo (учётная запись системы банка)", file=sys.stderr)
         return 2
     if args.role == "dbo" and not audiences and protected():
-        print("в защищённом режиме у роли dbo задайте --audience (P6-05)", file=sys.stderr)
+        print("в защищённом режиме у роли dbo задайте --audience", file=sys.stderr)
         return 2
     token = secrets.token_urlsafe(32)
     entry: dict[str, Any] = {"name": args.name, "role": args.role, "token_sha256": hash_token(token)}

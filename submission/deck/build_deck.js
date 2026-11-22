@@ -3,14 +3,14 @@
 //   node build_deck.js ../../evidence.json ../slides/Mandat_VTB.pptx
 //   python finish_deck.py ../slides/Mandat_VTB.pptx      # цвета темы, язык, alt-текст, метаданные
 //
-// Бриф колоды — BRIEF.md: драматургия, дизайн-система, правила данных и чек-лист приёмки.
-// Оформление — палитра ВТБ и шрифт Golos Text (ParaType, OFL): фирменный VTB Group UI лицензирован
-// только для Группы ВТБ. Графика рисуется в graphics.js. Числа рынка и эффекта — из открытых источников
+// Оформление — палитра ВТБ, заголовки Manrope, текст Golos Text, акцент — курсив Cormorant Garamond (все OFL);
+// фирменный VTB Group UI лицензирован только для Группы ВТБ. Графика рисуется в graphics.js. Числа рынка и эффекта — из открытых источников
 // и допущений команды; каждое записано в CLAIMS_REGISTRY.md с источником или командой воспроизведения.
 const fs = require("fs");
 const path = require("path");
 const pptxgen = require("pptxgenjs");
-const { buildGraphics } = require("./graphics");
+const sharp = require("sharp");
+const { buildGraphics, photoPanel, roundedPhoto, squarePhoto, icon3d } = require("./graphics");
 
 const EVIDENCE = process.argv[2] || path.join(__dirname, "..", "..", "evidence.json");
 const OUT = process.argv[3] || path.join(__dirname, "..", "..", "Mandat_VTB.pptx");
@@ -72,7 +72,9 @@ const FUZZ = (() => {
   if (!m) throw new Error("в tests/test_redteam_fuzz.py не найдено закреплённое число мутаций");
   return Number(m[1]);
 })();
-const FUZZ_TXT = FUZZ.toLocaleString("ru-RU").replace(/\s/g, " ");
+// Четырёхзначные числа пишутся слитно (8814), от пяти знаков — с неразрывным пробелом между разрядами.
+const ruNum = (n) => (Math.abs(n) < 10000 ? String(n) : n.toLocaleString("ru-RU").replace(/\s/g, " "));
+const FUZZ_TXT = ruNum(FUZZ);
 
 // ---------- Эффект: параметры — src/mandat/data/effect_scenarios.json, их же читает scripts/effect_model.py --scenarios ----------
 const EFFECT_RAW = JSON.parse(fs.readFileSync(path.join(ROOT, "src", "mandat", "data", "effect_scenarios.json"), "utf8"));
@@ -127,7 +129,10 @@ const C14 = (() => {
   const poa = fs.readFileSync(path.join(CASE14, "poa-root.xml"), "utf8");
   const attr = (name) => (poa.match(new RegExp(`${name}="([^"]+)"`)) || [])[1];
   const [prev, next] = egrul.executives;
-  return { prev, next, issued: attr("ДатаВыдДовер"), until: attr("СрокДейст"), op: kase.operation, poa: Object.keys(kase.registry)[0] };
+  return {
+    prev, next, issued: attr("ДатаВыдДовер"), until: attr("СрокДейст"), op: kase.operation, poa: Object.keys(kase.registry)[0],
+    who: kase.requester.full_name, org: kase.organization.name,
+  };
 })();
 
 // ---------- Сценарий mandat showcase для слайда «Захват до платежа»: шаги — из отчёта самой команды ----------
@@ -144,6 +149,26 @@ const SHOW = (() => {
   return data;
 })();
 
+// ---------- Ответы ядра на каждый день для кейса 14 (слайд 6): make deck пишет var/scrub.json ----------
+const SCRUB = (() => {
+  const file = path.join(ROOT, "var", "scrub.json");
+  if (!fs.existsSync(file)) throw new Error("нет var/scrub.json: запустите python scripts/build_site.py --scrub var/scrub.json");
+  const data = JSON.parse(fs.readFileSync(file, "utf8"));
+  const kinds = new Set(data.segments.map((x) => x.verdict));
+  if (kinds.size !== 4) throw new Error(`в ответах по датам ${kinds.size} вида вердикта, а слайд рассчитан на четыре`);
+  return data;
+})();
+
+// ---------- Масштаб в базовом сценарии модели (слайд «После пилота») ----------
+const SCALE = (() => {
+  const base = MODEL.calc[1];
+  return {
+    banksFirst: base.series.banks[0], banksLast: base.const.banks_2031, yearFirst: MODEL.years[0], yearLast: MODEL.years[MODEL.years.length - 1],
+    arr: Math.round(base.const.arr_2031), teamFirst: base.series.hc[0], teamLast: base.const.hc_2031,
+    funding: Math.round(base.const.funding), ebitdaYear: base.const.year_ebitda,
+  };
+})();
+
 const THEME = JSON.parse(fs.readFileSync(path.join(__dirname, "theme.json"), "utf8"));
 const HEX = THEME.colors;
 
@@ -156,7 +181,7 @@ const ST = {
   nd: { label: "НЕДОСТАТОЧНО ДАННЫХ", base: HEX.accent6, tint: "E8ECF3", text: "3B4864", icon: "CircleHelp" },
 };
 
-// ---------- Русская типографика: неразрывные пробелы (BRIEF.md, раздел 6) ----------
+// ---------- Русская типографика: неразрывные пробелы ----------
 const NB = " ";
 const LETTER = "А-Яа-яЁёA-Za-z";
 function typo(input) {
@@ -194,14 +219,14 @@ function typo(input) {
 const typoRuns = (t) => (Array.isArray(t) ? t.map((r) => ({ ...r, text: typo(r.text) })) : typo(t));
 
 // ---------- Приложение: порядок и номера слайдов для оглавления со ссылками ----------
-const MAIN_SLIDES = 21;
+const MAIN_SLIDES = 22;
 // Номера слайдов питча, на которые ссылаются слайды 2, 3 и приложение A2. Сборка сверяет их с подзаголовками.
-const P = { sprint: 3, cost: 4, takeover: 5, insight: 6, answer: 7, proof: 8, product: 9, showcase: 10, quality: 11, ai: 12, data: 13, effect: 14, now: 15, world: 16, embed: 17, vision: 18, pilot: 19 };
+const P = { sprint: 3, cost: 4, takeover: 5, insight: 6, answer: 7, proof: 8, product: 9, showcase: 10, quality: 11, ai: 12, data: 13, effect: 14, now: 15, world: 16, embed: 17, vision: 18, pilot: 19, scale: 20 };
 const P_KICKER = {
   sprint: "СПРИНТ 2 · ЧТО СДЕЛАНО", cost: "ЦЕНА ОШИБКИ", takeover: "СЦЕНАРИЙ ЗАХВАТА", insight: "КЛЮЧЕВАЯ ИДЕЯ", answer: "РЕШЕНИЕ",
   proof: "ДОКАЗАТЕЛЬНОСТЬ", product: "ПРОДУКТ СЕГОДНЯ", showcase: "СПРИНТ 2 · ДОПУСК ПЛАТЕЖА", quality: "КАЧЕСТВО",
   ai: "ИИ ПОД КОНТРОЛЕМ", data: "ЗАЩИТА ДАННЫХ · ФОКУС СПРИНТА 2", effect: "ЭФФЕКТ ДЛЯ ВТБ", now: "ПОЧЕМУ СЕЙЧАС", world: "МИРОВАЯ ПРАКТИКА", embed: "ВСТРОЙКА",
-  vision: "БАНК БУДУЩЕГО", pilot: "ПРЕДЛОЖЕНИЕ ВТБ",
+  vision: "БАНК БУДУЩЕГО", pilot: "ПРЕДЛОЖЕНИЕ ВТБ", scale: "СПРИНТ 3 · МАСШТАБ",
 };
 const KICKER_AT = {};
 const APPX = [
@@ -251,7 +276,15 @@ const TERMINAL = {
 };
 
 (async () => {
-  const G = await buildGraphics({ terminal: TERMINAL, qrSvg: path.join(ASSETS, "qr-github.svg") });
+  const G = await buildGraphics({ terminal: TERMINAL, qrSvg: path.join(ASSETS, "qr-github.svg"), qrSiteSvg: path.join(ASSETS, "qr-site.svg") });
+  // Амбассадор и 3D-значки сделаны в Figma (docs/VISUALS.md).
+  const VIS = path.join(ASSETS, "visuals");
+  const ANNA = {
+    cover: await photoPanel(path.join(VIS, "anna-hero.jpg"), 8.5, { position: "top" }),
+    final: await photoPanel(path.join(VIS, "anna-final.jpg"), 8.75, { position: "left" }),
+  };
+  const ICON3D = {};
+  for (const name of ["showcase", "law", "verify", "pilot", "criteria", "search"]) ICON3D[name] = await icon3d(path.join(VIS, `icon-${name}.png`));
   const pres = new pptxgen();
   pres.layout = "LAYOUT_WIDE"; // 13.333 x 7.5
   pres.author = "Команда «Мандат»";
@@ -261,6 +294,9 @@ const TERMINAL = {
   pres.theme = { headFontFace: THEME.headFontFace, bodyFontFace: THEME.bodyFontFace };
   const C = pres.SchemeColor;
   const FONT = THEME.bodyFontFace;
+  // Заголовки, крупные числа и обложка — Manrope (шрифт заголовков темы), акцент обложки — курсив Cormorant Garamond.
+  const DISPLAY = THEME.headFontFace;
+  const SERIF = "Cormorant Garamond SemiBold";
 
   const L = 0.6, W = 12.133, R = L + W, TOP = 1.72, BOTTOM = 6.72, GAP = 0.25;
 
@@ -307,7 +343,7 @@ const TERMINAL = {
       x, y, w, h, isTextBox: true, margin: o.margin ?? 0, fontSize: o.size ?? 14, color: o.color ?? C.text1,
       bold: o.bold ?? false, italic: o.italic ?? false, align: o.align ?? "left", valign: o.valign ?? "top",
       paraSpaceAfter: o.psa, lineSpacingMultiple: o.lsm ?? 1.0, charSpacing: o.cs, objectName: o.name,
-      fontFace: o.font, hyperlink: o.link,
+      fontFace: o.font ?? ((o.bold ?? false) && (o.size ?? 14) >= 22 ? DISPLAY : undefined), hyperlink: o.link,
     });
   function card(s, x, y, w, h, o = {}) {
     s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
@@ -377,7 +413,8 @@ const TERMINAL = {
     const s = pres.addSlide({ masterName: master, sectionTitle: section });
     if (section === "Питч" && kicker) KICKER_AT[kicker] = pages();
     if (kicker) s.addText(typo(kicker), { placeholder: "kicker" });
-    if (title) s.addText(typo(title), { placeholder: "title" });
+    // Последнее слово заголовка не остаётся на строке одно: два последних слова связаны неразрывным пробелом.
+    if (title) s.addText(typo(title).replace(/ (?=\S+$)/, NB), { placeholder: "title" });
     if (source) s.addText(typo(source), { placeholder: "source" });
     if (o.appx) {
       if (pages() !== appxPage(o.appx)) throw new Error(`слайд ${o.appx}: номер ${pages()}, а в оглавлении ${appxPage(o.appx)}`);
@@ -424,38 +461,39 @@ const TERMINAL = {
   // ---------- 1. Обложка ----------
   {
     const s = pres.addSlide({ masterName: "Обложка", sectionTitle: "Питч" });
+    s.addImage({ data: ANNA.cover.data, x: ANNA.cover.x, y: 0, w: ANNA.cover.w, h: ANNA.cover.h, altText: "Анна, амбассадор «Мандата», в тёмно-синем костюме", objectName: "Фото амбассадора" });
     T(s, "Академия Финтеха 2026 · трек ВТБ «Финтех без границ» · задача «Онбординг и проверка полномочий»", L, 0.55, 7.0, 0.55, { size: 12, color: TINT.ice });
     s.addImage({ data: G.markDark, x: L, y: 1.6, w: 0.92, h: 0.83, altText: "Знак «Мандата»" });
     s.addText("Мандат", { placeholder: "title" });
-    T(s, [{ text: "Единое окно полномочий", options: { breakLine: true } }, { text: "для бизнес-клиентов банка" }], L, 2.75, 6.6, 0.95, { size: 24, bold: true, color: C.background1 });
-    T(s, "Отвечает, вправе ли человек провести операцию от имени компании в этот день, — за миллисекунды и с доказательством до поля документа", L, 3.8, 6.3, 1.0, { size: 15, color: TINT.ice, lsm: 1.1 });
+    T(s, [{ text: "Единое окно полномочий", options: { breakLine: true } }, { text: "для бизнес-клиентов банка", options: { fontFace: SERIF, italic: true, bold: false, fontSize: 30, color: "8FD0FF" } }], L, 2.7, 6.6, 1.05, { size: 24, bold: true, color: C.background1 });
+    T(s, "Отвечает, может ли человек провести операцию от имени компании в этот день, и показывает, на чём держится ответ: поле документа, запись реестра, статья закона", L, 3.8, 6.3, 1.0, { size: 15, color: TINT.ice, lsm: 1.1 });
     let px = L;
     for (const k of ["ok", "no", "rv", "nd"]) px += pill(s, px, 5.0, k, { size: 9.5, h: 0.34 }) + 0.12;
     T(s, "Коньков Дмитрий", L, 6.12, 4.0, 0.34, { size: 14, bold: true, color: C.background1 });
     T(s, "капитан команды «Мандат»", L, 6.46, 4.0, 0.3, { size: 12, color: TINT.ice });
-    T(s, "Полуфинал · спринт 2 · ноябрь 2026", 8.5, 6.46, 4.23, 0.3, { size: 12, color: TINT.ice, align: "right" });
-    const hw = 5.55;
-    s.addImage({ data: G.hero, x: 7.3, y: 0.62, w: hw, h: hw * G.heroRatio, altText: "Схема: шесть источников — ЕГРЮЛ, МЧД, реестр ФНС, передоверие, устав и события — сходятся в один вердикт на дату операции" });
-    s.addNotes("[0:00–0:10] Здравствуйте, мы — команда «Мандат». Мы отвечаем, вправе ли человек провести операцию от имени компании в конкретный день, и доказываем ответ. Суть — за двадцать секунд.");
+    T(s, "Полуфинал · спринт 2 · ноябрь 2026", 4.3, 6.46, 3.9, 0.3, { size: 12, color: TINT.ice, align: "right" });
+    s.addNotes("[0:00–0:08] Здравствуйте, мы команда «Мандат». Отвечаем банку, может ли человек провести операцию за компанию в этот день, и показываем почему.");
   }
 
   // ---------- 2. Коротко ----------
   {
-    const s = slide("Контент", "Питч", "КОРОТКО", "Проверка полномочий на дату с доказательством — и шесть недель теневого пилота, чтобы измерить её на данных ВТБ",
+    const s = slide("Контент", "Питч", "КОРОТКО", "Проверяем полномочие на дату операции и просим шесть недель пилота, чтобы измерить это на данных ВТБ",
       `Банк России, II кв. 2026 (M-15); evidence.json от ${N.asOf} (C-03, C-13, C-17); финансовая модель пакета аналитики; docs/PILOT.md`);
     const cols = [
       ["ПРОБЛЕМА", "TriangleAlert", AVG_Q2, `средняя операция без согласия против юрлица — в ${CBR.q2.ratio} раз крупнее средней; захват компании — за пять рабочих дней`, null],
       ["РЕШЕНИЕ", "Scale", "4 ответа", "на вопрос «вправе ли X провести операцию O за компанию Y на дату t» — с нормой и полем документа", null],
-      ["ДОКАЗАТЕЛЬСТВА", "BadgeCheck", `${N.falseConfirmed} из ${N.negatives}`, `ложных «да» на кейсах-ловушках ${N.negativeTypes} видов; ${FUZZ_TXT} мутаций без сбоя; ${TESTS}`, null],
+      ["КАЧЕСТВО", "BadgeCheck", `${N.falseConfirmed} из ${N.negatives}`, `ложных «да» на кейсах-ловушках ${N.negativeTypes} видов; ${FUZZ_TXT} мутаций без сбоя; ${TESTS}`, null],
       ["ЗАПРОС", "Rocket", "6 недель", `теневой пилот на праве подписи платёжных поручений по МЧД; для ВТБ окупаемость — ${PAYBACK}`, 1],
     ];
     const more = [[`подробнее: слайды ${P.cost}–${P.insight}`, P.cost], [`подробнее: слайды ${P.answer}–${P.showcase}`, P.answer], [`подробнее: слайд ${P.quality} и A3`, P.quality], [`подробнее: слайд ${P.pilot}`, P.pilot]];
     const cw = (W - 3 * GAP) / 4, ch = 3.85;
+    // 3D-значки из Figma: песочные часы с колоколом, весы, щит с ключом, календарь с флажком.
+    const art = ["showcase", "law", "verify", "pilot"];
     cols.forEach(([k, ic, v, t, hl], i) => {
       const x = L + i * (cw + GAP);
       card(s, x, TOP, cw, ch, hl ? { fill: C.text2, line: null } : {});
-      T(s, k, x + 0.28, TOP + 0.28, cw - 1.0, 0.3, { size: 11, bold: true, color: hl ? HEX.accent2 : C.accent1, cs: 1.2 });
-      tile(s, x + cw - 0.78, TOP + 0.2, 0.5, ic, hl ? { fill: TINT.navyTile, icon: "light" } : {});
+      T(s, k, x + 0.28, TOP + 0.28, cw - 1.3, 0.3, { size: 11, bold: true, color: hl ? HEX.accent2 : C.accent1, cs: 1.2 });
+      s.addImage({ data: ICON3D[art[i]], x: x + cw - 1.12, y: TOP - 0.02, w: 1.0, h: 1.0, altText: `Значок: ${k.toLowerCase()}`, objectName: `3D-значок ${ic}` });
       T(s, v, x + 0.28, TOP + 0.95, cw - 0.36, 0.8, { size: i === 0 ? 26 : 30, bold: true, color: hl ? C.background1 : C.accent1, valign: "middle" });
       T(s, t, x + 0.28, TOP + 1.85, cw - 0.56, 1.45, { size: 13, color: hl ? TINT.ice : C.text1 });
       const [label, target] = more[i];
@@ -463,21 +501,21 @@ const TERMINAL = {
       T(s, `${label} →`, x + 0.28, TOP + ch - 0.46, cw - 0.56, 0.32, { size: 11, bold: true, color: hl ? HEX.accent2 : C.accent1, valign: "middle" });
       link(s, x, TOP + ch - 0.5, cw, 0.42, target, label);
     });
-    band(s, L, TOP + ch + GAP, W, BOTTOM - (TOP + ch + GAP), "Главное правило «Мандата»: неизвестное никогда не становится «да». Молчание реестра — это «недостаточно данных», а не «действует».", { icon: "ShieldCheck", size: 15, bold: true });
-    s.addNotes(`[0:10–0:28] Коротко. Одна операция без согласия против компании стоит в среднем больше миллиона рублей, а захват через смену директора занимает пять рабочих дней. Мы отвечаем на один вопрос четырьмя вердиктами и доказываем каждый. На ${N.negatives} кейсах-ловушках — ноль ложных «да». Просим шесть недель теневого пилота. Что нового за спринт?`);
+    band(s, L, TOP + ch + GAP, W, BOTTOM - (TOP + ch + GAP), "Если реестр молчит или документа нет, ответ — «недостаточно данных». Неизвестное в «да» не превращается.", { icon: "ShieldCheck", size: 15, bold: true });
+    s.addNotes(`[0:08–0:26] Коротко. Операция без согласия против компании стоит в среднем больше миллиона рублей. Захват через смену директора укладывается в пять рабочих дней. Мы отвечаем на один вопрос четырьмя вердиктами и к каждому прикладываем норму. На ${N.negatives} ловушках ноль ложных «да». Просим шесть недель теневого пилота.`);
   }
 
-  // ---------- 3. Спринт 2: что сделано ----------
+  // ---------- 3. Спринт 2: что сделано, по шести критериям ----------
   {
-    const s = slide("Контент", "Питч", "СПРИНТ 2 · ЧТО СДЕЛАНО", "За спринт: правило утверждает юрист, ДБО спрашивает допуск, захват останавливается до списания денег",
-      `CHANGELOG.md и submission/FORM_SPRINT2.md; реестр утверждений C-18, C-20, C-21, C-22; evidence.json от ${N.asOf}; критерии спринта 2 — fintechacademy.ru/task-1, все с ответами — A2`);
+    const s = slide("Контент", "Питч", "СПРИНТ 2 · ЧТО СДЕЛАНО", "Спринт 2 по шести критериям: MVP доведён до платежа, модель посчитана, данные защищены",
+      `CHANGELOG.md и submission/FORM_SPRINT2.md; реестр утверждений C-13, C-18, C-20, C-21, C-22, M-07, M-15; evidence.json от ${N.asOf}; критерии — fintechacademy.ru/task-1, ответ на каждый — A2`);
     const items = [
-      ["Signature", "Юрист утверждает правило подписью", "«Утверждено» — только по подписанной записи с хешем текста правила и каталога операций. Подделанный статус в файле не даёт «да»", "Данные и комплаенс · 18 баллов"],
-      ["ScrollText", "Карточки норм и сроки законов", `${RULES}: норма, поле документа и хеш для подписи юриста; у пяти — цитата приказа Минцифры. В пакете — сроки 315-ФЗ, 253-ФЗ и приказов до 2028. Все правила — черновики`, "Пилот и внедрение · 10 баллов"],
-      ["Plug", "Допуск операции для ДБО", "POST /v1/operations/authorize: компания, день, сумма, представитель, получатель, одноразовый nonce. Из восьми одновременных повторов проходит один", "Техническая реализация · 22 балла"],
-      ["Siren", "Захват остановлен до платежа", `mandat showcase: допуск, отказ повтору и завышенной сумме, признаки захвата, отказ следующему платежу — слайд ${P.showcase}`, "Техническая реализация · 22 балла"],
-      ["Coins", "Юнит-экономика проверки", `Вручную — ≈${UNIT.manual} ₽, затраты банка на «Мандат» — ≈${UNIT.mandat} ₽ на проверку, в ${UNIT.ratio} раза меньше. Базовый сценарий модели`, "Оценка ценности · 22 балла"],
-      ["BadgeCheck", "Надёжность", `${TESTS} на Linux и Windows, покрытие ${COVER}; pip-audit, Trivy и gitleaks — в CI и по расписанию; поле манифеста вне контракта — ошибка входа`, "Зрелость решения · 16 баллов"],
+      ["Lock", "Данные под замком", "Отчёты в хранилище зашифрованы и привязаны к владельцу кейса. Каждое чтение и удаление записано в журнал. Правило утверждает только подпись юриста", "Данные и комплаенс · 18 баллов"],
+      ["Plug", "MVP доведён до платежа", `ДБО спрашивает допуск перед каждым платежом: одноразовый nonce, допуск получает только система банка. Захват останавливается до списания — слайд ${P.showcase}`, "Техническая реализация · 22 балла"],
+      ["Coins", "Цена одной проверки", `Вручную ≈${UNIT.manual} ₽, затраты банка на «Мандат» ≈${UNIT.mandat} ₽, в ${UNIT.ratio} раза меньше. Разовые затраты ВТБ окупаются за ${PAYBACK}`, "Оценка ценности · 22 балла"],
+      ["BadgeCheck", "Надёжность", `${TESTS} на Linux и Windows, покрытие ${COVER}. Перед сдачей атаковали свои механизмы: найденное закрыто кодом и тестами`, "Зрелость решения · 16 баллов"],
+      ["Landmark", "Проблема в цифрах", `${CBR.q1.ops + CBR.q2.ops} операций без согласия у юрлиц за полугодие по данным Банка России. «ЭОС» и дело ВС РФ: ошибка стоит денег в обе стороны`, "Подтверждённость проблемы · 12 баллов"],
+      ["ScrollText", "Готово к пилоту", `Карточка нормы на каждое из ${N.rules} правил для юриста, сроки законов до 2028 года в пакете правил, план теневого пилота`, "Реалистичность пилота · 10 баллов"],
     ];
     const cw = (W - 2 * GAP) / 3, ch = (BOTTOM - TOP - GAP) / 2;
     items.forEach(([ic, head, text, crit], i) => {
@@ -489,7 +527,7 @@ const TERMINAL = {
       s.addShape(pres.shapes.LINE, { x: x + 0.22, y: y + ch - 0.46, w: cw - 0.44, h: 0, line: { color: TINT.line, width: 0.75 }, objectName: "Разделитель" });
       T(s, `Критерий: ${crit}`, x + 0.22, y + ch - 0.42, cw - 0.44, 0.32, { size: 10.5, bold: true, color: C.accent1, valign: "middle" });
     });
-    s.addNotes(`[0:28–0:44] Что сделано за спринт. Правило утверждает юрист подписью, а не строка в файле. Для ДБО готов контракт допуска операции: повтор и завышенная сумма получают отказ. Захват компании останавливается до платежа. Проверка обходится банку примерно в ${UNIT.mandat} рублей против ${UNIT.manual} вручную. Почему это важно?`);
+    s.addNotes(`[0:26–0:42] Что сделано за спринт, по критериям оценки. Правило утверждает только подпись юриста. ДБО спрашивает допуск перед каждым платежом. Отчёты в хранилище зашифрованы, каждое чтение записано. Проверка обходится банку примерно в ${UNIT.mandat} ${plural(UNIT.mandat, "рубль", "рубля", "рублей")} вместо ${UNIT.manual}.`);
   }
 
   // ---------- 4. Цена ошибки ----------
@@ -526,7 +564,8 @@ const TERMINAL = {
     T(s, "Задача трека ВТБ", cX + 0.88, TOP + 2.2, cW - 1.1, 0.46, { size: 13, bold: true, color: C.text2, valign: "middle" });
     T(s, "«Онбординг и проверка полномочий» — первое направление для бизнеса", cX + 0.3, TOP + 2.78, cW - 0.6, 0.9, { size: 12, color: C.text1 });
     band(s, L, 5.72, W, 0.95, "Право подписи складывается из трёх источников — МЧД, выписки ЕГРЮЛ и устава — и меняется со временем. Сегодня их сводит вручную сотрудник банка.", { icon: "Layers", size: 15 });
-    s.addNotes(`[0:44–1:00] По данным Банка России, во втором квартале у компаний ${CBR.q2.ops} операций без согласия на ${Math.round(CBR.q2.lossMln)} миллион рублей — больше миллиона на операцию, в ${CBR.q2.ratio} раз больше средней. Возвращают компаниям меньше пятой части. А право подписи сотрудник сводит вручную из трёх документов. Как этим пользуются мошенники?`);
+    const lossQ2 = Math.round(CBR.q2.lossMln);
+    s.addNotes(`[0:42–0:58] Сначала деньги. Во втором квартале у компаний ${CBR.q2.ops} операций без согласия на ${lossQ2} ${plural(lossQ2, "миллион", "миллиона", "миллионов")} рублей. Это больше миллиона на операцию, в ${CBR.q2.ratio} раз больше средней. Возвращают компаниям меньше пятой части. А право подписи сотрудник до сих пор сводит вручную.`);
   }
 
   // ---------- 5. Сценарий захвата ----------
@@ -559,19 +598,19 @@ const TERMINAL = {
     card(s, tx, y2, tw, h2);
     tile(s, tx + 0.3, y2 + 0.25, 0.5, "Scale");
     T(s, "Ловушка в обе стороны", tx + 0.95, y2 + 0.25, tw - 1.2, 0.26, { size: 14, bold: true, color: C.text2 });
-    T(s, "Смена директора не прекращает МЧД — п. 1 ст. 188 ГК РФ, позиция ФНС", tx + 0.95, y2 + 0.52, tw - 1.2, 0.3, { size: 12, bold: true, color: C.accent1 });
+    T(s, "Смена директора не прекращает МЧД — п. 1 ст. 188 ГК РФ, позиция ФНС", tx + 0.95, y2 + 0.52, tw - 1.2, 0.44, { size: 12, bold: true, color: C.accent1 });
     dot(s, tx + 0.36, y2 + 1.14, 0.38, HEX.accent5, "X");
     T(s, "Отказ законному руководителю — нарушение банка: суд обязал провести платёж на 6,5 млн ₽, ВС РФ оставил это в силе (№ 308-ЭС22-17199)", tx + 0.95, y2 + 1.0, tw - 1.25, 0.66, { size: 12, valign: "middle" });
     dot(s, tx + 0.36, y2 + 1.8, 0.38, HEX.accent4, "TriangleAlert");
     T(s, "Пропустите свежую смену — откроете дверь захвату", tx + 0.95, y2 + 1.72, tw - 1.25, 0.54, { size: 12, valign: "middle" });
     band(s, L, 5.9, W, 0.8, "Нужен ответ на дату операции — с историей событий ЕГРЮЛ и реестра МЧД, а не снимок «на сегодня»", { icon: "History", size: 15, bold: true });
-    s.addNotes("[1:00–1:18] Захват выглядит так: заявление о смене директора, через пять рабочих дней новый директор в ЕГРЮЛ, новая доверенность, заявка в банк и платёж. Это не теория: в октябре у агентства «ЭОС» десять дней значился чужой гендиректор. И ловушка в обе стороны: откажете законному руководителю — суд обяжет банк провести платёж, и Верховный Суд такое решение оставил в силе; пропустите свежую смену — откроете дверь захвату.");
+    s.addNotes("[0:58–1:16] Захват выглядит так. Заявление о смене директора, через пять рабочих дней он в реестре, дальше новая доверенность и платёж. В октябре у агентства «ЭОС» десять дней значился чужой директор. И ловушка в обе стороны: откажете законному руководителю — суд обяжет провести платёж.");
   }
 
   // ---------- 6. Ось времени ----------
   {
-    const s = slide("Контент", "Питч", "КЛЮЧЕВАЯ ИДЕЯ", "Полномочие — это пересечение интервалов на дату операции, а не статус документа",
-      `Демо-кейс 14 (examples/cases/14_old_director_charter_cleared): даты — из egrul.json и poa-root.xml; данные вымышлены, отметка юриста об уставе синтетическая; окно «свежей» смены — 30 дней (ADR-002)`);
+    const s = slide("Контент", "Питч", "КЛЮЧЕВАЯ ИДЕЯ", "Одна и та же доверенность в разные дни даёт разные ответы: полномочие проверяется на дату операции",
+      `Демо-кейс 14 (examples/cases/14_old_director_charter_cleared): даты — из egrul.json и poa-root.xml; ответ на каждый день — ядро «Мандата» при сборке (scripts/build_site.py --scrub); данные вымышлены, отметка юриста об уставе синтетическая; окно «свежей» смены — 30 дней (ADR-002)`);
     const d0 = Date.UTC(2026, 0, 1), d1 = Date.UTC(2027, 2, 31);
     const lx = L + 2.5, rx = R - 0.15;
     const X = (iso) => lx + ((Date.parse(iso) - d0) / (d1 - d0)) * (rx - lx);
@@ -609,39 +648,60 @@ const TERMINAL = {
     vline(s, tx, laneTop - 0.12, lanesBottom - laneTop + 0.2, HEX.dk2, 2, "dash");
     s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: tx - 1.15, y: lanesBottom + 0.12, w: 2.3, h: 0.34, rectRadius: 0.17, fill: { color: HEX.dk2 }, line: { type: "none" }, objectName: "Дата операции" });
     T(s, `t = ${fmt(tISO)} · ${C14.op.amount_rub.toLocaleString("ru-RU")} ₽`, tx - 1.15, lanesBottom + 0.12, 2.3, 0.34, { size: 10.5, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
-    const y2 = TOP + ch + GAP, h2 = BOTTOM - y2, w2 = (W - GAP) / 2;
-    card(s, L, y2, w2, h2, { fill: ST.no.tint, line: "F6B9BC", shadow: false });
-    dot(s, L + 0.22, y2 + (h2 - 0.4) / 2, 0.4, HEX.accent5, "X");
-    T(s, [{ text: "Сверка «на сегодня»: ", options: { bold: true } }, { text: "директор сейчас другой, чем подписал МЧД, — соблазн отказать по действующей доверенности" }], L + 0.78, y2, w2 - 1.0, h2, { size: 12, color: ST.no.text, valign: "middle" });
-    card(s, L + w2 + GAP, y2, w2, h2, { fill: ST.ok.tint, line: "A9DDC3", shadow: false });
-    dot(s, L + w2 + GAP + 0.22, y2 + (h2 - 0.4) / 2, 0.4, HEX.accent3, "Check");
-    T(s, [{ text: "Проверка на дату t: ", options: { bold: true } }, { text: "МЧД подписал директор на дату выдачи, она в сроке и не отменена, смена давняя → ПОДТВЕРЖДЕНО с сигналом" }], L + w2 + GAP + 0.78, y2, w2 - 1.0, h2, { size: 12, color: ST.ok.text, valign: "middle" });
-    s.addNotes("[1:18–1:34] Ключевая идея: полномочие — это пересечение интервалов на дату операции. Реальный демо-кейс: директор сменился в мае, доверенность выдал прежний директор в марте, она действует до февраля. Сверка «на сегодня» видит другого директора и отказывает. Проверка на дату видит действующую доверенность от законного директора — подтверждено, с сигналом.");
+    // Полоса ответов ядра на каждый день: те же даты, что у шкалы на главной странице сайта.
+    const y2 = TOP + ch + GAP, h2 = BOTTOM - y2;
+    card(s, L, y2, W, h2, { shadow: false });
+    T(s, "Ответ ядра на каждый день", L + 0.25, y2, 2.15, h2, { size: 12, bold: true, color: C.text2, valign: "middle" });
+    const KIND = { confirmed: "ok", refuted: "no", needs_review: "rv", insufficient_data: "nd" };
+    for (const seg of SCRUB.segments) {
+      const x0 = Math.max(lx, X(seg.from)), x1 = Math.min(rx, X(seg.to) + (rx - lx) / 456);
+      if (x1 - x0 < 0.04) continue;
+      const st = ST[KIND[seg.verdict]];
+      s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: x0 + 0.01, y: y2 + 0.16, w: x1 - x0 - 0.02, h: h2 - 0.32, rectRadius: 0.06, fill: { color: st.tint }, line: { color: st.base, width: 1 }, objectName: `Ответ: ${st.label}` });
+      // На узком отрезке — короткое слово: ответ не читается одним цветом.
+      const full = st.label.toLowerCase().replace("недостаточно данных", "нет данных");
+      const short = { ok: "да", no: "нет", rv: "разбор", nd: "нет данных" }[KIND[seg.verdict]];
+      const width = x1 - x0;
+      if (width > 0.4) T(s, width > 0.95 ? full : short, x0 + 0.03, y2 + 0.16, width - 0.06, h2 - 0.32, { size: width > 0.95 ? 10.5 : 9, bold: true, color: st.text, align: "center", valign: "middle" });
+    }
+    s.addNotes("[1:16–1:34] Главная идея: полномочие живёт на дату. Это кейс 14. Та же доверенность до выдачи — «опровергнуто», после — «подтверждено», в месяц после смены директора — «на разбор». Выписка устарела — не хватает данных. Срок кончился — снова «нет». Всё это посчитало ядро.");
   }
 
   // ---------- 7. Решение ----------
   {
-    const s = slide("Контент", "Питч", "РЕШЕНИЕ", "Один вопрос — четыре ответа, и неизвестное никогда не становится «да»",
+    const s = slide("Контент", "Питч", "РЕШЕНИЕ", "Один вопрос и четыре ответа. Неизвестное в «да» не превращается",
       "«Мандат» проверяет полномочия, а не личность: идентификацию по 115-ФЗ проводят существующие каналы банка (КЭП, ЕБС, офис)");
-    card(s, L, TOP, W, 0.72, { fill: C.text2, line: null });
+    const qh = 0.92;
+    card(s, L, TOP, W, qh, { fill: C.text2, line: null });
     const q = (t, hl) => ({ text: t, options: hl ? { color: HEX.accent2, bold: true } : {} });
     s.addText([q("Вправе ли "), q("X", 1), q(" совершить операцию "), q("O", 1), q(" от имени компании "), q("Y", 1), q(" на дату "), q("t", 1), q("?")],
-      { x: L, y: TOP, w: W, h: 0.72, isTextBox: true, margin: 0, fontSize: 21, bold: true, color: C.background1, align: "center", valign: "middle", objectName: "Вопрос" });
+      { x: L, y: TOP + 0.08, w: W, h: 0.5, isTextBox: true, margin: 0, fontSize: 21, bold: true, color: C.background1, align: "center", valign: "middle", objectName: "Вопрос" });
+    // Тот же вопрос на демо-кейсе 14: значения берутся из case.json
+    const short = (n) => n.replace(/^(\S+) (\S)\S* (\S)\S*$/, "$1 $2. $3.");
+    T(s, [
+      q("демо-кейс 14: "), q("X", 1), q(` — ${short(C14.who)} · `), q("O", 1), q(` — платёж на ${C14.op.amount_rub.toLocaleString("ru-RU")} ₽ · `),
+      q("Y", 1), q(` — ${C14.org} · `), q("t", 1), q(` — ${ruDate(C14.op.date)}`),
+    ], L, TOP + 0.57, W, 0.26, { size: 11.5, color: TINT.ice, align: "center", valign: "middle", name: "Пример: демо-кейс 14" });
     const items = [
       ["ok", "Все обязательные проверки пройдены", "рекомендацию роли и подписанное удостоверение"],
       ["no", "Найдено нарушение", "звено цепочки, норму закона и что запросить у клиента"],
       ["rv", "Спорная ситуация", "досье для сотрудника, приоритет P1–P3 и срок разбора"],
       ["nd", "Источник не ответил или нет документа", "список недостающего — вместо «да»"],
     ];
-    const cw = (W - GAP * 3) / 4, cy = TOP + 0.95, ch = 2.78;
+    const cw = (W - GAP * 3) / 4, cy = TOP + qh + 0.3, ch = 2.58;
+    // Один вопрос расходится на четыре ответа
+    const forkY = TOP + qh + 0.14;
+    vline(s, L + W / 2, TOP + qh, forkY - TOP - qh, TINT.blueLine, 1.5);
+    s.addShape(pres.shapes.LINE, { x: L + cw / 2, y: forkY, w: 3 * (cw + GAP), h: 0, line: { color: TINT.blueLine, width: 1.5 }, objectName: "Разветвление" });
+    items.forEach((_, i) => vline(s, L + i * (cw + GAP) + cw / 2, forkY, cy - forkY, TINT.blueLine, 1.5));
     items.forEach(([k, head, gets], i) => {
       const x = L + i * (cw + GAP);
       card(s, x, cy, cw, ch);
-      dot(s, x + 0.25, cy + 0.22, 0.5, ST[k].base, ST[k].icon);
-      pill(s, x + 0.25, cy + 0.86, k, { size: 9.5, h: 0.3 });
-      T(s, head, x + 0.25, cy + 1.26, cw - 0.5, 0.56, { size: 14, bold: true, color: C.text2 });
-      T(s, "Банк получает", x + 0.25, cy + 1.84, cw - 0.5, 0.22, { size: 10.5, bold: true, color: TINT.muted });
-      T(s, gets, x + 0.25, cy + 2.06, cw - 0.5, 0.66, { size: 12, color: C.text1 });
+      dot(s, x + 0.25, cy + 0.2, 0.46, ST[k].base, ST[k].icon);
+      pill(s, x + 0.25, cy + 0.76, k, { size: 9.5, h: 0.3 });
+      T(s, head, x + 0.25, cy + 1.12, cw - 0.5, 0.52, { size: 14, bold: true, color: C.text2 });
+      T(s, "Банк получает", x + 0.25, cy + 1.66, cw - 0.5, 0.22, { size: 10.5, bold: true, color: TINT.muted });
+      T(s, gets, x + 0.25, cy + 1.88, cw - 0.5, 0.64, { size: 11.5, color: C.text1 });
     });
     const steps = [
       ["01", "Принять", "МЧД XML, ЕГРЮЛ, устав, бумажная доверенность"],
@@ -658,13 +718,13 @@ const TERMINAL = {
       T(s, t, x + 0.22, py + 0.48, cw - 0.4, ph - 0.52, { size: 12, color: C.text1 });
       if (i < steps.length - 1) arrow(s, x + cw + 0.03, py + ph / 2, GAP - 0.06, HEX.accent1, 1.5);
     });
-    s.addNotes("[1:34–1:46] Решение — один вопрос и четыре ответа. Подтверждено — с рекомендацией роли. Опровергнуто — с нормой и звеном цепочки. На разбор — человеку с досье и сроком. Недостаточно данных — список недостающего. Неизвестное никогда не становится «да».");
+    s.addNotes("[1:34–1:46] Ответов четыре. Подтверждено — с ролью и удостоверением. Опровергнуто — с нормой. На разбор — человеку, с досье и сроком. Не хватает данных — список того, чего нет. Неизвестное в «да» не превращается.");
   }
 
   // ---------- 8. Доказательность ----------
   {
     const s = slide("Контент", "Питч", "ДОКАЗАТЕЛЬНОСТЬ", "Каждый вердикт доказан: поле МЧД, запись ЕГРЮЛ, норма закона",
-      "Демо-кейсы 14, 05 и 11 (mandat demo); данные демо вымышлены, отметка юриста об уставе в кейсе 14 синтетическая. Источники — реестр МЧД, ЕГРЮЛ, КЭП — подключаются через порты; отчёт называет источник каждого факта");
+      "Демо-кейсы 14, 05 и 11 (mandat demo); данные демо вымышлены, отметка юриста об уставе в кейсе 14 синтетическая. Реестр МЧД и проверка КЭП подключаются через порты, ЕГРЮЛ — через порт по тому же образцу; отчёт называет источник каждого факта");
     const cw = 7.45, ch = BOTTOM - TOP;
     card(s, L, TOP, cw, ch);
     T(s, "Кейс 14 · синтетическая отметка юриста об уставе", L + 0.3, TOP + 0.25, 4.8, 0.28, { size: 11, bold: true, color: TINT.muted });
@@ -688,39 +748,67 @@ const TERMINAL = {
     T(s, "Хеш набора правил и входов — в отчёте: одинаковые документы дают одинаковый хеш. Решение пишется в журнал.", L + 0.3, TOP + 4.32, cw - 0.6, 0.55, { size: 11.5, color: TINT.muted });
     const rx = L + cw + 0.28, rw = R - rx;
     T(s, "Та же компания — другие факты", rx, TOP, rw, 0.32, { size: 14, bold: true, color: C.text2 });
-    const alt = [
-      ["rv", "НА РАЗБОР · P1 · 4 Ч", "Директор сменился 19 дней назад", "Свежая смена — первый шаг возможного захвата: уточнить у нового директора, при признаках — в антифрод"],
-      ["no", "ОПРОВЕРГНУТО", "Основную МЧД отменили, осталось передоверие", "С прекращением доверенности теряет силу и передоверие — п. 3 ст. 188 ГК РФ"],
-    ];
-    alt.forEach(([k, lab, head, t], i) => {
-      const y = TOP + 0.45 + i * 2.27, h = 2.08;
-      card(s, rx, y, rw, h);
-      T(s, head, rx + 0.28, y + 0.22, rw - 0.56, 0.6, { size: 14, bold: true, color: C.text2 });
-      pill(s, rx + 0.28, y + 0.84, k, { label: lab, size: 9.5 });
-      T(s, t, rx + 0.28, y + 1.28, rw - 0.56, 0.75, { size: 12, color: C.text1 });
-    });
-    s.addNotes("[1:46–2:02] Каждая строка вердикта — с доказательством: ГРН записи ЕГРЮЛ, путь до поля МЧД, норма. Та же компания, но директор сменился 19 дней назад, — на разбор с приоритетом P1 и сроком четыре часа. А если отменили основную доверенность, передоверие теряет силу — опровергнуто. Это не макет — покажу живой вывод.");
+    const ah = 2.2, a1 = TOP + 0.45, a2 = a1 + ah + 0.12, x0 = rx + 0.28, x1 = R - 0.28;
+    // Свежая смена: шкала 45 дней до операции, окно 30 дней (ADR-002), смена за 19 дней до t
+    card(s, rx, a1, rw, ah);
+    T(s, "Директор сменился 19 дней назад", x0, a1 + 0.2, x1 - x0, 0.32, { size: 14, bold: true, color: C.text2, valign: "middle" });
+    pill(s, x0, a1 + 0.6, "rv", { label: "НА РАЗБОР · P1 · 4 Ч", size: 9.5 });
+    const dpp = (x1 - x0) / 45, wx = x1 - 30 * dpp, dx = x1 - 19 * dpp, ty = a1 + 1.26;
+    T(s, "окно «свежей» смены · 30 дней", wx, ty - 0.27, x1 - wx, 0.2, { size: 9, bold: true, color: ST.rv.text, valign: "middle" });
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: x0, y: ty, w: x1 - x0, h: 0.07, rectRadius: 0.035, fill: { color: ST.nd.tint }, line: { type: "none" }, objectName: "Шкала дней до операции" });
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: wx, y: ty, w: x1 - wx, h: 0.07, rectRadius: 0.035, fill: { color: HEX.accent4 }, line: { type: "none" }, objectName: "Окно свежей смены" });
+    s.addShape(pres.shapes.DIAMOND, { x: dx - 0.1, y: ty - 0.065, w: 0.2, h: 0.2, fill: { color: HEX.accent4 }, line: { color: "FFFFFF", width: 1.5 }, objectName: "Смена руководителя" });
+    s.addShape(pres.shapes.OVAL, { x: x1 - 0.08, y: ty - 0.045, w: 0.16, h: 0.16, fill: { color: HEX.dk2 }, line: { type: "none" }, objectName: "Дата операции" });
+    T(s, "смена · за 19 дн. до t", dx - 0.9, ty + 0.13, 1.8, 0.2, { size: 9, bold: true, color: ST.rv.text, align: "center", valign: "middle" });
+    T(s, "t", x1 - 0.3, ty + 0.13, 0.3, 0.2, { size: 9.5, bold: true, color: C.text2, align: "right", valign: "middle" });
+    T(s, "Свежая смена — первый шаг возможного захвата: уточнить у нового директора, при признаках — в антифрод", x0, a1 + 1.62, x1 - x0, 0.54, { size: 11, color: C.text1 });
+    // Отмена основной МЧД: передоверие теряет силу вместе с ней
+    card(s, rx, a2, rw, ah);
+    T(s, "Основную МЧД отменили, осталось передоверие", x0, a2 + 0.16, x1 - x0, 0.52, { size: 14, bold: true, color: C.text2, valign: "middle" });
+    pill(s, x0, a2 + 0.74, "no", { size: 9.5 });
+    const cy2 = a2 + 1.16, chipH = 0.32, aw = 1.36, bw = 2.0;
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: x0, y: cy2, w: aw, h: chipH, rectRadius: 0.08, fill: { color: ST.no.tint }, line: { color: "F6B9BC", width: 0.75 }, objectName: "Основная МЧД отменена" });
+    dot(s, x0 + 0.06, cy2 + 0.05, 0.22, ST.no.base, "X");
+    T(s, "МЧД отменена", x0 + 0.34, cy2, aw - 0.38, chipH, { size: 9.5, bold: true, color: ST.no.text, valign: "middle" });
+    arrow(s, x0 + aw + 0.06, cy2 + chipH / 2, x1 - bw - x0 - aw - 0.12, HEX.accent5, 1.5);
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: x1 - bw, y: cy2, w: bw, h: chipH, rectRadius: 0.08, fill: { color: "FFFFFF" }, line: { color: HEX.accent5, width: 1, dashType: "dash" }, objectName: "Передоверие без силы" });
+    dot(s, x1 - bw + 0.06, cy2 + 0.05, 0.22, ST.no.base, "Ban");
+    T(s, "передоверие без силы", x1 - bw + 0.34, cy2, bw - 0.38, chipH, { size: 9.5, bold: true, color: ST.no.text, valign: "middle" });
+    T(s, "С прекращением доверенности теряет силу и передоверие — п. 3 ст. 188 ГК РФ", x0, a2 + 1.62, x1 - x0, 0.54, { size: 11, color: C.text1 });
+    s.addNotes("[1:46–2:00] У каждой строки есть доказательство: запись ЕГРЮЛ, поле доверенности, статья закона. Та же компания со свежей сменой директора идёт на разбор за четыре часа. А если отменили основную доверенность, передоверие тоже теряет силу.");
   }
 
   // ---------- 9. Продукт работает ----------
   {
-    const s = slide("Контент", "Питч", "ПРОДУКТ СЕГОДНЯ", `Работает сегодня: ${DEMOS}, удостоверения и журнал — одной командой`,
+    const s = slide("Контент", "Питч", "ПРОДУКТ СЕГОДНЯ", `Это уже работает: ${DEMOS}, удостоверения и журнал собираются одной командой`,
       `Скриншот и вывод — настоящие, сняты с ./run-demo.sh при сборке колоды (capture_demo.js); «…» — пропущенные строки. Сценарий показа — docs/DEMO.md. v${N.version}, evidence.json от ${N.asOf}`);
-    const shot = { w: 1576, h: 1082 };
-    const fw = 6.3, barH = 0.34, imgW = fw - 0.12, imgH = imgW * (shot.h / shot.w), fh = barH + imgH + 0.1;
+    const shot = await sharp(path.join(ASSETS, "demo-card-14.jpg")).metadata();
+    const fw = 6.0, barH = 0.34, imgW = fw - 0.12, imgH = imgW * (shot.height / shot.width), fh = barH + imgH + 0.1;
     card(s, L, TOP, fw, fh, { r: 0.1, name: "Окно браузера" });
     s.addShape(pres.shapes.RECTANGLE, { x: L + 0.02, y: TOP + 0.02, w: fw - 0.04, h: barH - 0.02, fill: { color: "EEF2F8" }, line: { type: "none" }, objectName: "Панель браузера" });
     ["FF6B6B", "FFC35A", "5FD39A"].forEach((c, i) => s.addShape(pres.shapes.OVAL, { x: L + 0.16 + i * 0.18, y: TOP + 0.11, w: 0.12, h: 0.12, fill: { color: c }, line: { type: "none" }, objectName: "Кнопка окна" }));
     s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: L + 0.8, y: TOP + 0.06, w: fw - 1.0, h: 0.22, rectRadius: 0.11, fill: { color: "FFFFFF" }, line: { type: "none" }, objectName: "Адресная строка" });
     T(s, "var/demo/14_old_director_charter_cleared.html", L + 0.92, TOP + 0.06, fw - 1.2, 0.22, { size: 9, color: TINT.text2, valign: "middle" });
     s.addImage({ path: path.join(ASSETS, "demo-card-14.jpg"), x: L + 0.06, y: TOP + barH + 0.04, w: imgW, h: imgH, altText: "Скриншот карточки вердикта демо-кейса 14: «ПОДТВЕРЖДЕНО», сильнейшее возражение — смена руководителя с нормой п. 1 ст. 188 ГК РФ, операция на 480 000 ₽ 20.10.2026, организация и сигнал мониторинга" });
-    T(s, "Карточка сотрудника: вердикт, сильнейшее возражение с нормой, операция и сигнал мониторинга — без ручной сводки", L, TOP + fh + 0.1, fw, BOTTOM - TOP - fh - 0.1, { size: 11.5, color: TINT.text2, valign: "middle" });
+    // Метки на скриншоте: доли ширины и высоты кадра capture_demo.js (вердикт, возражение, стороны, сигналы)
+    const ix = L + 0.06, iy = TOP + barH + 0.04;
+    [[0.31, 0.232], [0.966, 0.278], [0.962, 0.472], [0.162, 0.782]].forEach(([fx, fy], i) => {
+      const mx = ix + fx * imgW - 0.15, my = iy + fy * imgH - 0.15;
+      s.addShape(pres.shapes.OVAL, { x: mx, y: my, w: 0.3, h: 0.3, fill: { color: HEX.accent1 }, line: { color: "FFFFFF", width: 2 }, shadow: shadow(), objectName: `Метка ${i + 1}` });
+      T(s, String(i + 1), mx, my, 0.3, 0.3, { size: 11, bold: true, color: C.background1, align: "center", valign: "middle" });
+    });
+    ["вердикт", "сильнейшее возражение с нормой", "операция, организация, заявитель", "сигнал мониторинга"].forEach((t, i) => {
+      const lx = L + (i % 2) * (fw / 2), ly = TOP + fh + 0.1 + Math.floor(i / 2) * 0.27;
+      s.addShape(pres.shapes.OVAL, { x: lx, y: ly + 0.02, w: 0.2, h: 0.2, fill: { color: HEX.accent1 }, line: { type: "none" }, objectName: "Метка легенды" });
+      T(s, String(i + 1), lx, ly + 0.02, 0.2, 0.2, { size: 8.5, bold: true, color: C.background1, align: "center", valign: "middle" });
+      T(s, t, lx + 0.28, ly, fw / 2 - 0.32, 0.24, { size: 10.5, color: TINT.text2, valign: "middle", name: "Легенда скриншота" });
+    });
     const rx = L + fw + GAP, rw = R - rx;
     const th = rw * G.terminalRatio;
     s.addImage({ data: G.terminal, x: rx, y: TOP, w: rw, h: th, altText: "Вывод терминала: mandat demo — 14 кейсов совпали с ожиданием, журнал цел; удостоверение действует; после событий захвата — тревога possible_takeover и статус «приостановлено», код 3" });
     const ly = TOP + th + 0.12, lh = BOTTOM - ly;
     card(s, rx, ly, rw, lh);
-    T(s, "Демо в 4 шага", rx + 0.25, ly + 0.1, rw - 0.5, 0.3, { size: 13, bold: true, color: C.text2 });
+    T(s, "Демо в 4 шага", rx + 0.25, ly + 0.07, rw - 0.5, 0.3, { size: 13, bold: true, color: C.text2 });
     const demo = [
       "01_ok: устав не разобран — на разбор",
       "10 и 05: давняя смена — сигнал, свежая — разбор",
@@ -728,8 +816,8 @@ const TERMINAL = {
       "журнал: доказательство одной записи",
     ];
     s.addText(demo.map((t, i) => ({ text: typo(t), options: { bullet: { type: "number" }, breakLine: i < demo.length - 1 } })),
-      { x: rx + 0.25, y: ly + 0.42, w: rw - 0.45, h: lh - 0.46, isTextBox: true, margin: 0, fontSize: 11, color: C.text1, paraSpaceAfter: 1, valign: "top", objectName: "Шаги демо" });
-    s.addNotes("[2:02–2:18] Продукт работает сегодня, одной командой. Слева — настоящая карточка кейса: вердикт, сильнейшее возражение с нормой и сигнал мониторинга. Справа — терминал: все 14 демо-кейсов дают ожидаемый вердикт, журнал цел. Удостоверение действует; после событий захвата монитор поднимает тревогу, и то же удостоверение уже приостановлено. А что с платежом?");
+      { x: rx + 0.25, y: ly + 0.37, w: rw - 0.45, h: lh - 0.4, isTextBox: true, margin: 0, fontSize: 10.5, color: C.text1, paraSpaceAfter: 0, valign: "top", objectName: "Шаги демо" });
+    s.addNotes(`[2:00–2:14] Это работает сегодня, одной командой. Слева настоящая карточка сотрудника, справа терминал: все ${N.demo} кейсов дают ожидаемый ответ, журнал цел. После событий захвата то же удостоверение уже приостановлено.`);
   }
 
   // ---------- 10. Захват до платежа: mandat showcase ----------
@@ -743,6 +831,11 @@ const TERMINAL = {
     const lw = 8.0, h = BOTTOM - TOP;
     card(s, L, TOP, lw, h);
     const rowH = (h - 0.2) / SHOW.steps.length, cx = L + 0.42;
+    // Событие захвата и отказ после него — главное на слайде: строки подсвечены, итог залит цветом
+    const hot = (i) => i >= SHOW.steps.length - 2;
+    SHOW.steps.forEach((step, i) => {
+      if (hot(i)) s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: L + 0.12, y: TOP + 0.1 + i * rowH + 0.03, w: lw - 0.24, h: rowH - 0.06, rectRadius: 0.1, fill: { color: STEP[step.outcome].tint }, line: { type: "none" }, objectName: `Подсветка: ${step.outcome}` });
+    });
     vline(s, cx, TOP + 0.1 + rowH / 2, rowH * (SHOW.steps.length - 1), TINT.blueLine, 2);
     // Причина шага — дословно из отчёта; если не помещается рядом с плашкой, берётся одна её часть с «…».
     const fit = (text, width) => {
@@ -758,8 +851,8 @@ const TERMINAL = {
       T(s, String(i + 1), cx - 0.17, y + (rowH - 0.34) / 2, 0.34, 0.34, { size: 11, bold: true, color: C.background1, align: "center", valign: "middle" });
       T(s, step.title, L + 0.8, y + 0.05, lw - 1.0, 0.3, { size: 11.5, bold: true, color: C.text2, valign: "middle" });
       const pw = pillW(step.outcome, 9);
-      s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: L + 0.8, y: y + 0.36, w: pw, h: 0.26, rectRadius: 0.13, fill: { color: st.tint }, line: { type: "none" }, objectName: `Итог шага: ${step.outcome}` });
-      T(s, step.outcome, L + 0.8, y + 0.36, pw, 0.26, { size: 9, bold: true, color: st.text, align: "center", valign: "middle" });
+      s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: L + 0.8, y: y + 0.36, w: pw, h: 0.26, rectRadius: 0.13, fill: { color: hot(i) ? st.base : st.tint }, line: { type: "none" }, objectName: `Итог шага: ${step.outcome}` });
+      T(s, step.outcome, L + 0.8, y + 0.36, pw, 0.26, { size: 9, bold: true, color: hot(i) ? "FFFFFF" : st.text, align: "center", valign: "middle" });
       const dx = L + 0.8 + pw + 0.15, dw = L + lw - 0.2 - dx;
       if (step.detail) T(s, fit(step.detail, dw), dx, y + 0.36, dw, 0.26, { size: 10.5, color: TINT.text2, valign: "middle" });
     });
@@ -777,9 +870,9 @@ const TERMINAL = {
     card(s, rx, by, rw, bank);
     tile(s, rx + 0.22, by + 0.2, 0.44, "Landmark");
     T(s, "Что получает банк", rx + 0.8, by + 0.2, rw - 1.0, 0.44, { size: 14, bold: true, color: C.text2, valign: "middle" });
-    T(s, "«допустить» или причины отказа; решение — в журнале без ИНН представителя, включение записи доказуемо", rx + 0.25, by + 0.74, rw - 0.45, bank - 0.8, { size: 11.5, color: C.text1 });
+    T(s, "«допустить» или причины отказа. Допуск получает только учётная запись системы банка, решение пишется в журнал без ИНН представителя", rx + 0.25, by + 0.74, rw - 0.45, bank - 0.8, { size: 11.5, color: C.text1 });
     band(s, rx, by + bank + gap, rw, bh, "Вся цепочка — одна команда: mandat showcase", { icon: "ShieldCheck", size: 13, bold: true });
-    s.addNotes("[2:18–2:40] Главное нововведение спринта: ДБО спрашивает «Мандат» перед каждым платежом. Удостоверение выпущено на один платёж: компания, день, сумма, представитель, получатель и одноразовый номер. Первый платёж допущен. Повтор и завышенная сумма — отказ. Потом смена директора, новая доверенность и заявка на смену реквизитов: признаки захвата, удостоверения приостановлены, и следующий платёж получает отказ до списания денег. Это одна команда с журналом. Насколько это надёжно?");
+    s.addNotes("[2:14–2:34] Главное за спринт. Перед каждым платежом ДБО спрашивает «Мандат». Удостоверение выпущено на один платёж: компания, день, сумма, получатель, одноразовый номер. Первый платёж проходит. Повтор и вчетверо большая сумма получают отказ. Потом признаки захвата, и следующий платёж отклонён до списания денег.");
   }
 
   // ---------- 11. Качество ----------
@@ -816,8 +909,8 @@ const TERMINAL = {
       { text: "каноническая запись JCS (RFC 8785, 20 000 документов), дерево Меркла (RFC 6962), подпись — векторы W3C eddsa-jcs-2022: совпало" },
     ], cx + 0.9, ey, cw - 1.1, eh, { size: 12, valign: "middle" });
     const auto = N.expected.confirmed + N.expected.refuted, human = N.expected.needs_review + N.expected.insufficient_data;
-    band(s, L, 5.92, W, 0.8, `Однозначное решается само, спорное — человеком: все ${auto} однозначных кейсов закрыты автоматически без единой ошибки, все ${human} спорных и неполных — у сотрудника с готовым досье. Пилот переносит эти метрики на данные ВТБ.`, { icon: "Route", size: 13 });
-    s.addNotes(`[2:40–2:56] Качество. Недопустимая ошибка — ложное «подтверждено». На ${N.negatives} кейсах-ловушках их ноль, верхняя граница — ${N.fcUpper.replace("%", " процента")}. ${FUZZ} мутаций тоже не дали ложного «да». Передоверие сверено с независимой реализацией на Cedar. Всё однозначное закрывается автоматически, спорное идёт к сотруднику с досье. Пилот переносит эти метрики на данные ВТБ.`);
+    band(s, L, 5.92, W, 0.8, `Однозначные случаи решаются сами: ${auto} кейсов закрыты без единой ошибки. ${human} спорных и неполных ушли к сотруднику с готовым досье. Пилот проверит эти метрики на данных ВТБ.`, { icon: "Route", size: 13 });
+    s.addNotes(`[2:34–2:48] Недопустимая ошибка одна — ложное «да». На ${N.negatives} ловушках таких ноль, верхняя граница ${N.fcUpper.replace("%", " процента")}. ${FUZZ} мутаций тоже не дали ложного «да». Передоверие сверено со второй реализацией на Cedar.`);
   }
 
   // ---------- 12. ИИ под контролем ----------
@@ -831,23 +924,35 @@ const TERMINAL = {
       ["Gavel", `${RULES} с нормой`, "выносят вердикт"],
       ["UserCheck", "Человек", "разбирает спорное; клиент может оспорить"],
     ];
-    const gap = 0.3, fw = (W - gap * 4) / 5, fh = 2.0;
+    const gap = 0.3, fw = (W - gap * 4) / 5, fh = 1.92;
     flow.forEach(([ic, head, t], i) => {
       const x = L + i * (fw + gap);
-      const hl = i === 3;
-      card(s, x, TOP, fw, fh, hl ? { fill: C.text2, line: null } : {});
-      tile(s, x + 0.2, TOP + 0.2, 0.48, ic, hl ? { fill: TINT.navyTile, icon: "light" } : {});
+      const hl = i === 3, model = i === 1;
+      // Модель только советует (пунктир), правила решают (заливка)
+      card(s, x, TOP, fw, fh, hl ? { fill: C.text2, line: null } : model ? { fill: TINT.blue, line: HEX.accent1, lw: 1.25, dash: "dash", shadow: false } : {});
+      tile(s, x + 0.2, TOP + 0.2, 0.48, ic, hl ? { fill: TINT.navyTile, icon: "light" } : model ? { fill: "FFFFFF" } : {});
+      if (hl || model) {
+        const role = model ? "советует" : "решают", rw = pillTextW(role, 9) + 0.3;
+        s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: x + fw - 0.16 - rw, y: TOP + 0.3, w: rw, h: 0.28, rectRadius: 0.14, fill: { color: model ? "FFFFFF" : HEX.accent2 }, line: { type: "none" }, objectName: `Роль: ${role}` });
+        T(s, role, x + fw - 0.16 - rw, TOP + 0.3, rw, 0.28, { size: 9, bold: true, color: model ? HEX.accent1 : HEX.dk2, align: "center", valign: "middle" });
+      }
       T(s, head, x + 0.2, TOP + 0.76, fw - 0.36, 0.5, { size: 13.5, bold: true, color: hl ? C.background1 : C.text2 });
       T(s, t, x + 0.2, TOP + 1.28, fw - 0.36, 0.68, { size: 12, color: hl ? TINT.ice : C.text1 });
       if (i < flow.length - 1) arrow(s, x + fw + 0.04, TOP + fh / 2, gap - 0.08, HEX.accent1, 1.75);
     });
-    const by = TOP + fh + GAP;
-    card(s, L, by, W, 0.62, { fill: TINT.blue, line: TINT.blueLine, shadow: false });
+    // Ветка шлюза: факт без дословной цитаты дальше не идёт
+    const gx = L + 2 * (fw + gap), ry = TOP + fh + 0.16;
+    vline(s, gx + fw / 2, TOP + fh, 0.16, HEX.accent5, 1.5, "dash");
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: gx, y: ry, w: fw, h: 0.34, rectRadius: 0.08, fill: { color: ST.no.tint }, line: { color: "F6B9BC", width: 0.75 }, objectName: "Факт без цитаты отброшен" });
+    dot(s, gx + 0.08, ry + 0.06, 0.22, ST.no.base, "X");
+    T(s, "нет цитаты → отброшен", gx + 0.38, ry, fw - 0.44, 0.34, { size: 9.5, bold: true, color: ST.no.text, valign: "middle" });
+    const by = ry + 0.34 + 0.18, bh = 0.5;
+    card(s, L, by, W, bh, { fill: TINT.blue, line: TINT.blueLine, shadow: false });
     T(s, [
       { text: "В логике Кодекса этики в сфере ИИ на финансовом рынке (Банк России, 2025). ", options: { bold: true, color: HEX.dk2 } },
       { text: "По сообщениям СМИ, ВТБ присоединился к Кодексу в августе 2026" },
-    ], L + 0.3, by, W - 0.6, 0.62, { size: 13, valign: "middle" });
-    const py = by + 0.62 + GAP, ph = BOTTOM - py, pw = (W - GAP * 3) / 4;
+    ], L + 0.3, by, W - 0.6, bh, { size: 12, valign: "middle" });
+    const py = by + bh + 0.2, ph = BOTTOM - py, pw = (W - GAP * 3) / 4;
     const pr = [
       ["Eye", "Прозрачность", "у каждого вывода — норма и ссылка на поле документа; отчёт называет источник каждого факта"],
       ["Users", "Человек в контуре", "человекоцентричность: спорное решает сотрудник, автоматический вердикт клиент может оспорить у человека"],
@@ -859,21 +964,21 @@ const TERMINAL = {
       card(s, x, py, pw, ph);
       tile(s, x + 0.2, py + 0.16, 0.4, ic);
       T(s, head, x + 0.7, py + 0.16, pw - 0.85, 0.4, { size: 13.5, bold: true, color: C.text2, valign: "middle" });
-      T(s, t, x + 0.2, py + 0.66, pw - 0.38, ph - 0.7, { size: 12, color: C.text1 });
+      T(s, t, x + 0.2, py + 0.62, pw - 0.38, ph - 0.66, { size: 11.5, color: C.text1 });
     });
-    s.addNotes("[2:56–3:08] Про ИИ. Модель только предлагает факт из устава с дословной цитатой: нет цитаты — нет факта. Вердикт выносят правила, спорное решает человек, клиент может оспорить. Модель в контуре банка, по умолчанию выключена, провайдер сменный — с учётом закона об ИИ.");
+    s.addNotes("[2:48–2:58] ИИ здесь только помощник. Модель приносит цитату из устава, вердикт выносят правила, спорное решает человек. Модель работает в контуре банка и по умолчанию выключена.");
   }
 
   // ---------- 13. Защита данных: фокус спринта 2 ----------
   {
-    const s = slide("Контент", "Питч", "ЗАЩИТА ДАННЫХ · ФОКУС СПРИНТА 2", "Данные клиента не покидают контур банка: модель видит метки, журнал помнит каждое чтение, кейс удаляется по 152-ФЗ",
+    const s = slide("Контент", "Питч", "ЗАЩИТА ДАННЫХ · ФОКУС СПРИНТА 2", "Данные клиента остаются в банке: в модель уходят метки, отчёты зашифрованы, каждое чтение записано",
       "Фокус спринта 2 по условиям трека — «показать защиту данных» (fintechacademy.ru/task-1); C-12, C-18; docs/DATA_PROTECTION.md, docs/DATA_PROTECTION_LAW.md, docs/THREAT_MODEL.md, docs/KEYS.md, SECURITY.md. Оценку соответствия проводит банк");
     const flow = [
       ["FileX", "Вход", "строгий JSON и XML без внешних сущностей; поле вне контракта — ошибка входа вне стенда"],
       ["Server", "Ядро в контуре", "разбор и 39 правил без внешней сети, в контуре банка (C-12)"],
       ["Fingerprint", "Модель по выбору", "в модель — только строки устава о полномочиях; ФИО, паспорт, СНИЛС, ИНН — метки"],
-      ["Lock", "Журнал", "HMAC и дерево Меркла; каждое чтение и удаление отчёта — запись без самих данных"],
-      ["Landmark", "Допуск ДБО", "решение пишется без ИНН; nonce одноразовый, откат списка статусов — отказ"],
+      ["Lock", "Хранилище", "AES-256-GCM, привязка к кейсу и владельцу; чтение и удаление отчёта — в журнале"],
+      ["Landmark", "Допуск ДБО", "только учётная запись системы банка; решение без ИНН, nonce одноразовый, откат статусов — отказ"],
     ];
     const gap = 0.25, fw = (W - 4 * gap) / 5, fh = 2.2;
     flow.forEach(([ic, head, t], i) => {
@@ -886,7 +991,7 @@ const TERMINAL = {
     });
     const cy = TOP + fh + GAP, cw3 = (W - 2 * GAP) / 3, chh = 1.78;
     const cards3 = [
-      ["KeyRound", "Ключи и доступ", "ключ подписи — HSM по PKCS#11, Vault Transit или KMS; токены API хранятся хешами, у ролей свои права; в pilot и prod без ключей журнала и ПДн сервис не стартует"],
+      ["KeyRound", "Ключи и доступ", "ключ подписи — HSM по PKCS#11, Vault Transit или KMS; токены API хранятся хешами; журнал сервера маскирует номера карт и паспортов; без ключей pilot и prod не стартуют"],
       ["Scale", "152-ФЗ и 115-ФЗ", "спроектировано с учётом 152-ФЗ: минимум данных, псевдонимы, контур банка; удаление по ст. 21 с выгрузкой из журнала; идентификацию по 115-ФЗ ведёт банк"],
       ["Container", "Цепочка поставки", "pip-audit, Trivy и gitleaks — в CI и по расписанию, CodeQL и OpenSSF Scorecard, SBOM CycloneDX и подписанное происхождение сборки"],
     ];
@@ -899,7 +1004,7 @@ const TERMINAL = {
     });
     const by = cy + chh + GAP;
     band(s, L, by, W, BOTTOM - by, "За банком: оценка соответствия 152-ФЗ и ГОСТ Р 57580.1, проверка КЭП через СКЗИ, тест на проникновение", { icon: "ShieldCheck", size: 13, bold: true });
-    s.addNotes("[3:08–3:22] Защита данных — фокус второго спринта. Ядро работает в контуре банка без внешней сети. Персональные данные до модели заменяются метками. Каждое чтение и удаление отчёта пишется в журнал без самих данных: если отчёты утекли, видно, кто их открывал, а за 72 часа это сообщают Роскомнадзору. Кейс удаляется по основанию из 152-ФЗ, а запись об удалении служит выгрузкой из журнала по приказу Роскомнадзора № 179. Ключи — в HSM банка. Оценку соответствия проводит банк.");
+    s.addNotes("[2:58–3:14] Защита данных. Ядро не ходит во внешнюю сеть. В модель уходят метки вместо ФИО и номеров. Отчёты в хранилище зашифрованы, каждое чтение записано. Кейс удаляется по основанию из закона о персональных данных. Допуск к платежу получает только система банка.");
   }
 
   // ---------- 14. Эффект и бизнес-модель ----------
@@ -908,7 +1013,7 @@ const TERMINAL = {
       "ВТБ, пресс-релиз к МСФО за 1П 2026: ≈1,8 млн предприятий и предпринимателей (M-09); Банк России, I–II кв. 2026 (M-07, M-15). Расчёт: python scripts/effect_model.py --scenarios; деньги и окупаемость — финансовая модель пакета аналитики; юнит-экономика — effect_model.py --unit (C-21)");
     const cw = (W - GAP) / 2, ch = 3.75;
     const charts = [
-      ["Users", "Высвобождение нагрузки, ставок в год", FTE, `≈${comma(EFFECT.clients / 1e6)} млн предприятий и ИП × доля с событием представительства (${shares(EFFECT.eventShare)}%) × минуты на кейс с разбором (${EFFECT.minutesSaved.join(" / ")}) ÷ 60 ÷ ${EFFECT.hoursPerFte.toLocaleString("ru-RU")} ч на ставку`, HEX.accent1],
+      ["Users", "Высвобождение нагрузки, ставок в год", FTE, `≈${comma(EFFECT.clients / 1e6)} млн предприятий и ИП × доля с событием представительства (${shares(EFFECT.eventShare)}%) × минуты на кейс с разбором (${EFFECT.minutesSaved.join(" / ")}) ÷ 60 ÷ ${ruNum(EFFECT.hoursPerFte)} ч на ставку`, HEX.accent1],
       ["ShieldCheck", "Предотвращённый ущерб, млн ₽ в год", LOSS, `${EFFECT.incidentsPerQuarter} операций против юрлиц в среднем за квартал I пол. 2026 × 4 × доля ВТБ (${shares(EFFECT.vtbShare)}%) × доля случаев с полномочиями (${shares(EFFECT.authorityShare)}%) × ${comma(EFFECT.lossPerIncidentMln, 2)} млн ₽`, HEX.accent3],
     ];
     charts.forEach(([ic, head, vals, formula, color], i) => {
@@ -928,7 +1033,8 @@ const TERMINAL = {
     tile(s, L + 0.22, y2 + (h2 - 0.5) / 2, 0.5, "Briefcase", { fill: "FFFFFF" });
     T(s, [{ text: "Бизнес-модель: ", options: { bold: true, color: HEX.dk2 } }, { text: `лицензия в контуре банка и подписка на сопровождение правил; проверка обходится банку в ≈${UNIT.mandat} ₽ против ≈${UNIT.manual} ₽ вручную` }], L + 0.92, y2, cw - 1.15, h2, { size: 12.5, valign: "middle" });
     band(s, L + cw + GAP, y2, cw, h2, `Для ВТБ, базовый сценарий: разовые затраты окупаются за ${PAYBACK}, чистая отдача — ${ROI} ₽ на рубль затрат за три года`, { icon: "Target", size: 12.5, bold: true });
-    s.addNotes(`[3:22–3:40] Эффект в двух валютах. Время: при 1,8 миллиона бизнес-клиентов — от ${FTE[0]} до ${FTE[2]} ставок в год. Риск: от ${LOSS[0]} до ${LOSS[2]} ${plural(LOSS[2], "миллиона", "миллионов", "миллионов")} рублей предотвращённого ущерба в год — на данных Банка России за полугодие. Для ВТБ в базовом сценарии затраты окупаются за ${PAYBACK}. Модель — лицензия и подписка на правила: нормы меняются каждые полгода.`);
+    const upTo = (n) => (n % 10 === 1 && n % 100 !== 11 ? "миллиона" : "миллионов");
+    s.addNotes(`[3:14–3:30] Эффект в двух валютах. Время: от ${FTE[0]} до ${FTE[2]} ставок в год. Ущерб: от ${LOSS[0]} до ${LOSS[2]} ${upTo(LOSS[2])} рублей в год. Для ВТБ разовые затраты в базовом сценарии окупаются за ${PAYBACK}.`);
   }
 
   // ---------- 15. Почему сейчас ----------
@@ -967,12 +1073,12 @@ const TERMINAL = {
       T(s, v, rx + 0.28, y + 0.12, rw - 0.56, 0.62, { size: i === 2 ? 26 : 34, bold: true, color: C.accent1, valign: "middle" });
       T(s, t, rx + 0.28, y + 0.76, rw - 0.56, ch - 0.82, { size: 11.5, color: TINT.text2 });
     });
-    s.addNotes("[3:40–3:52] Почему сейчас. Доверенностей за два года стало втрое больше — более пяти миллионов, ВТБ сам продаёт комплект МЧД и КЭП. А нормы меняются каждые полгода — нужен движок, где они меняются данными, а не релизом.");
+    s.addNotes("[3:30–3:40] Почему сейчас. Доверенностей за два года стало втрое больше, больше пяти миллионов. А правила меняются каждые полгода, поэтому у нас они лежат данными.");
   }
 
   // ---------- 16. Мировая практика ----------
   {
-    const s = slide("Контент", "Питч", "МИРОВАЯ ПРАКТИКА", "Мир уже выделил проверку полномочия представителя в отдельный шаг — и в отдельный продукт",
+    const s = slide("Контент", "Питч", "МИРОВАЯ ПРАКТИКА", "В мире проверка полномочия представителя уже отдельный шаг и отдельный продукт",
       "FATF, Рекомендация 10 (M-12); Регламент (ЕС) 2024/1624 и финальный проект RTS AMLA, 30.09.2026 (M-13, M-18); Signicat InstantAuthority — документация Signicat (M-37); Companies House, отчёт по ECCTA 2023 от 30.06.2025 (M-36); Еврокомиссия, 19.11.2025 (M-39); GLEIF, ISO 17442-3");
     const lw = 4.6, hy = TOP, gy = TOP + 0.42;
     T(s, "Требования к банкам", L, hy, lw, 0.32, { size: 13, bold: true, color: TINT.text2 });
@@ -1007,7 +1113,7 @@ const TERMINAL = {
     });
     const by = gy + 3 * rh + 2 * rg + 0.15;
     band(s, L, by, W, BOTTOM - by, "«Мандат» делает то же для российской МЧД: полномочие на дату операции, норма и поле документа в каждом выводе, удостоверение со статусом", { icon: "Waypoints", size: 13, fill: TINT.blue, color: C.text2, tile: "FFFFFF", shadow: false, bold: true });
-    s.addNotes("[3:52–4:06] Мир идёт туда же. FATF и регламент ЕС требуют проверить, что представитель уполномочен. В Нидерландах проверка полномочия — уже отдельный сервис, Британия с прошлого года проверяет личность каждого нового директора, а ЕС закладывает полномочия в бизнес-кошелёк. «Мандат» делает это для российской МЧД.");
+    s.addNotes("[3:40–3:52] Мир идёт туда же. FATF и регламент ЕС требуют проверять, что представитель уполномочен. В Нидерландах это уже отдельный сервис. «Мандат» делает то же для российской доверенности.");
   }
 
   // ---------- 17. Встройка ----------
@@ -1031,7 +1137,7 @@ const TERMINAL = {
     const y2 = TOP + ch + GAP, h2 = BOTTOM - y2, w2 = (W - GAP) / 2;
     const parts = [
       ["Check", HEX.accent3, "Работает сегодня", [`${RULES}, ${DEMOS}, CLI и HTTP API с ролями`, "разбор человеком: очередь P1–P3 и сроки", "мониторинг событий, статусы удостоверений, журнал", `масштаб: несколько воркеров и машин с общим хранилищем Redis, готовность — /readyz; кейс — ${N.medianMs}`]],
-      ["Plug", HEX.accent1, "Подключаем в пилоте", ["реестр МЧД, ЕГРЮЛ, ЕФРСБ — адаптеры к источникам банка через готовые порты", "проверка КЭП и ГОСТ-подпись — сертифицированные СКЗИ банка", "ключи — HSM по PKCS#11; вход — OIDC банка", "коды полномочий — выгрузка классификатора ЕСНСИ"]],
+      ["Plug", HEX.accent1, "Подключаем в пилоте", ["реестр МЧД и ЕФРСБ — адаптеры банка к готовым портам, ЕГРЮЛ — порт по тому же образцу", "проверка КЭП и ГОСТ-подпись — сертифицированные СКЗИ банка", "ключи — HSM по PKCS#11; вход — OIDC банка", "коды полномочий — выгрузка классификатора ЕСНСИ"]],
     ];
     parts.forEach(([ic, col, head, items], i) => {
       const x = L + i * (w2 + GAP);
@@ -1040,7 +1146,7 @@ const TERMINAL = {
       T(s, head, x + 0.82, y2 + 0.22, w2 - 1.0, 0.42, { size: 15, bold: true, color: C.text2, valign: "middle" });
       bullets(s, items, x + 0.3, y2 + 0.8, w2 - 0.55, h2 - 0.86, { size: 12, psa: 4 });
     });
-    s.addNotes("[4:06–4:16] Встройка. «Мандат» работает в контуре банка без внешней сети. Ядро, правила, журнал и мониторинг готовы; реестр, ЕГРЮЛ, ЕФРСБ и проверку подписи через СКЗИ банка подключаем к пилоту через порты.");
+    s.addNotes("[3:52–4:02] Встраиваемся в контур банка без внешней сети. Ядро, правила и журнал готовы. Реестр, ЕГРЮЛ и проверку подписи подключаем в пилоте через готовые порты.");
   }
 
   // ---------- 18. Видение: сотрудник, клиент, ИИ-агент ----------
@@ -1049,24 +1155,29 @@ const TERMINAL = {
       "AP2 — Google, 16.09.2025 (M-38); European Business Wallet — предложение Еврокомиссии 19.11.2025 (M-39); привязка удостоверения к операции, сумме, получателю и nonce — src/mandat/audit/attestation.py, слайд A8");
     const cols = [
       ["UserCheck", "Сотрудник банка", "работает сегодня", HEX.accent3, ["вердикт на дату с нормой и полем документа", "досье спорного кейса с приоритетом и сроком", "журнал и удостоверение со статусом"]],
-      ["Building2", "Клиент в «ВТБ Бизнес»", "после пилота", HEX.accent1, ["«Мои полномочия»: кто и до какого дня вправе действовать за компанию", "тревога при смене директора в ЕГРЮЛ — до первого платежа", "проверка подписанта контрагента перед сделкой"]],
-      ["Bot", "ИИ-агент клиента", "2027–2028", HEX.dk2, ["агент платит по мандату: операция, сумма, получатель, срок", "банк проверяет мандат без доступа к базе и отзывает его по событию", "по образцу мандатов AP2: проверяемое удостоверение с пределами"]],
+      ["Building2", "Клиент в «ВТБ Бизнес»", "после пилота", HEX.accent1, ["«Мои полномочия»: кто и до какого дня действует за компанию", "тревога при смене директора в ЕГРЮЛ — до первого платежа", "проверка подписанта контрагента перед сделкой"]],
+      ["Bot", "ИИ-агент клиента", "2027–2028", HEX.dk2, ["агент платит по мандату: операция, сумма, получатель, срок", "банк проверяет мандат без доступа к базе и отзывает по событию", "как в мандатах AP2: удостоверение с пределами"]],
     ];
-    const gap = 0.3, cw = (W - 2 * gap) / 3, ch = 3.55;
+    // Слева три шага по-прежнему, справа — кадр: Анна у голограммы, где много источников сходятся в один ответ.
+    const pxL = 9.4, pw = R - pxL;
+    const VISION = await roundedPhoto(path.join(VIS, "anna-vision.jpg"), pw, BOTTOM - TOP, 0.12, HEX.lt2, { position: "top" });
+    const gap = 0.25, lw = pxL - L - 0.3, cw = (lw - 2 * gap) / 3, ch = 3.6;
     cols.forEach(([ic, head, stage, col, items], i) => {
       const x = L + i * (cw + gap);
       const hl = i === 2;
       card(s, x, TOP, cw, ch, hl ? { fill: C.text2, line: null } : {});
-      tile(s, x + 0.25, TOP + 0.24, 0.54, ic, hl ? { fill: TINT.navyTile, icon: "light" } : {});
-      T(s, head, x + 0.95, TOP + 0.2, cw - 1.15, 0.36, { size: 15, bold: true, color: hl ? C.background1 : C.text2, valign: "middle" });
-      const sw = stage.length * 0.078 + 0.36;
-      s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: x + 0.95, y: TOP + 0.6, w: sw, h: 0.28, rectRadius: 0.14, fill: { color: hl ? TINT.navyTile : TINT.blue }, line: { type: "none" }, objectName: `Этап: ${stage}` });
-      T(s, stage, x + 0.95, TOP + 0.6, sw, 0.28, { size: 10, bold: true, color: hl ? HEX.accent2 : col, align: "center", valign: "middle" });
-      bullets(s, items, x + 0.3, TOP + 1.18, cw - 0.55, ch - 1.26, { size: 13.5, psa: 9, color: hl ? C.background1 : C.text1 });
-      if (i < 2) arrow(s, x + cw + 0.04, TOP + ch / 2, gap - 0.08, HEX.accent1, 2);
+      tile(s, x + 0.22, TOP + 0.22, 0.5, ic, hl ? { fill: TINT.navyTile, icon: "light" } : {});
+      const sw = stage.length * 0.075 + 0.34;
+      s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: x + 0.86, y: TOP + 0.33, w: sw, h: 0.28, rectRadius: 0.14, fill: { color: hl ? TINT.navyTile : TINT.blue }, line: { type: "none" }, objectName: `Этап: ${stage}` });
+      T(s, stage, x + 0.86, TOP + 0.33, sw, 0.28, { size: 10, bold: true, color: hl ? HEX.accent2 : col, align: "center", valign: "middle" });
+      T(s, head, x + 0.22, TOP + 0.86, cw - 0.4, 0.5, { size: 14, bold: true, color: hl ? C.background1 : C.text2 });
+      bullets(s, items, x + 0.22, TOP + 1.45, cw - 0.36, ch - 1.5, { size: 12, psa: 6, color: hl ? C.background1 : C.text1 });
+      if (i < 2) arrow(s, x + cw + 0.03, TOP + ch / 2, gap - 0.06, HEX.accent1, 2);
     });
-    band(s, L, TOP + ch + GAP, W, BOTTOM - (TOP + ch + GAP), "Ядро уже умеет главное для этого шага: удостоверение «Мандата» привязано к операции, сумме, получателю и одноразовому номеру запроса и отзывается по событию", { icon: "BadgeCheck", size: 14 });
-    s.addNotes("[4:16–4:30] Куда это растёт. Сегодня «Мандат» помогает сотруднику. Следующий шаг — клиент в «ВТБ Бизнес» видит, кто вправе действовать за компанию, и получает тревогу при смене директора. Дальше — ИИ-агенты: агент платит по мандату с пределами, банк проверяет его без доступа к базе. Наше удостоверение это уже умеет.");
+    band(s, L, TOP + ch + GAP, lw, BOTTOM - (TOP + ch + GAP), "Ядро уже умеет главное для этого шага: удостоверение «Мандата» привязано к операции, сумме, получателю и одноразовому номеру запроса и отзывается по событию", { icon: "BadgeCheck", size: 13 });
+    card(s, pxL, TOP, pw, BOTTOM - TOP, { line: null, r: 0.12 });
+    s.addImage({ data: VISION, x: pxL, y: TOP, w: pw, h: BOTTOM - TOP, altText: "Анна у голограммы: много источников сходятся в один проверенный ответ", objectName: "Фото амбассадора" });
+    s.addNotes("[4:02–4:14] Дальше один движок полномочий для троих. Сотрудник видит ответ сегодня. Клиент в «ВТБ Бизнес» увидит, кто вправе действовать за компанию. А ИИ-агент будет платить по мандату с пределами.");
   }
 
   // ---------- 19. Пилот ----------
@@ -1102,65 +1213,110 @@ const TERMINAL = {
     s.addImage({ data: G.band, x: L, y: cy, w: W, h: chh, altText: "", objectName: "Плашка запроса" });
     tile(s, L + 0.25, cy + (chh - 0.5) / 2, 0.5, "Rocket", { fill: TINT.navyTile, icon: "light" });
     T(s, "Наш запрос: теневой пилот через Акселератор ВТБ с метриками, согласованными до старта", L + 0.95, cy, W - 1.2, chh, { size: 16, bold: true, color: C.background1, valign: "middle" });
-    s.addNotes("[4:30–4:44] Шесть недель теневого пилота на одной операции — праве подписи платёжных поручений по МЧД. «Мандат» работает рядом с сотрудниками и ни на что не влияет. Стоп-критерий — первое ложное «подтверждено». От банка — владелец процесса, регламент, обезличенные пакеты и юрист.");
+    s.addNotes("[4:14–4:28] Предлагаем шесть недель теневого пилота на одной операции: праве подписи платежей по доверенности. «Мандат» работает рядом с сотрудниками и ни на что не влияет. Стоп-критерий один: первое ложное «да».");
   }
 
-  // ---------- 20. Команда ----------
+  // ---------- 20. Масштаб: после пилота (фокус спринта 3) ----------
+  {
+    const s = slide("Контент", "Питч", "СПРИНТ 3 · МАСШТАБ", "После пилота: эксплуатация, новые операции и второй банк, каждый шаг — через ворота",
+      `План внедрения и развития пакета аналитики (горизонты и ворота G0–G4, базовый сценарий модели ${MODEL.version} от ${MODEL.as_of}); docs/PILOT.md; масштаб ядра — C-14, C-18. Числа о банках и подписке — план модели, а не договорённости`);
+    const gates = [
+      ["G0", "Финал, 11.12.2026", "у ВТБ есть владелец процесса, протокол пилота готов"],
+      ["G1", "≈01.03.2027", "протокол подписан, 50–100 пакетов, юрист утвердил правила"],
+      ["G2", "≈15.04.2027", "ноль ложных «да», эффект не ниже консервативного сценария"],
+      ["G3", "≈01.11.2027", "анализ уязвимостей, ГОСТ-подпись через СКЗИ, адаптеры к источникам"],
+      ["G4", "≈30.06.2028", "полгода эксплуатации без ложного «да», второй банк в переговорах"],
+    ];
+    const gw = (W - 4 * 0.2) / 5, gh = 2.05;
+    s.addShape(pres.shapes.LINE, { x: L + 0.3, y: TOP + 0.33, w: W - 0.6, h: 0, line: { color: TINT.blueLine, width: 2 }, objectName: "Линия ворот" });
+    gates.forEach(([id, when, what], i) => {
+      const x = L + i * (gw + 0.2);
+      const last = i === gates.length - 1;
+      s.addShape(pres.shapes.OVAL, { x: x + 0.12, y: TOP + 0.08, w: 0.5, h: 0.5, fill: { color: last ? HEX.dk2 : HEX.accent1 }, line: { color: "FFFFFF", width: 2 }, objectName: `Ворота ${id}` });
+      T(s, id, x + 0.12, TOP + 0.08, 0.5, 0.5, { size: 12, bold: true, color: C.background1, align: "center", valign: "middle" });
+      card(s, x, TOP + 0.72, gw, gh - 0.72, last ? { fill: TINT.blue, line: TINT.blueLine } : {});
+      T(s, when, x + 0.18, TOP + 0.84, gw - 0.36, 0.3, { size: 12, bold: true, color: C.accent1 });
+      T(s, what, x + 0.18, TOP + 1.16, gw - 0.36, gh - 1.2, { size: 11.5, color: C.text1 });
+    });
+    const y2 = TOP + gh + GAP, h2 = BOTTOM - y2, cw = (W - 2 * GAP) / 3;
+    const cols = [
+      ["Gauge", "Нагрузка", [`проверка кейса — ${N.medianMs}`, "несколько процессов и машин делят хранилище Redis", "nonce расходуется атомарно и на соседнем сервере", "готовность к трафику — /readyz"]],
+      ["Workflow", "Операции", ["сначала одна: подпись платежей по МЧД", "с 2028 года — открытие счёта, смена пользователей ДБО, кредиты и гарантии", "новая операция — строки каталога и тесты, ядро то же"]],
+      ["Building2", "Банки и деньги", [`договор с ${SCALE.banksFirst} банком в ${SCALE.yearFirst} году и ${SCALE.banksLast} к ${SCALE.yearLast}`, `годовая подписка ≈${SCALE.arr} млн ₽ к ${SCALE.yearLast}`, `команда — с ${SCALE.teamFirst} до ${SCALE.teamLast} человек, операционная прибыль с ${SCALE.ebitdaYear} года`, `до неё нужно ≈${SCALE.funding} млн ₽`]],
+    ];
+    cols.forEach(([ic, head, items], i) => {
+      const x = L + i * (cw + GAP);
+      card(s, x, y2, cw, h2);
+      tile(s, x + 0.22, y2 + 0.2, 0.46, ic);
+      T(s, head, x + 0.82, y2 + 0.2, cw - 1.0, 0.46, { size: 14, bold: true, color: C.text2, valign: "middle" });
+      bullets(s, items, x + 0.26, y2 + 0.8, cw - 0.48, h2 - 0.88, { size: 12, psa: 4 });
+    });
+    s.addNotes(`[4:28–4:42] Как растём после пилота. Дальше эксплуатация и новые операции: открытие счёта, смена пользователей, кредиты. По модели к ${SCALE.yearLast} году ${SCALE.banksLast} ${plural(SCALE.banksLast, "банк", "банка", "банков")} с договором. Каждый шаг открывают ворота с критериями.`);
+  }
+
+  // ---------- 21. Команда ----------
   {
     const s = slide("Контент", "Питч", "КОМАНДА", "Команда: архитектура правил и измерение качества", "github.com/KonkovDV/Mandat · собственный код под лицензией MIT");
+    // Два круга: квадрат по лицу из исходного кадра (box — в точках файла), неоновая рамка исходника в круг не попадает.
     const people = [
-      ["dmitrij.jpg", "Коньков Дмитрий", "Капитан · архитектура и правила", "Автор открытых проектов AeroBIM и SynAPS. Детерминированное ядро, граф полномочий, границы заявлений"],
-      ["elena.jpg", "Конькова Елена", "Системный инженер · измерение и качество", "Методика оценки, корпус и разметка, воспроизводимость сборки, протокол пилота"],
+      ["dmitrij.jpg", { x: 64, y: 50, side: 460 }, "Waypoints", "Коньков Дмитрий", "Капитан · архитектура и правила", "Автор открытых проектов AeroBIM и SynAPS. Детерминированное ядро, граф полномочий, границы заявлений"],
+      ["elena.jpg", { x: 72, y: 56, side: 460 }, "Gauge", "Конькова Елена", "Системный инженер · измерение и качество", "Методика оценки, корпус и разметка, воспроизводимость сборки, протокол пилота"],
     ];
-    const pw = (W - GAP) / 2, ph = 2.75;
-    people.forEach(([img, name, role, desc], i) => {
-      const x = L + i * (pw + GAP);
-      card(s, x, TOP, pw, ph);
-      s.addShape(pres.shapes.OVAL, { x: x + 0.3, y: TOP + 0.38, w: 1.98, h: 1.98, fill: { color: TINT.blue }, line: { color: HEX.accent2, width: 2.5 }, objectName: "Рамка фото" });
-      s.addImage({ path: path.join(ASSETS, img), x: x + 0.39, y: TOP + 0.47, w: 1.8, h: 1.8, rounding: true, altText: `Фото: ${name}` });
-      T(s, name, x + 2.6, TOP + 0.45, pw - 2.85, 0.42, { size: 19, bold: true, color: C.text2 });
-      T(s, role, x + 2.6, TOP + 0.9, pw - 2.85, 0.5, { size: 13, bold: true, color: C.accent1 });
-      T(s, desc, x + 2.6, TOP + 1.42, pw - 2.85, 1.15, { size: 13, color: C.text1 });
+    const colW = 3.05, d = 2.3, ring = 0.1;
+    for (const [i, [img, box, ic, name, role, desc]] of people.entries()) {
+      const cx = L + colW / 2 + i * colW, cy = TOP + 0.42 + d / 2;
+      s.addImage({ data: await squarePhoto(path.join(ASSETS, img), box), x: cx - d / 2, y: cy - d / 2, w: d, h: d, rounding: true, altText: `Фото: ${name}` });
+      const bd = 0.56, bx = cx + d * 0.36 - bd / 2, by = cy + d * 0.36 - bd / 2;
+      s.addShape(pres.shapes.OVAL, { x: bx - 0.05, y: by - 0.05, w: bd + 0.1, h: bd + 0.1, fill: { color: "FFFFFF" }, line: { type: "none" }, objectName: "Обводка значка" });
+      dot(s, bx, by, bd, HEX.accent1, ic);
+      const ty = cy + d / 2 + ring + 0.2;
+      T(s, name, cx - colW / 2 + 0.05, ty, colW - 0.1, 0.4, { size: 18, bold: true, color: C.text2, align: "center" });
+      T(s, role, cx - colW / 2 + 0.05, ty + 0.42, colW - 0.1, 0.48, { size: 12, bold: true, color: C.accent1, align: "center" });
+      T(s, desc, cx - colW / 2 + 0.1, ty + 0.92, colW - 0.2, 0.9, { size: 11.5, color: C.text1, align: "center" });
+    }
+    // Справа — что банк получает и кого мы ищем; 3D-значки из того же набора, что на слайде 2.
+    const x2 = L + 2 * colW + 0.35, w2 = R - x2, h2 = (BOTTOM - TOP - GAP) / 2;
+    [
+      [TOP, "criteria", "Что получает банк", "проверенный набор правил, протокол измерений, итоги пилота и эталонную реализацию под MIT для передачи команде банка"],
+      [TOP + h2 + GAP, "search", "Кого ищем в ВТБ", "владельца процесса добавления представителей юрлиц и юриста, который утвердит правила и окно «свежей» смены руководителя"],
+    ].forEach(([y, art, head, text]) => {
+      card(s, x2, y, w2, h2, { fill: TINT.blue, line: TINT.blueLine, shadow: false });
+      s.addImage({ data: ICON3D[art], x: x2 + w2 - 1.32, y: y + 0.18, w: 1.12, h: 1.12, altText: `Значок: ${head.toLowerCase()}`, objectName: "3D-значок" });
+      T(s, head, x2 + 0.32, y + 0.3, w2 - 1.8, 0.45, { size: 17, bold: true, color: C.text2, valign: "middle" });
+      T(s, text, x2 + 0.32, y + 0.88, w2 - 1.8, h2 - 1.05, { size: 14, color: C.text1 });
     });
-    const y2 = TOP + ph + GAP, h2 = BOTTOM - y2, w2 = (W - GAP) / 2;
-    card(s, L, y2, w2, h2, { fill: TINT.blue, line: TINT.blueLine, shadow: false });
-    tile(s, L + 0.25, y2 + 0.25, 0.5, "Award", { fill: "FFFFFF" });
-    T(s, "Что получает банк", L + 0.9, y2 + 0.25, w2 - 1.1, 0.5, { size: 15, bold: true, color: C.text2, valign: "middle" });
-    T(s, "проверенный набор правил, протокол измерений, итоги пилота и эталонную реализацию под MIT для передачи команде банка", L + 0.3, y2 + 0.9, w2 - 0.6, h2 - 1.0, { size: 13 });
-    const x2 = L + w2 + GAP;
-    card(s, x2, y2, w2, h2, { fill: TINT.blue, line: TINT.blueLine, shadow: false });
-    tile(s, x2 + 0.25, y2 + 0.25, 0.5, "Search", { fill: "FFFFFF" });
-    T(s, "Кого ищем в ВТБ", x2 + 0.9, y2 + 0.25, w2 - 1.1, 0.5, { size: 15, bold: true, color: C.text2, valign: "middle" });
-    T(s, "владельца процесса добавления представителей юрлиц и юриста, который утвердит правила и окно «свежей» смены руководителя", x2 + 0.3, y2 + 0.9, w2 - 0.6, h2 - 1.0, { size: 13 });
-    s.addNotes("[4:44–4:54] Команда: я отвечаю за архитектуру и правила, Елена — за методику измерения и качество. Юридическую проверку правил планируем с юристом банка на пилоте.");
+    s.addNotes("[4:42–4:52] Нас двое. Я отвечаю за архитектуру и правила, Елена — за методику измерения и качество. Юриста банка ждём на пилот.");
   }
 
-  // ---------- 21. Контакты ----------
+  // ---------- 22. Контакты ----------
   {
     const s = pres.addSlide({ masterName: "Финал", sectionTitle: "Питч" });
+    s.addImage({ data: ANNA.final.data, x: ANNA.final.x, y: 0, w: ANNA.final.w, h: ANNA.final.h, altText: "Анна, амбассадор «Мандата», с планшетом", objectName: "Фото амбассадора" });
     s.addImage({ data: G.markDark, x: L, y: 0.6, w: 0.62, h: 0.56, altText: "Знак «Мандата»" });
     T(s, "Команда «Мандат»", L + 0.8, 0.6, 5.0, 0.56, { size: 16, bold: true, color: C.background1, valign: "middle" });
     s.addText(typo("Спасибо! Готовы к теневому пилоту в ВТБ"), { placeholder: "title" });
     const rows = [
       ["Phone", "Коньков Дмитрий, капитан", "+7 915 452-88-64 · konkov-dmitrij@yandex.ru"],
       ["Mail", "Конькова Елена, измерение и качество", "konkovaelena@yandex.ru"],
-      ["Github", "Код и документация", "github.com/KonkovDV/Mandat · собственный код под MIT"],
+      ["Github", "Код, документы и сайт", "github.com/KonkovDV/Mandat · konkovdv.github.io/Mandat"],
     ];
     rows.forEach(([ic, who, t], i) => {
       const y = 3.0 + i * 0.72;
       tile(s, L, y + 0.06, 0.46, ic, { fill: TINT.navyTile, icon: "light" });
-      T(s, who, L + 0.65, y, 6.5, 0.3, { size: 14, bold: true, color: C.background1, valign: "middle" });
-      T(s, t, L + 0.65, y + 0.3, 6.5, 0.3, { size: 13, color: TINT.ice, valign: "middle" });
+      T(s, who, L + 0.65, y, 5.75, 0.3, { size: 14, bold: true, color: C.background1, valign: "middle" });
+      T(s, t, L + 0.65, y + 0.3, 5.75, 0.3, { size: 13, color: TINT.ice, valign: "middle" });
     });
-    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: L, y: 5.35, w: 6.7, h: 0.95, rectRadius: 0.12, fill: { color: "FFFFFF", transparency: 90 }, line: { color: HEX.accent2, width: 1.5 }, objectName: "Плашка просьбы" });
-    T(s, "Ищем в ВТБ владельца процесса добавления представителей юрлиц — чтобы согласовать протокол пилота до финала 11 декабря", L + 0.3, 5.35, 6.1, 0.95, { size: 14, bold: true, color: C.background1, valign: "middle" });
-    const hw = 4.3;
-    s.addImage({ data: G.hero, x: 8.2, y: 0.45, w: hw, h: hw * G.heroRatio, altText: "Схема: источники сходятся в один вердикт на дату операции" });
-    const qx = 9.55, qy = 4.45, qw = 1.75;
-    card(s, qx, qy, qw, 2.25, { fill: "FFFFFF", line: null, r: 0.14, name: "Карточка QR-кода" });
-    s.addImage({ data: G.qr, x: qx + 0.2, y: qy + 0.2, w: qw - 0.4, h: qw - 0.4, altText: "QR-код: github.com/KonkovDV/Mandat" });
-    T(s, "Код, демо и документы", qx + 0.1, qy + qw - 0.12, qw - 0.2, 0.42, { size: 10.5, bold: true, color: C.text2, align: "center", valign: "middle" });
-    s.addNotes("[4:54–5:00] Спасибо! QR-код ведёт на код, демо и документы. Готовы к вопросам.");
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: L, y: 5.35, w: 6.25, h: 0.95, rectRadius: 0.12, fill: { color: "FFFFFF", transparency: 90 }, line: { color: HEX.accent2, width: 1.5 }, objectName: "Плашка просьбы" });
+    T(s, "Ищем в ВТБ владельца процесса добавления представителей юрлиц — чтобы согласовать протокол пилота до финала 11 декабря", L + 0.3, 5.35, 5.65, 0.95, { size: 14, bold: true, color: C.background1, valign: "middle" });
+    // Два QR-кода столбиком между текстом и фото: сайт с демо в браузере, код и документы на GitHub.
+    const qw = 1.5, qx = 7.1;
+    [[G.qrSite, "Сайт: демо в браузере", "QR-код: konkovdv.github.io/Mandat"], [G.qr, "Код и документы", "QR-код: github.com/KonkovDV/Mandat"]].forEach(([img, label, alt], i) => {
+      const qy = 2.95 + i * 2.02;
+      card(s, qx, qy, qw, 1.9, { fill: "FFFFFF", line: null, r: 0.14, name: "Карточка QR-кода" });
+      s.addImage({ data: img, x: qx + 0.15, y: qy + 0.12, w: qw - 0.3, h: qw - 0.3, altText: alt });
+      T(s, label, qx + 0.06, qy + 1.36, qw - 0.12, 0.46, { size: 9.5, bold: true, color: C.text2, align: "center", valign: "middle" });
+    });
+    s.addNotes("[4:52–5:00] Спасибо. Один QR-код ведёт на сайт с демо, второй на код. Готовы к вопросам.");
   }
   if (pages() !== MAIN_SLIDES) throw new Error(`в питче ${pages()} слайдов, а ожидалось ${MAIN_SLIDES}`);
   for (const [key, kicker] of Object.entries(P_KICKER)) {
@@ -1179,7 +1335,8 @@ const TERMINAL = {
     APPX.forEach(([id, title], i) => {
       const col = Math.floor(i / per), row = i % per;
       const x = L + col * (cw + 0.5), y = 2.15 + row * rh;
-      s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x, y, w: cw, h: rh - 0.08, rectRadius: 0.1, fill: { color: "FFFFFF", transparency: 92 }, line: { color: "FFFFFF", transparency: 75, width: 0.75 }, objectName: `Пункт оглавления ${id}` });
+      // Матовое стекло: фон из Figma ярок справа, без плотной подложки строки там не читаются.
+      s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x, y, w: cw, h: rh - 0.08, rectRadius: 0.1, fill: { color: "071D52", transparency: 18 }, line: { color: "FFFFFF", transparency: 72, width: 0.75 }, objectName: `Пункт оглавления ${id}` });
       T(s, id, x + 0.2, y, 0.6, rh - 0.08, { size: 13.5, bold: true, color: HEX.accent2, valign: "middle", name: `Номер ${id}` });
       T(s, title, x + 0.82, y, cw - 1.75, rh - 0.08, { size: 13.5, color: "FFFFFF", valign: "middle", name: `Пункт ${id}` });
       T(s, `с. ${appxPage(id)} →`, x + cw - 1.0, y, 0.85, rh - 0.08, { size: 11, color: TINT.ice, align: "right", valign: "middle" });
@@ -1189,8 +1346,8 @@ const TERMINAL = {
 
   // ---------- A1. Семь взглядов ----------
   {
-    const s = slide("Контент", "Приложение", "A1 · ВРАЖДЕБНЫЙ РАЗБОР", "Семь взглядов на «Мандат»: главное возражение каждой роли и наш ответ",
-      "docs/audit/MURDER_BOARD-2026-10-20.md (банкир, юрист, правовед, безопасник, ИБ, пользователь, Red Team); docs/audit/AUDIT-2026-10-27-DIFFERENTIAL.md; docs/JURY.md", { appx: "A1" });
+    const s = slide("Контент", "Приложение", "A1 · ВОЗРАЖЕНИЯ", "Семь взглядов на «Мандат»: главное возражение каждой роли и наш ответ",
+      "Вопросы жюри и ответы — docs/JURY.md; числа — CLAIMS_REGISTRY.md с командой воспроизведения", { appx: "A1" });
     const roles = [
       ["Briefcase", "Банкир", "«Сколько экономит и не вырастет ли очередь?»", `Базовый сценарий: ${FTE[1]} ставок и ${LOSS[1]} млн ₽ ущерба в год, окупаемость — ${PAYBACK}. У очереди разбора приоритеты P1–P3 и сроки; порог доли «на разбор» — критерий пилота`],
       ["Scale", "Юрист банка", "«Кто отвечает за норму в правиле?»", "«Утверждено» — только по подписанной записи юриста банка (C-20). До неё строгий профиль не выдаёт по черновику ни «да», ни «нет»"],
@@ -1212,8 +1369,8 @@ const TERMINAL = {
     const x = L + 3 * (cw + gap), y = TOP + ch + gap;
     card(s, x, y, cw, ch, { fill: C.text2, line: null });
     tile(s, x + 0.2, y + 0.2, 0.42, "ListChecks", { fill: TINT.navyTile, icon: "light" });
-    T(s, "Полный разбор", x + 0.72, y + 0.2, cw - 0.9, 0.42, { size: 13.5, bold: true, color: C.background1, valign: "middle" });
-    T(s, "Позиции, находки, статусы и тесты, которые их держат, — в docs/audit. Числа — только из реестра утверждений с командой воспроизведения", x + 0.2, y + 0.75, cw - 0.4, ch - 0.85, { size: 11.5, color: TINT.ice });
+    T(s, "Где подробнее", x + 0.72, y + 0.2, cw - 0.9, 0.42, { size: 13.5, bold: true, color: C.background1, valign: "middle" });
+    T(s, "Трудные вопросы и ответы — в docs/JURY.md, границы продукта — в LIMITS.md. Числа — только из реестра утверждений с командой воспроизведения", x + 0.2, y + 0.75, cw - 0.4, ch - 0.85, { size: 11.5, color: TINT.ice });
   }
 
   // ---------- A2. Критерии спринта 2 ----------
@@ -1221,12 +1378,12 @@ const TERMINAL = {
     const s = slide("Контент", "Приложение", "A2 · КРИТЕРИИ", "Критерии спринта 2 — где в проекте ответ на каждый",
       "Критерии и фокус спринта 2 («довести MVP, посчитать финансовую модель, показать защиту данных») — fintechacademy.ru/task-1 на 17.11.2026; описаний критериев нет. Ответы репозитория — submission/README.md; C-xx и M-xx — CLAIMS_REGISTRY.md", { appx: "A2" });
     table(s, ["Критерий", "Баллы", "Что показываем", "Где в колоде", "Чем проверить"], [
-      ["Данные, безопасность и комплаенс", "0–18", "ядро без внешней сети; ПДн — метками до модели; журнал с HMAC и деревом Меркла; правило утверждает только подпись юриста; pip-audit, Trivy, CodeQL, gitleaks, SBOM", `слайды ${P.sprint}, ${P.ai}, ${P.data}; A8, A10`, "C-09, C-12, C-20; SECURITY.md"],
+      ["Данные, безопасность и комплаенс", "0–18", "ядро без внешней сети; ПДн — метками до модели; отчёты зашифрованы, чтение и удаление — в журнале; допуск только системе банка; правило утверждает подпись юриста; pip-audit, Trivy, CodeQL, gitleaks", `слайды ${P.sprint}, ${P.ai}, ${P.data}; A8, A10`, "C-09, C-12, C-20; docs/DATA_PROTECTION_LAW.md"],
       ["Техническая реализация, автоматизация и масштабирование", "0–22", `${RULES} и четыре вердикта; CLI и HTTP API с ролями; допуск для ДБО; масштаб — воркеры и машины с общим Redis; Docker; ${TESTS}`, `слайды ${P.product}, ${P.showcase}, ${P.quality}, ${P.embed}; A3, A9`, "evidence.json; mandat showcase; C-13, C-14, C-18, C-22"],
       ["Оценка ценности: unit-экономика или эффект и ROI", "0–22", `эффект в двух валютах; окупаемость для ВТБ — ${PAYBACK}; ≈${UNIT.mandat} ₽ на проверку против ≈${UNIT.manual} ₽ вручную`, `слайды ${P.sprint}, ${P.effect}; A12`, "пакет аналитики; effect_model.py --unit; C-15, C-16, C-21"],
-      ["Зрелость решения и прогресс по доработке продукта", "0–16", "за спринт 2: подпись юриста, карточки норм с цитатами первоисточника, допуск ДБО, показ захвата, юнит-экономика, полный прогон тестов на Windows", `слайд ${P.sprint}; A18`, "CHANGELOG.md; submission/FORM_SPRINT2.md"],
+      ["Зрелость решения и прогресс по доработке продукта", "0–16", "за спринт 2: подпись юриста, карточки норм по первоисточнику, допуск ДБО, захват до платежа, шифрование хранилища, полный прогон тестов на Windows", `слайд ${P.sprint}; A18`, "CHANGELOG.md; submission/FORM_SPRINT2.md"],
       ["Подтверждённость проблемы, ценности и рынка", "0–12", "данные Банка России за I полугодие 2026; случай «ЭОС» и дело ВС РФ; FATF и ЕС; рынок двумя способами", `слайды ${P.cost}, ${P.takeover}, ${P.world}; A5, A13`, "M-07, M-15, M-12, M-13; пакет аналитики"],
-      ["Реалистичность пилота и готовность к внедрению", "0–10", "теневой пилот 6 недель; порты к реестрам и СКЗИ; контракт ДБО; пакет для юриста; календарь норм до 2028", `слайды ${P.embed}, ${P.pilot}; A18`, "docs/PILOT.md; docs/legal/README.md"],
+      ["Реалистичность пилота и готовность к внедрению", "0–10", "теневой пилот 6 недель; ворота G0–G4; порты к реестрам и СКЗИ; контракт ДБО; пакет для юриста; календарь норм до 2028", `слайды ${P.embed}, ${P.pilot}, ${P.scale}; A18`, "docs/PILOT.md; docs/legal/README.md"],
     ], L, TOP, W, [2.75, 0.7, 3.95, 1.75, 2.983], { size: 10.5, headH: 0.42, rowH: 0.74 });
   }
 
@@ -1365,7 +1522,7 @@ const TERMINAL = {
   // ---------- A9. Методика качества ----------
   {
     const s = slide("Контент", "Приложение", "A9 · ИЗМЕРЕНИЕ", "Как мы измеряем качество — и как пилот переносит метрики на данные ВТБ",
-      "Источники: evidence.json, docs/EVALUATION.md, docs/audit/AUDIT-2026-10-27-DIFFERENTIAL.md; Brown, Cai, DasGupta (2001) — интервал Вилсона; Geifman, El-Yaniv (2017) — «риск — покрытие»", { appx: "A9" });
+      "Источники: evidence.json, docs/EVALUATION.md, tools/experiments/jcs_differential; Brown, Cai, DasGupta (2001) — интервал Вилсона; Geifman, El-Yaniv (2017) — «риск — покрытие»", { appx: "A9" });
     table(s, ["Что", `Сейчас: корпус из ${N.cases} кейсов`, "В пилоте: данные ВТБ"], [
       ["Корпус", `${N.cases} кейса, ${N.kinds} видов: ${N.kindsBy.ok} зелёный, ${N.kindsBy.no} опровергающих, ${N.kindsBy.rv} на разбор, ${N.kindsBy.nd} без данных`, "50–100 обезличенных пакетов"],
       ["Ложные «подтверждено»", `${N.falseConfirmed} из ${N.negatives}, верхняя граница 95% — ${N.fcUpper}; по видам дефектов 0 из ${N.negativeTypes}, граница ${N.fcUpperByType}`, "стоп-критерий: 0 на всех кейсах пилота"],
@@ -1383,9 +1540,9 @@ const TERMINAL = {
       "Проектные решения «Мандата»; оценку соответствия проводят ИБ и юристы банка в пилоте. Меры по 821-П, 851-П и ГОСТ Р 57580.1 сопоставлены в docs/REGULATORY.md; docs/DATA_PROTECTION.md, docs/THREAT_MODEL.md", { appx: "A10" });
     const tiles = [
       ["Server", "On-prem без сети", "ядро не делает внешних запросов; модель — только хосты из белого списка, по умолчанию выключена"],
-      ["Fingerprint", "Персональные данные", "псевдонимизация ИНН, СНИЛС, паспорта, телефона, почты; в модель — только строки о полномочиях"],
+      ["Fingerprint", "Персональные данные", "в модель — только строки о полномочиях, номера — метками; отчёты зашифрованы AES-256-GCM; каждое чтение и удаление — в журнале"],
       ["FileX", "Вредоносные файлы", "защита от XML-бомб и внешних сущностей, строгий JSON на всех внешних входах, лимиты размера и глубины"],
-      ["KeyRound", "API и роли", "оператор, рецензент, аудитор; чужой кейс не виден; токены — только хеши, лимит частоты и тела"],
+      ["KeyRound", "API и роли", "оператор, рецензент, аудитор и учётная запись ДБО: допуск к платежу — только ей; чужой кейс не виден; токены — хеши"],
       ["Scale", "152-ФЗ и 115-ФЗ", "спроектировано с учётом 152-ФЗ; идентификацию по 115-ФЗ не подменяем — она за каналами банка"],
       ["Container", "Подпись и сборка", "КЭП — через СКЗИ банка, ключ — HSM, Vault или KMS; правило утверждает только подпись юриста; pip-audit, Trivy и gitleaks — в CI и по расписанию, CodeQL, SBOM"],
     ];
@@ -1402,7 +1559,7 @@ const TERMINAL = {
   // ---------- A11. Риски ----------
   {
     const s = slide("Контент", "Приложение", "A11 · РИСКИ", "Риски, которые банк увидит первыми, — и как мы их снимаем",
-      "LIMITS.md — полный список границ; docs/AI_RISKS.md — матрица рисков ИИ; docs/audit — Red Team допуска операции", { appx: "A11" });
+      "LIMITS.md — полный список границ; docs/AI_RISKS.md — матрица рисков ИИ; docs/THREAT_MODEL.md — модель угроз", { appx: "A11" });
     table(s, ["Риск", "Как снимаем", "Чем контролируем"], [
       ["Ложное подтверждение", "неизвестное не становится «да», обязательные группы проверок", "0 ложных «подтверждено» — стоп-критерий"],
       ["Удостоверение на чужую дату или компанию", "сверка дня по Москве и ИНН организации; срок не длиннее 30 дней и сроков цепочки", "тесты привязки к запросу; Red Team допуска"],
@@ -1411,7 +1568,8 @@ const TERMINAL = {
       ["Формат МЧД изменится", "теги — в файле соответствия, формы ЦБ по 315-ФЗ — через адаптер", "пересборка примеров одной командой"],
       ["Нагрузка «на разбор»", "сигнал вместо разбора там, где закон позволяет", "доля «на разбор» с порогом банка"],
       ["Интеграция с ДБО", "на пилоте — теневой режим без изменений в ДБО; контракт допуска операции готов", "сценарий пилота без доработок ДБО"],
-    ], L, TOP, W, [3.0, 5.4, 3.733], { size: 12, headH: 0.42, rowH: 0.62 });
+      ["Утечка отчётов с ПДн", "отчёты зашифрованы и привязаны к владельцу; каждое чтение в журнале; удаление по 152-ФЗ", "выгрузка журнала чтений"],
+    ], L, TOP, W, [3.0, 5.4, 3.733], { size: 12, headH: 0.42, rowH: 0.55 });
   }
 
   // ---------- A12. Расчёт эффекта ----------
@@ -1423,7 +1581,7 @@ const TERMINAL = {
     tile(s, L + 0.25, TOP + 0.22, 0.46, "Coins");
     T(s, "Формулы «Мандата»", L + 0.85, TOP + 0.22, cw - 1.1, 0.46, { size: 15, bold: true, color: C.text2, valign: "middle" });
     bullets(s, [
-      "Ставки = клиенты × доля с событием представительства × минуты на кейс (с разбором) ÷ 60 ÷ 1 800 ч",
+      `Ставки = клиенты × доля с событием представительства × минуты на кейс (с разбором) ÷ 60 ÷ ${ruNum(EFFECT.hoursPerFte)} ч`,
       `Ущерб = ${EFFECT.incidentsPerQuarter} × 4 × доля ВТБ × доля случаев с полномочиями × ${comma(EFFECT.lossPerIncidentMln, 2)} млн ₽`,
       `База — I полугодие 2026: ${CBR.q1.ops + CBR.q2.ops} операций против юрлиц на ${comma((CBR.q1.lossMln + CBR.q2.lossMln) / 1000, 1)} млрд ₽ (Банк России)`,
       `Юнит-экономика: вручную — ≈${UNIT.manual} ₽, затраты банка на «Мандат» — ≈${UNIT.mandat} ₽ на проверку (effect_model.py --unit)`,
@@ -1489,7 +1647,7 @@ const TERMINAL = {
       ["Почему правила, а не машинное обучение?", "Полномочия — вопрос права, а не вероятности. Правила объяснимы и проверяемы; машинное обучение уместно для сигналов риска"],
       ["Зачем тогда ИИ?", "Извлечь положения устава и текстовые полномочия с дословной цитатой. Без модели продукт работает полностью"],
       [`Откуда ${LOSS[0]}–${LOSS[2]} млн ₽?`, "База — хищения у юрлиц по данным Банка России за I полугодие 2026; три явных параметра калибрует пилот"],
-      ["Что работает сейчас, а что подключается в пилоте?", "Работают ядро, правила, журнал, удостоверения, мониторинг, API с ролями и допуск операции для ДБО. В пилоте — адаптеры к реестру МЧД, ЕГРЮЛ, ЕФРСБ и СКЗИ банка через готовые порты"],
+      ["Что работает сейчас, а что подключается в пилоте?", "Работают ядро, правила, журнал, удостоверения, мониторинг, API с ролями и допуск операции для ДБО. В пилоте — адаптеры банка к готовым портам реестра МЧД, ЕФРСБ и СКЗИ, для ЕГРЮЛ — новый порт по тому же образцу"],
       ["Почему в демо одно «подтверждено»?", "Демо — набор ловушек: 13 из 14 кейсов содержат дефект или сомнение. «Да» выдаётся только при полном доказательстве, включая устав"],
     ],
     [
@@ -1535,12 +1693,12 @@ const TERMINAL = {
 
   // ---------- A18. Дорожная карта ----------
   {
-    const s = slide("Контент", "Приложение", "A18 · ДОРОЖНАЯ КАРТА", "Дорожная карта: от полуфинала до решения о пилоте", "Сроки этапов — fintechacademy.ru/task-1 и письмо организаторов (submission/README.md); задачи — docs/ROADMAP.md, docs/WORKPLAN.md", { appx: "A18" });
+    const s = slide("Контент", "Приложение", "A18 · ДОРОЖНАЯ КАРТА", "Дорожная карта: от полуфинала до решения о пилоте", "Сроки этапов — fintechacademy.ru/task-1 и письмо организаторов (submission/README.md); задачи — docs/ROADMAP.md", { appx: "A18" });
     const cols = [
-      ["до 01.11", "Спринт 1", ["готово: вертикальный срез — 14 демо-кейсов, отчёт, журнал, удостоверения", "пакет аналитики и видео-демо", "в работе: интервью владельцев процесса"], 0],
+      ["до 01.11", "Спринт 1", ["вертикальный срез: 14 демо-кейсов, отчёт, журнал, удостоверения", "пакет аналитики и видео-демо", "в работе: интервью владельцев процесса"], 0],
       ["10–15.11", "Онлайн-питч", ["питч 5 минут и живое демо", "итог: полуфинал"], 0],
-      ["16–29.11", "Спринт 2", ["подпись юриста под правилом", "карточки норм", "допуск для ДБО", "захват до платежа", "юнит-экономика", "форма передоверия в Cedar"], 0],
-      ["03–08.12", "Спринт 3", ["план пилота и масштабирования", "первоисточники норм для юриста", "расчёт эффекта на данных интервью", "символьная проверка на Cedar SymCC"], 0],
+      ["16–29.11", "Спринт 2", ["подпись юриста под правилом", "допуск ДБО и захват до платежа", "шифрование хранилища, журнал чтений", "юнит-экономика", "сайт с демо в браузере"], 0],
+      ["03–08.12", "Спринт 3", ["протокол пилота для подписи", "план масштабирования на цифрах интервью", "колода к финалу и прогон питча"], 0],
       ["после 11.12", "Пилот", ["6 недель в теневом режиме", "одна операция", "решение: продолжать или остановить"], 1],
     ];
     const gap = 0.2, cw = (W - 4 * gap) / 5, ch = 3.8;
@@ -1551,12 +1709,12 @@ const TERMINAL = {
       T(s, head, x + 0.22, TOP + 0.52, cw - 0.44, 0.42, { size: 17, bold: true, color: hl ? C.background1 : C.text2 });
       bullets(s, items, x + 0.24, TOP + 1.08, cw - 0.42, ch - 1.18, { size: 12, psa: 6, color: hl ? C.background1 : C.text1 });
     });
-    band(s, L, TOP + ch + GAP, W, BOTTOM - (TOP + ch + GAP), "Финал 11.12.2026: живое демо и — если банк даст данные — результаты на обезличенных кейсах ВТБ", { icon: "Flag", size: 15, bold: true });
+    band(s, L, TOP + ch + GAP, W, BOTTOM - (TOP + ch + GAP), "Финал 11.12.2026: живое демо, а если банк даст данные, то и результаты на обезличенных кейсах ВТБ", { icon: "Flag", size: 15, bold: true });
   }
   if (pages() !== INDEX_SLIDE + APPX.length) throw new Error(`слайдов ${pages()}, а ожидалось ${INDEX_SLIDE + APPX.length}`);
 
   await pres.writeFile({ fileName: OUT });
-  console.log(`готово: ${OUT} — ${pages()} слайдов`);
+  console.log(`готово: ${OUT} — слайдов: ${pages()}`);
 })().catch((e) => {
   console.error(e);
   process.exit(1);
