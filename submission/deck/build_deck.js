@@ -972,37 +972,71 @@ const TERMINAL = {
   // ---------- 13. Защита данных: фокус спринта 2 ----------
   {
     const s = slide("Контент", "Питч", "ЗАЩИТА ДАННЫХ · ФОКУС СПРИНТА 2", "Данные клиента остаются в банке: в модель уходят метки, отчёты зашифрованы, каждое чтение записано",
-      "Фокус спринта 2 по условиям трека — «показать защиту данных» (fintechacademy.ru/task-1); C-12, C-18; docs/DATA_PROTECTION.md, docs/DATA_PROTECTION_LAW.md, docs/THREAT_MODEL.md, docs/KEYS.md, SECURITY.md. Оценку соответствия проводит банк");
+      "Фокус спринта 2 по условиям трека — «показать защиту данных» (fintechacademy.ru/task-1); C-12, C-18; строка — синтетика, метки — privacy/names.py и privacy/pii.py на ключе стенда; docs/DATA_PROTECTION.md, docs/THREAT_MODEL.md, docs/KEYS.md, SECURITY.md. Оценку соответствия проводит банк");
+    // Контур банка: путь данных слева направо, под ним журнал. Рамка модели пунктирная: модель включает банк.
+    const zh = 2.52;
+    card(s, L, TOP, W, zh, { line: HEX.accent1, dash: "dash", lw: 1.25, name: "Контур банка" });
+    T(s, "КОНТУР БАНКА · БЕЗ ВНЕШНЕЙ СЕТИ", L + 0.25, TOP + 0.12, 6, 0.26, { size: 10, bold: true, color: C.accent1, cs: 1.5, valign: "middle" });
     const flow = [
-      ["FileX", "Вход", "строгий JSON и XML без внешних сущностей; поле вне контракта — ошибка входа вне стенда"],
-      ["Server", "Ядро в контуре", "разбор и 39 правил без внешней сети, в контуре банка (C-12)"],
-      ["Fingerprint", "Модель по выбору", "в модель — только строки устава о полномочиях; ФИО, паспорт, СНИЛС, ИНН — метки"],
-      ["Lock", "Хранилище", "AES-256-GCM, привязка к кейсу и владельцу; чтение и удаление отчёта — в журнале"],
-      ["Landmark", "Допуск ДБО", "только учётная запись системы банка; решение без ИНН, nonce одноразовый, откат статусов — отказ"],
+      ["FileX", "Вход", "строгий JSON и XML без внешних сущностей; лишнее поле — ошибка (pilot, prod)"],
+      ["Server", "Ядро", `разбор и ${RULES} без сетевых запросов (C-12)`],
+      ["Fingerprint", "Модель по выбору", "только строки устава о полномочиях; ФИО и номера — метки"],
+      ["Lock", "Хранилище", "AES-256-GCM, шифр привязан к кейсу и владельцу отчёта"],
+      ["Landmark", "Допуск ДБО", "только система банка, nonce одноразовый, откат статуса — отказ"],
     ];
-    const gap = 0.25, fw = (W - 4 * gap) / 5, fh = 2.2;
+    const pad = 0.25, colW = (W - 2 * pad) / flow.length, d = 0.56, ty = TOP + 0.44;
     flow.forEach(([ic, head, t], i) => {
-      const x = L + i * (fw + gap);
-      card(s, x, TOP, fw, fh);
-      tile(s, x + 0.2, TOP + 0.2, 0.44, ic);
-      T(s, head, x + 0.2, TOP + 0.72, fw - 0.36, 0.34, { size: 13, bold: true, color: C.text2, valign: "middle" });
-      T(s, t, x + 0.2, TOP + 1.1, fw - 0.34, fh - 1.16, { size: 11, color: C.text1 });
-      if (i < flow.length - 1) arrow(s, x + fw + 0.04, TOP + fh / 2, gap - 0.08, HEX.accent1, 1.75);
+      const cx = L + pad + i * colW + colW / 2;
+      if (i === 2) {
+        s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
+          x: cx - d / 2 - 0.07, y: ty - 0.07, w: d + 0.14, h: d + 0.14, rectRadius: (d + 0.14) * 0.28,
+          fill: { color: "FFFFFF" }, line: { color: HEX.accent1, width: 1, dashType: "dash" }, objectName: "Рамка: модель включает банк",
+        });
+      }
+      tile(s, cx - d / 2, ty, d, ic);
+      T(s, head, cx - colW / 2 + 0.08, ty + d + 0.1, colW - 0.16, 0.3, { size: 13, bold: true, color: C.text2, align: "center", valign: "middle" });
+      T(s, t, cx - colW / 2 + 0.12, ty + d + 0.42, colW - 0.24, 0.55, { size: 10.5, color: C.text1, align: "center" });
+      if (i < flow.length - 1) {
+        const ax = cx + d / 2 + 0.14, aw = colW - d - 0.28;
+        arrow(s, ax, ty + d / 2, aw, HEX.accent1, 1.75);
+        if (i === 1) T(s, "только метки", ax, ty + d / 2 - 0.3, aw, 0.24, { size: 9.5, bold: true, color: C.accent1, align: "center", valign: "bottom" });
+      }
     });
-    const cy = TOP + fh + GAP, cw3 = (W - 2 * GAP) / 3, chh = 1.78;
-    const cards3 = [
-      ["KeyRound", "Ключи и доступ", "ключ подписи — HSM по PKCS#11, Vault Transit или KMS; токены API хранятся хешами; журнал сервера маскирует номера карт и паспортов; без ключей pilot и prod не стартуют"],
-      ["Scale", "152-ФЗ и 115-ФЗ", "спроектировано с учётом 152-ФЗ: минимум данных, псевдонимы, контур банка; удаление по ст. 21 с выгрузкой из журнала; идентификацию по 115-ФЗ ведёт банк"],
-      ["Container", "Цепочка поставки", "pip-audit, Trivy и gitleaks — в CI и по расписанию, CodeQL и OpenSSF Scorecard, SBOM CycloneDX и подписанное происхождение сборки"],
+    // Журнал идёт под всем путём: вердикты, чтения и удаления отчёта.
+    const jy = TOP + zh - 0.44;
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: L + pad, y: jy, w: W - 2 * pad, h: 0.32, rectRadius: 0.16, fill: { color: TINT.blue }, line: { type: "none" }, objectName: "Журнал аудита" });
+    s.addImage({ data: G.icon.ScrollText, x: L + pad + 0.14, y: jy + 0.05, w: 0.22, h: 0.22, objectName: "Значок" });
+    T(s, [{ text: "Журнал аудита: ", options: { bold: true, color: HEX.dk2 } }, { text: "вердикты, каждое чтение и удаление отчёта; хеш-цепочка и HMAC показывают правку записей" }], L + pad + 0.46, jy, W - 2 * pad - 0.6, 0.32, { size: 10.5, valign: "middle" });
+
+    // Что видит модель: настоящий вывод privacy/names.py и privacy/pii.py на ключе стенда.
+    const y1 = TOP + zh + 0.2, h1 = 1.42, bw = 7.3;
+    card(s, L, y1, bw, h1);
+    T(s, "Что видит модель: вывод кода на строке устава", L + 0.25, y1 + 0.12, bw - 0.5, 0.3, { size: 12.5, bold: true, color: C.text2, valign: "middle" });
+    const red = (text) => ({ text, options: { bold: true, color: ST.no.text } });
+    const blue = (text) => ({ text, options: { bold: true, color: HEX.accent1 } });
+    const green = (text) => ({ text, options: { bold: true, color: ST.ok.text } });
+    const rowsR = [
+      ["В УСТАВЕ", [{ text: "Директор " }, red("Петров Алексей Иванович"), { text: ", ИНН " }, red("500100732259"), { text: ", паспорт " }, red("45 06 123456"), { text: ", вправе заключать сделки " }, green("до 1 000 000 рублей")]],
+      ["В МОДЕЛЬ", [{ text: "Директор " }, blue("[ДИРЕКТОР]"), { text: ", ИНН " }, blue("[ИНН:d4d89e6e604b4e26]"), { text: ", паспорт " }, blue("[ПАСПОРТ:49e56e8994ff1f52]"), { text: ", вправе заключать сделки " }, green("до 1 000 000 рублей")]],
     ];
-    cards3.forEach(([ic, head, t], i) => {
-      const x = L + i * (cw3 + GAP);
-      card(s, x, cy, cw3, chh);
-      tile(s, x + 0.22, cy + 0.2, 0.44, ic);
-      T(s, head, x + 0.8, cy + 0.2, cw3 - 1.0, 0.44, { size: 14, bold: true, color: C.text2, valign: "middle" });
-      T(s, t, x + 0.22, cy + 0.74, cw3 - 0.44, chh - 0.8, { size: 11.5, color: C.text1 });
+    rowsR.forEach(([lab, runs], i) => {
+      const y = y1 + 0.48 + i * 0.46;
+      T(s, lab, L + 0.25, y + 0.02, 1.0, 0.22, { size: 9, bold: true, color: TINT.muted, cs: 1 });
+      T(s, runs, L + 1.3, y, bw - 1.55, 0.42, { size: 10.5, color: C.text1 });
     });
-    const by = cy + chh + GAP;
+    const ix = L + bw + GAP, iw = R - ix;
+    card(s, ix, y1, iw, h1);
+    const items = [
+      ["KeyRound", "Ключи: ", "HSM по PKCS#11, Vault Transit или KMS; без ключей pilot и prod не стартуют"],
+      ["Scale", "152-ФЗ: ", "минимум данных и псевдонимы, удаление по ст. 21; идентификация по 115-ФЗ — у банка"],
+      ["Container", "Сборка: ", "pip-audit, Trivy, gitleaks, CodeQL, SBOM CycloneDX"],
+    ];
+    items.forEach(([ic, lead, t], i) => {
+      const y = y1 + 0.1 + i * 0.42;
+      tile(s, ix + 0.2, y + 0.03, 0.34, ic);
+      T(s, [{ text: lead, options: { bold: true, color: HEX.dk2 } }, { text: t }], ix + 0.66, y, iw - 0.84, 0.4, { size: 10.5, valign: "middle" });
+    });
+    const by = y1 + h1 + 0.2;
     band(s, L, by, W, BOTTOM - by, "За банком: оценка соответствия 152-ФЗ и ГОСТ Р 57580.1, проверка КЭП через СКЗИ, тест на проникновение", { icon: "ShieldCheck", size: 13, bold: true });
     s.addNotes("[2:58–3:14] Защита данных. Ядро не ходит во внешнюю сеть. В модель уходят метки вместо ФИО и номеров. Отчёты в хранилище зашифрованы, каждое чтение записано. Кейс удаляется по основанию из закона о персональных данных. Допуск к платежу получает только система банка.");
   }
@@ -1054,7 +1088,15 @@ const TERMINAL = {
       ["01.09.2027", "единая форма МЧД становится основной (315-ФЗ)", 1],
     ];
     const lx = L + 1.62, step = (h - 0.5) / ev8.length;
-    vline(s, lx + 0.07, TOP + 0.38, step * (ev8.length - 1), TINT.blueLine, 2);
+    // Отметка «сегодня» между последней прошедшей датой и будущей: до неё шкала сплошная, после — пунктир.
+    const dotY = (i) => TOP + 0.25 + i * step + 0.07;
+    const nowY = dotY(ev8.length - 1) - 0.16;
+    vline(s, lx + 0.07, dotY(0), nowY - dotY(0), TINT.blueLine, 2);
+    vline(s, lx + 0.07, nowY, dotY(ev8.length - 1) - nowY, TINT.blueLine, 2, "dash");
+    const nowW = 1.42, nowX = L + lw - 0.25 - nowW;
+    s.addShape(pres.shapes.LINE, { x: lx + 0.22, y: nowY, w: nowX - lx - 0.3, h: 0, line: { color: HEX.accent1, width: 1, dashType: "sysDot" }, objectName: "Линия «сегодня»" });
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: nowX, y: nowY - 0.11, w: nowW, h: 0.22, rectRadius: 0.11, fill: { color: HEX.accent1 }, line: { type: "none" }, objectName: "Метка «сегодня»" });
+    T(s, `сегодня · ${N.asOf.slice(3)}`, nowX, nowY - 0.11, nowW, 0.22, { size: 9.5, bold: true, color: C.background1, align: "center", valign: "middle" });
     ev8.forEach(([d, t, fut], i) => {
       const y = TOP + 0.25 + i * step;
       T(s, d, L + 0.25, y, 1.25, 0.28, { size: 12, bold: true, color: fut ? HEX.dk2 : C.accent1, align: "right", valign: "middle" });
@@ -1070,6 +1112,20 @@ const TERMINAL = {
     st.forEach(([v, t], i) => {
       const y = TOP + i * (ch + gap);
       card(s, rx, y, rw, ch);
+      if (i === 0) {
+        // ×3 — два столбца в масштабе: октябрь 2024 и июль 2026.
+        T(s, v, rx + 0.28, y + 0.12, 1.3, 0.62, { size: 34, bold: true, color: C.accent1, valign: "middle" });
+        T(s, "МЧД в реестре ФНС за два года", rx + 0.28, y + 0.78, 1.6, ch - 0.86, { size: 11.5, color: TINT.text2 });
+        const bars = [["10.2024", "≈1,6 млн", 1.6], ["07.2026", "более 5 млн", 5]];
+        const base = y + ch - 0.36, hmax = ch - 0.78, bwid = 0.62;
+        bars.forEach(([d, lab, val], j) => {
+          const bh = (hmax * val) / 5, bx = rx + 2.2 + j * 0.95;
+          s.addShape(pres.shapes.RECTANGLE, { x: bx, y: base - bh, w: bwid, h: bh, fill: { color: j ? HEX.accent1 : TINT.blueLine }, line: { type: "none" }, objectName: `МЧД в реестре, ${d}` });
+          T(s, lab, bx - 0.25, base - bh - 0.28, bwid + 0.5, 0.26, { size: 11, bold: true, color: HEX.dk2, align: "center", valign: "bottom" });
+          T(s, d, bx - 0.2, base + 0.04, bwid + 0.4, 0.24, { size: 10, color: TINT.muted, align: "center" });
+        });
+        return;
+      }
       T(s, v, rx + 0.28, y + 0.12, rw - 0.56, 0.62, { size: i === 2 ? 26 : 34, bold: true, color: C.accent1, valign: "middle" });
       T(s, t, rx + 0.28, y + 0.76, rw - 0.56, ch - 0.82, { size: 11.5, color: TINT.text2 });
     });
@@ -1184,35 +1240,57 @@ const TERMINAL = {
   {
     const s = slide("Контент", "Питч", "ПРЕДЛОЖЕНИЕ ВТБ", "Предлагаем 6-недельный теневой пилот на праве подписи платёжных поручений по МЧД",
       "Теневой режим: «Мандат» проверяет те же пакеты, что и сотрудники, и не влияет на клиентов и выдачу прав. Формат совпадает с пилотами Акселератора ВТБ. docs/PILOT.md");
-    const weeks = [
-      ["Неделя 1", "протокол, регламент операции, коды полномочий, пороги приёмки, куратор от владельца процесса"],
-      ["Недели 2–5", "параллельная проверка тех же пакетов, журнал расхождений с решениями сотрудников"],
-      ["Неделя 6", "независимая разметка расхождений, замер, решение: продолжать или остановить"],
+    // План шести недель: три фазы, стоп-критерий действует всё время, в конце — решение G2.
+    const gh = 2.28;
+    card(s, L, TOP, W, gh, { name: "План пилота" });
+    const lx = L + 0.25, lw = 2.35, gx = L + 2.8, gR = R - 2.4, wk = (gR - gx) / 6;
+    const ry0 = TOP + 0.5, rh = 0.34, rg = 0.1, gridH = 4 * rh + 3 * rg + 0.12;
+    for (let i = 0; i < 6; i++) T(s, `неделя ${i + 1}`, gx + i * wk, TOP + 0.13, wk, 0.26, { size: 10, bold: true, color: TINT.muted, align: "center", valign: "middle" });
+    for (let i = 0; i <= 6; i++) vline(s, gx + i * wk, ry0 - 0.06, gridH, TINT.line, 0.75, i === 0 || i === 6 ? undefined : "dash");
+    const phases = [
+      ["Подготовка", 0, 1, "протокол, регламент операции, коды полномочий, пороги приёмки", "after"],
+      ["Теневая проверка", 1, 5, "параллельно с сотрудниками, журнал расхождений", "in"],
+      ["Разметка и замер", 5, 6, "независимая разметка расхождений, замер времени и точности", "before"],
     ];
-    const gap = 0.35, ww = (W - 2 * gap) / 3, wh = 1.3;
-    weeks.forEach(([k, t], i) => {
-      const x = L + i * (ww + gap);
-      card(s, x, TOP, ww, wh, i === 1 ? { fill: TINT.blue, line: TINT.blueLine } : {});
-      T(s, k, x + 0.25, TOP + 0.16, ww - 0.5, 0.32, { size: 14, bold: true, color: C.accent1 });
-      T(s, t, x + 0.25, TOP + 0.52, ww - 0.5, wh - 0.6, { size: 12.5, color: C.text1 });
-      if (i < 2) arrow(s, x + ww + 0.05, TOP + wh / 2, gap - 0.1, HEX.accent1, 2);
+    phases.forEach(([name, a, b, t, where], i) => {
+      const y = ry0 + i * (rh + rg);
+      T(s, name, lx, y, lw, rh, { size: 12.5, bold: true, color: C.text2, valign: "middle" });
+      const bx = gx + a * wk + 0.06, bw = (b - a) * wk - 0.12;
+      s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: bx, y: y + 0.02, w: bw, h: rh - 0.04, rectRadius: 0.1, fill: { color: i === 1 ? HEX.accent1 : HEX.dk2 }, line: { type: "none" }, objectName: `Фаза: ${name}` });
+      if (where === "in") T(s, t, bx + 0.16, y, bw - 0.32, rh, { size: 11, color: C.background1, valign: "middle" });
+      else if (where === "after") T(s, t, bx + bw + 0.14, y, gR - (bx + bw) - 0.24, rh, { size: 11, color: C.text1, valign: "middle" });
+      else T(s, t, gx + 0.1, y, bx - gx - 0.24, rh, { size: 11, color: C.text1, align: "right", valign: "middle" });
     });
-    const y2 = TOP + wh + GAP, h2 = 2.55, w2 = (W - GAP) / 2;
+    // Стоп-критерий — на всех шести неделях.
+    const sy = ry0 + 3 * (rh + rg);
+    T(s, "Стоп-критерий", lx, sy, lw, rh, { size: 12.5, bold: true, color: ST.no.text, valign: "middle" });
+    s.addShape(pres.shapes.LINE, { x: gx + 0.06, y: sy + rh / 2, w: gR - gx - 0.12, h: 0, line: { color: HEX.accent5, width: 2, dashType: "dash" }, objectName: "Стоп-критерий" });
+    const stopT = "первое ложное «подтверждено» — стоп в любую неделю";
+    const stw = pillTextW(stopT, 11) * 0.92 + 0.3;
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: gx + (gR - gx - stw) / 2, y: sy + 0.03, w: stw, h: rh - 0.06, rectRadius: (rh - 0.06) / 2, fill: { color: ST.no.tint }, line: { type: "none" }, objectName: "Подпись стоп-критерия" });
+    T(s, stopT, gx + (gR - gx - stw) / 2, sy, stw, rh, { size: 11, bold: true, color: ST.no.text, align: "center", valign: "middle" });
+    // Решение G2 — в конце шестой недели, напротив разметки и замера.
+    const dd = 0.5, dX = gR + 0.24, dCy = ry0 + 2 * (rh + rg) + rh / 2;
+    arrow(s, gR - 0.02, dCy, 0.22, HEX.accent3, 1.5);
+    s.addShape(pres.shapes.DIAMOND, { x: dX, y: dCy - dd / 2, w: dd, h: dd, fill: { color: HEX.accent3 }, line: { type: "none" }, objectName: "Решение G2" });
+    T(s, "G2", dX, dCy - dd / 2, dd, dd, { size: 10.5, bold: true, color: C.background1, align: "center", valign: "middle" });
+    T(s, [{ text: "Решение", options: { bold: true, color: HEX.dk2, breakLine: true } }, { text: "продолжать или остановить" }], dX + dd + 0.1, dCy - 0.62, R - (dX + dd + 0.1) - 0.16, 0.84, { size: 11, valign: "bottom" });
+    const y2 = TOP + gh + 0.2, h2 = 1.74, w2 = (W - GAP) / 2;
     const parts = [
-      ["Target", "Критерии: продолжать или остановить", ["0 ложных «подтверждено» на всех кейсах — стоп-критерий", "доля «на разбор» не выше согласованного порога", "согласие с экспертами (каппа Коэна) не ниже межэкспертного", "все расхождения разобраны; проверка быстрее ручной"]],
+      ["Target", "Критерии: продолжать или остановить", ["0 ложных «подтверждено»: граница 95 % ниже порога банка", "доля «на разбор» не выше согласованного порога", "согласие с экспертами (каппа Коэна) не ниже межэкспертного", "все расхождения разобраны; проверка быстрее ручной"]],
       ["Handshake", "Что нужно от ВТБ", ["владелец процесса и куратор пилота", "регламент одной операции и типовые отказы", "50–100 обезличенных пакетов или тестовый контур", "юрист для правил; базовые цифры для расчёта эффекта"]],
     ];
     parts.forEach(([ic, head, items], i) => {
       const x = L + i * (w2 + GAP);
       card(s, x, y2, w2, h2);
-      tile(s, x + 0.25, y2 + 0.22, 0.46, ic);
-      T(s, head, x + 0.85, y2 + 0.22, w2 - 1.05, 0.46, { size: 15, bold: true, color: C.text2, valign: "middle" });
-      bullets(s, items, x + 0.3, y2 + 0.85, w2 - 0.55, h2 - 0.95, { size: 13, psa: 5 });
+      tile(s, x + 0.25, y2 + 0.16, 0.42, ic);
+      T(s, head, x + 0.82, y2 + 0.16, w2 - 1.02, 0.42, { size: 14, bold: true, color: C.text2, valign: "middle" });
+      bullets(s, items, x + 0.3, y2 + 0.7, w2 - 0.55, h2 - 0.78, { size: 12, psa: 3 });
     });
-    const cy = y2 + h2 + GAP, chh = BOTTOM - cy;
+    const cy = y2 + h2 + 0.2, chh = BOTTOM - cy;
     s.addImage({ data: G.band, x: L, y: cy, w: W, h: chh, altText: "", objectName: "Плашка запроса" });
-    tile(s, L + 0.25, cy + (chh - 0.5) / 2, 0.5, "Rocket", { fill: TINT.navyTile, icon: "light" });
-    T(s, "Наш запрос: теневой пилот через Акселератор ВТБ с метриками, согласованными до старта", L + 0.95, cy, W - 1.2, chh, { size: 16, bold: true, color: C.background1, valign: "middle" });
+    tile(s, L + 0.22, cy + (chh - 0.44) / 2, 0.44, "Rocket", { fill: TINT.navyTile, icon: "light" });
+    T(s, "Наш запрос: теневой пилот через Акселератор ВТБ с метриками, согласованными до старта", L + 0.86, cy, W - 1.1, chh, { size: 15, bold: true, color: C.background1, valign: "middle" });
     s.addNotes("[4:14–4:28] Предлагаем шесть недель теневого пилота на одной операции: праве подписи платежей по доверенности. «Мандат» работает рядом с сотрудниками и ни на что не влияет. Стоп-критерий один: первое ложное «да».");
   }
 

@@ -1,7 +1,7 @@
 {
  "pitch": 22,
- "pptx_sha256": "0da4688d9241dfd55fcfb37aa81728d3f236df6e14d60e49cf66454a194f31d9",
- "pdf_sha256": "9500672c9178477c32b76229c5800b144a45f8b7276f6274db64db1aa64bb393",
+ "pptx_sha256": "e5925a3456be3aa74868ce6acfc7d7e6c749024cf660a7d8dce4c7c1e15f2481",
+ "pdf_sha256": "4a4f768a18e99cc8989671dd8fea9b0b6b0810a9dcc4c3653dfbeef645d9fa80",
  "slides": [
   {
    "n": 1,
@@ -166,7 +166,7 @@
    "height": 900,
    "title": "Данные клиента остаются в банке: в модель уходят метки, отчёты зашифрованы, каждое чтение записано",
    "kicker": "ЗАЩИТА ДАННЫХ · ФОКУС СПРИНТА 2",
-   "source": "Фокус спринта 2 по условиям трека — «показать защиту данных» (fintechacademy.ru/task-1); C-12, C-18; docs/DATA_PROTECTION.md, docs/DATA_PROTECTION_LAW.md, docs/THREAT_MODEL.md, docs/KEYS.md, SECURITY.md. Оценку соответствия проводит банк",
+   "source": "Фокус спринта 2 по условиям трека — «показать защиту данных» (fintechacademy.ru/task-1); C-12, C-18; строка — синтетика, метки — privacy/names.py и privacy/pii.py на ключе стенда; docs/DATA_PROTECTION.md, docs/THREAT_MODEL.md, docs/KEYS.md, SECURITY.md. Оценку соответствия проводит банк",
    "time": "2:58–3:14",
    "start": 178,
    "end": 194,
