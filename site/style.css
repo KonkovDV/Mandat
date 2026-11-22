@@ -310,6 +310,52 @@ figure.page-art { margin: 0 0 8px 24px; width: clamp(120px, 17vw, 200px); }
 .timeline span { color: var(--muted); font-size: 15px; }
 @media (max-width: 760px) { .timeline { grid-template-columns: minmax(0, 1fr); } }
 
+/* Шесть недель пилота полосой: пропорции недель 1 : 4 : 1, ворота G2 в конце, стоп-критерий на всю длину. */
+.ptrack { margin: 24px 0 0; }
+.pt-bar { display: grid; grid-template-columns: 1fr 4fr 1fr auto; gap: 6px; align-items: center; }
+.pt-bar > span { display: grid; place-items: center; min-height: 44px; padding: 4px 8px; border-radius: 10px; font: 700 14px/1.2 var(--display); text-align: center; }
+.pt-a { background: var(--ink-2); color: var(--bg); }
+.pt-b { background: var(--accent); color: var(--on-accent); }
+.pt-bar > .pt-g2 { width: 34px; height: 34px; min-height: 0; margin: 0 10px 0 8px; padding: 0; border-radius: 6px; transform: rotate(45deg); background: var(--ok); color: var(--bg); }
+.pt-g2 b { transform: rotate(-45deg); font-size: 13px; }
+.pt-stop { margin: 18px 0 0; border-top: 2px dashed var(--no-mark); text-align: center; }
+.pt-stop span { position: relative; top: -0.85em; display: inline-block; padding: 2px 12px; border-radius: 999px; background: var(--no-bg); color: var(--no); font-size: 14px; font-weight: 600; }
+@media (max-width: 560px) {
+  .pt-bar > span[data-short] { font-size: 0; }
+  .pt-bar > span[data-short]::after { content: attr(data-short); font-size: 15px; }
+}
+
+/* Контур банка: путь данных слева направо, под ним журнал. Рамка модели пунктирная — модель включает банк. */
+.perimeter { margin: 22px 0 0; padding: 18px clamp(14px, 3vw, 26px) 18px; border: 1.5px dashed var(--accent); border-radius: var(--radius); background: var(--card); }
+.perimeter-cap { margin: 0 0 16px; font: 800 12.5px/1.3 var(--display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 30px; }
+.flow li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.flow .ic { box-sizing: border-box; width: 56px; height: 56px; margin-bottom: 6px; padding: 14px; border-radius: 16px; background: var(--accent-soft); fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.flow .opt .ic { outline: 1.5px dashed var(--accent); outline-offset: 4px; }
+.flow li:not(:last-child)::after { content: ""; position: absolute; top: 27px; left: calc(50% + 40px); width: calc(100% - 80px + 30px); border-top: 2px solid var(--accent); }
+.flow li:not(:last-child)::before { content: ""; position: absolute; top: 23px; right: calc(-30px - 50% + 40px + 1px); border: 5px solid transparent; border-left: 8px solid var(--accent); border-right: 0; }
+.flow b { font-size: 17px; color: var(--ink-2); }
+.flow span { color: var(--muted); font-size: 14.5px; line-height: 1.45; }
+.journal { margin: 18px 0 0; padding: 9px 16px; border-radius: 14px; background: var(--accent-soft); color: var(--ink-2); font-size: 15px; }
+.redact { margin: 18px 0 8px; padding: 18px clamp(14px, 3vw, 26px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+.redact-h { margin: 0 0 10px; font: 800 17px/1.3 var(--display); color: var(--ink-2); }
+.redact dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; margin: 0 0 10px; }
+.redact dt { padding-top: 3px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+.redact dd { margin: 0; font-size: clamp(13px, 3.9vw, 15.5px); }
+.redact mark { padding: 0 3px; border-radius: 4px; font-weight: 700; }
+.redact .pii { background: var(--no-bg); color: var(--no); }
+.redact .tag { background: var(--accent-soft); color: var(--accent); }
+.redact .keep { background: var(--ok-bg); color: var(--ok); }
+@media (max-width: 860px) {
+  .flow { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+  .flow li { display: grid; grid-template-columns: 56px minmax(0, 1fr); column-gap: 14px; row-gap: 2px; align-items: start; text-align: left; }
+  .flow .ic { grid-row: 1 / span 2; margin: 0; }
+  .flow li:not(:last-child)::after { top: 64px; left: 27px; width: 0; height: calc(100% - 64px + 22px - 8px); border-top: 0; border-left: 2px solid var(--accent); }
+  .flow li:not(:last-child)::before { top: auto; right: auto; bottom: -22px; left: 23px; border: 5px solid transparent; border-top: 8px solid var(--accent); border-bottom: 0; }
+  .redact dl { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .redact dd + dt { margin-top: 8px; }
+}
+
 /* ---------- Таблицы: на узком экране листаются в своей рамке ---------- */
 .table-wrap { margin: 18px 0; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--card); -webkit-overflow-scrolling: touch; }
 table { width: 100%; border-collapse: collapse; font-size: 15px; }
