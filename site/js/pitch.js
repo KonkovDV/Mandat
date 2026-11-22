@@ -25,7 +25,7 @@ function go(i, push = true) {
   if (i === cur) return;
   cur = i;
   const s = slides[i];
-  img.src = `slides/${s.image}`;
+  img.src = `slides/${s.src || s.image}`;
   img.alt = `Слайд ${s.n}: ${s.title}`;
   cnt.textContent = `${s.n} / ${slides.length}`;
   pg.style.width = `${(100 * (i + 1)) / slides.length}%`;
@@ -43,7 +43,7 @@ function go(i, push = true) {
   notes.replaceChildren(...parts);
   if (push) history.replaceState(null, "", `#${s.n}`);
   const next = slides[i + 1];
-  if (next) new Image().src = `slides/${next.image}`;
+  if (next) new Image().src = `slides/${next.src || next.image}`;
   document.getElementById("prev").disabled = i === 0;
   document.getElementById("next").disabled = i === slides.length - 1;
 }
@@ -61,7 +61,7 @@ if (slides.length) {
   viewer.hidden = false;
   document.getElementById("slide-list").classList.add("enhanced");
   for (const s of slides) {
-    const a = el("a", { href: `#${s.n}`, "aria-label": `Слайд ${s.n}: ${s.title}`, "aria-current": "false" }, el("img", { src: `slides/${s.image}`, alt: "", width: 128, height: 72, loading: "lazy", decoding: "async" }));
+    const a = el("a", { href: `#${s.n}`, "aria-label": `Слайд ${s.n}: ${s.title}`, "aria-current": "false" }, el("img", { src: `slides/${s.src || s.image}`, alt: "", width: 128, height: 72, loading: "lazy", decoding: "async" }));
     a.addEventListener("click", (event) => { event.preventDefault(); go(s.n - 1); });
     thumbs.append(a);
   }

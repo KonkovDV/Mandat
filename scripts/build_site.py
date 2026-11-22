@@ -758,12 +758,14 @@ def _slides() -> dict[str, Any]:
     for slide in slides["slides"]:
         if not (SITE / "slides" / slide["image"]).is_file():
             raise SystemExit(f"нет картинки слайда {slide['image']}")
+        # Слайды при пересборке колоды меняются под теми же именами: версия в адресе, как у стилей и скриптов.
+        slide["src"] = f"{slide['image']}?v={_version(SITE / 'slides' / slide['image'])}"
     return slides
 
 
 def _slide_items(slides: dict[str, Any]) -> str:
     return "\n".join(
-        f'<li id="slide-{s["n"]}"><figure><a href="slides/{_esc(s["image"])}"><img src="slides/{_esc(s["image"])}" '
+        f'<li id="slide-{s["n"]}"><figure><a href="slides/{_esc(s["src"])}"><img src="slides/{_esc(s["src"])}" '
         f'alt="Слайд {s["n"]}: {_esc(s["title"])}" width="{s["width"]}" height="{s["height"]}" loading="lazy" '
         f'decoding="async"></a><figcaption>{s["n"]}. {_esc(s["title"])}</figcaption></figure></li>'
         for s in slides["slides"]
@@ -782,16 +784,33 @@ THEME_ICON = (
 )
 
 
+def _logo() -> str:
+    """Логотип из README (docs/assets/logo.svg) прямо в разметке: цвета задаёт CSS, в тёмной теме он светлый."""
+    svg = (ROOT / "docs" / "assets" / "logo.svg").read_text(encoding="utf-8")
+    view = re.search(r'viewBox="([^"]+)"', svg)
+    paths = re.findall(r'<path[^>]*?\sd="([^"]+)"', svg)
+    if view is None or len(paths) != 4:
+        raise SystemExit(
+            "docs/assets/logo.svg: ожидались viewBox и четыре контура (грани, нижняя грань, диагональ, надпись)"
+        )
+    navy, deep, blue, word = paths
+    return (
+        f'<svg class="logo" viewBox="{view.group(1)}" width="130" height="26" role="img" aria-label="Мандат">'
+        f'<path class="lg-n" d="{navy}"/><path class="lg-d" d="{deep}"/><path class="lg-b" d="{blue}"/>'
+        f'<path class="lg-w" fill-rule="evenodd" d="{word}"/></svg>'
+    )
+
+
 def _header(active: str) -> str:
     current = ' aria-current="page"'
     links = "\n      ".join(
         f'<a href="{name}.html"{current if name == active else ""}>{title}</a>' for name, title in PAGES[1:]
     )
     home = current if active == "index" else ""
-    return f"""<a class="skip" href="#main">К содержанию</a>
+    return f"""<a class="skip-link" href="#main">К содержанию</a>
 <header class="top" id="top">
   <div class="wrap bar">
-    <a class="brand" href="index.html"{home}><img src="favicon.svg" alt="" width="28" height="28"> Мандат</a>
+    <a class="brand" href="index.html"{home}>{_logo()}</a>
     <nav class="nav" aria-label="Страницы сайта">
       {links}
     </nav>
@@ -1048,6 +1067,13 @@ def build(out: Path, demo_dir: Path | None = None) -> Path:
 
 IMPORT = re.compile(r"""(\bfrom\s+|\bimport\s+)(["'])\./([\w-]+\.js)\2""")
 ASSET = re.compile(r'((?:href|src)=")((?:/Mandat/)?(?:style\.css|js/[\w-]+\.js))(")')
+# Картинки, которые меняются при пересборке под тем же именем: фото и рисунки страниц, значки, превью ссылки.
+PICTURE = re.compile(
+    r'((?:href|src|content)=")((?:/Mandat/|' + re.escape(SITE_URL) + r")?"
+    r'(?:og\.jpg|favicon\.svg|apple-touch-icon\.png|img/[\w.-]+\.(?:webp|png|jpg|svg)))(")'
+)
+SRCSET = re.compile(r'(srcset=")([^"]+)(")')
+CSS_URL = re.compile(r'(url\(")(img/[\w.-]+\.(?:webp|png|jpg|svg))("\))')
 
 
 def _version(path: Path) -> str:
@@ -1055,8 +1081,9 @@ def _version(path: Path) -> str:
 
 
 def _stamp(out: Path) -> None:
-    """Версия в адресах стилей и скриптов: ?v= и 8 знаков SHA-256 файла. Браузер со старым кэшем не покажет
-    новую страницу со старыми стилями. Сначала версии получают импорты модулей, потом сами страницы."""
+    """Версия в адресах стилей, скриптов и сменяемых картинок: ?v= и 8 знаков SHA-256 файла. Браузер со старым
+    кэшем не покажет новую страницу со старыми стилями, а мессенджер обновит превью ссылки. Сначала версии получают
+    импорты модулей и картинки в стилях, потом сами страницы."""
     scripts = sorted((out / "js").glob("*.js"))
     # Переводы строк — \n до подсчёта версий: на Windows запись в текстовом режиме дала бы \r\n,
     # и версия в импорте разошлась бы с байтами файла.
@@ -1070,14 +1097,29 @@ def _stamp(out: Path) -> None:
             encoding="utf-8",
             newline="\n",
         )
+    # Картинки в стилях — до версии самого style.css: она считается уже по новым адресам.
+    css = out / "style.css"
+    styles = css.read_text(encoding="utf-8")
+    styles = CSS_URL.sub(lambda m: f"{m.group(1)}{m.group(2)}?v={_version(out / m.group(2))}{m.group(3)}", styles)
+    css.write_text(styles, encoding="utf-8", newline="\n")
+
+    def versioned(m: re.Match[str]) -> str:
+        target = out / m.group(2).removeprefix(SITE_URL).removeprefix("/Mandat/")
+        return f"{m.group(1)}{m.group(2)}?v={_version(target)}{m.group(3)}"
+
+    def versioned_set(m: re.Match[str]) -> str:
+        items = []
+        for item in m.group(2).split(","):
+            url, _, size = item.strip().partition(" ")
+            if re.fullmatch(r"img/[\w.-]+\.(?:webp|png|jpg)", url):
+                url = f"{url}?v={_version(out / url)}"
+            items.append(f"{url} {size}".strip())
+        return f"{m.group(1)}{', '.join(items)}{m.group(3)}"
+
     for page in out.glob("*.html"):
         text = page.read_text(encoding="utf-8")
-
-        def versioned(m: re.Match[str]) -> str:
-            target = out / m.group(2).removeprefix("/Mandat/")
-            return f"{m.group(1)}{m.group(2)}?v={_version(target)}{m.group(3)}"
-
-        page.write_text(ASSET.sub(versioned, text), encoding="utf-8", newline="\n")
+        text = PICTURE.sub(versioned, ASSET.sub(versioned, text))
+        page.write_text(SRCSET.sub(versioned_set, text), encoding="utf-8", newline="\n")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -74,6 +74,134 @@ function watch(page) {
   return out;
 }
 
+// Пересечения после раскладки, без анимаций: строка текста на другой строке, текст поверх картинки (кроме подписи
+// в той же <figure>), а у фото с data-subject="x0 y0 x1 y1" (доли кадра) — фигура не обрезана рамкой и сверху
+// на ней ничего не лежит. Перекрытие ищется так же, как его видит глаз: что лежит верхним в точках сетки по фигуре.
+async function checkOverlaps(page, problems, label) {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.waitForTimeout(60);
+  const r = await page.evaluate(() => {
+    const shown = (el) => el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && !el.closest(".sr-only,[hidden]");
+    const name = (el) => el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + [...el.classList].slice(0, 2).map((c) => "." + c).join("");
+    const inter = (a, b) => ({ left: Math.max(a.left, b.left), top: Math.max(a.top, b.top), right: Math.min(a.right, b.right), bottom: Math.min(a.bottom, b.bottom) });
+    const say = (el) => el.textContent.trim().replace(/\s+/g, " ").slice(0, 28);
+    const out = { text: [], image: [], cut: [], covered: [] };
+    // Слой элемента: закреплённая шапка (fixed/sticky) лежит над прокрученной страницей по замыслу, а у повёрнутой
+    // печати рамки строк шире самих букв. Строки сравниваются с другими строками своего слоя, повёрнутый блок —
+    // только с соседями снаружи.
+    const layerCache = new Map();
+    const layer = (el) => {
+      if (layerCache.has(el)) return layerCache.get(el);
+      let fixed = null, turned = null;
+      for (let a = el; a && a !== document.body; a = a.parentElement) {
+        const st = getComputedStyle(a);
+        if (!fixed && (st.position === "fixed" || st.position === "sticky")) fixed = a;
+        if (!turned && st.transform !== "none") {
+          const m = new DOMMatrixReadOnly(st.transform);
+          if (Math.abs(m.b) > 1e-3 || Math.abs(m.c) > 1e-3) turned = a;
+        }
+      }
+      const v = { fixed, turned };
+      layerCache.set(el, v);
+      return v;
+    };
+    const apart = (a, b) => {
+      const la = layer(a), lb = layer(b);
+      return la.fixed !== lb.fixed || (la.turned && la.turned === lb.turned);
+    };
+    const lines = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const host = node.parentElement;
+      if (!host || !node.data.trim() || host.closest("svg, script, style, template, noscript, option") || !shown(host)) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const q of range.getClientRects()) if (q.width > 1 && q.height > 1) lines.push({ q, host });
+    }
+    lines.sort((a, b) => a.q.top - b.q.top);
+    for (let i = 0; i < lines.length && out.text.length < 3; i++) {
+      const a = lines[i];
+      for (let j = i + 1; j < lines.length && lines[j].q.top < a.q.bottom; j++) {
+        const b = lines[j];
+        if (a.host === b.host || apart(a.host, b.host)) continue;
+        const x = inter(a.q, b.q);
+        if (x.right - x.left > 2 && x.bottom - x.top > 0.45 * Math.min(a.q.height, b.q.height)) {
+          out.text.push(`«${say(a.host)}» × «${say(b.host)}»`);
+          break;
+        }
+      }
+    }
+    // Картинки — фото, видео и холсты. Встроенный SVG — это схема или график, подписи на нём ставятся намеренно.
+    const images = [...document.querySelectorAll("img, video, canvas")]
+      .filter((el) => shown(el))
+      .map((el) => ({ el, q: el.getBoundingClientRect() }))
+      .filter(({ q }) => q.width > 24 && q.height > 24);
+    for (const { el, q } of images) {
+      const fig = el.closest("figure");
+      const hit = lines.find((l) => {
+        if (el.contains(l.host) || (fig && fig.contains(l.host)) || apart(el, l.host)) return false;
+        const x = inter(q, l.q);
+        return x.right - x.left > 2 && x.bottom - x.top > 0.45 * l.q.height;
+      });
+      if (hit) out.image.push(`${name(el)} × «${say(hit.host)}»`);
+      if (out.image.length >= 3) break;
+    }
+    return out;
+  });
+  // Фигура на фото: после прокрутки к картинке берётся сетка точек по фигуре и элемент, лежащий в каждой сверху.
+  const subjects = await page.$$("img[data-subject]");
+  for (const handle of subjects) {
+    await handle.evaluate((img) => img.scrollIntoView({ block: "center" }));
+    await page.waitForTimeout(30);
+    const s = await handle.evaluate((img) => {
+      if (!img.checkVisibility({ opacityProperty: true, visibilityProperty: true }) || !img.naturalWidth) return null;
+      const [x0, y0, x1, y1] = img.dataset.subject.split(/\s+/).map(Number);
+      const box = img.getBoundingClientRect(), st = getComputedStyle(img);
+      let rw = box.width, rh = box.height;
+      if (st.objectFit === "cover" || st.objectFit === "contain") {
+        const k = (st.objectFit === "cover" ? Math.max : Math.min)(box.width / img.naturalWidth, box.height / img.naturalHeight);
+        rw = img.naturalWidth * k;
+        rh = img.naturalHeight * k;
+      }
+      const pos = st.objectPosition.split(/\s+/);
+      const off = (v, free) => (v.endsWith("%") ? (free * parseFloat(v)) / 100 : parseFloat(v));
+      const ox = off(pos[0], box.width - rw), oy = off(pos[1] ?? "50%", box.height - rh);
+      const subj = { left: box.left + ox + x0 * rw, top: box.top + oy + y0 * rh, right: box.left + ox + x1 * rw, bottom: box.top + oy + y1 * rh };
+      let vis = { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+      for (let a = img.parentElement; a && a !== document.body; a = a.parentElement) {
+        const o = getComputedStyle(a);
+        if (o.overflowX !== "visible" || o.overflowY !== "visible") {
+          const q = a.getBoundingClientRect();
+          vis = { left: Math.max(vis.left, q.left), top: Math.max(vis.top, q.top), right: Math.min(vis.right, q.right), bottom: Math.min(vis.bottom, q.bottom) };
+        }
+      }
+      const cut = Math.max(vis.left - subj.left, vis.top - subj.top, subj.right - vis.right, subj.bottom - vis.bottom);
+      const cover = new Map();
+      const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+      for (let i = 0; i < 7; i++) {
+        for (let j = 0; j < 9; j++) {
+          const x = Math.max(subj.left, vis.left) + 3 + (i / 6) * (Math.min(subj.right, vis.right) - Math.max(subj.left, vis.left) - 6);
+          const y = Math.max(subj.top, vis.top) + 3 + (j / 8) * (Math.min(subj.bottom, vis.bottom) - Math.max(subj.top, vis.top) - 6);
+          if (x < 0 || y < 0 || x >= vw || y >= vh) continue;
+          const top = document.elementFromPoint(x, y);
+          if (top && top !== img && !top.contains(img)) {
+            const key = top.tagName.toLowerCase() + [...top.classList].slice(0, 2).map((c) => "." + c).join("");
+            cover.set(key, (cover.get(key) || 0) + 1);
+          }
+        }
+      }
+      return { src: img.getAttribute("src"), cut: Math.round(cut), cover: [...cover.entries()] };
+    });
+    if (!s) continue;
+    if (s.cut > 2) r.cut.push(`${s.src}: фигура обрезана на ${s.cut} px`);
+    if (s.cover.length) r.covered.push(`${s.src}: фигуру закрывает ${s.cover.map(([k, n]) => `${k} (${n} из 63 точек)`).join(", ")}`);
+  }
+  if (r.text.length) problems.push(`${label}: текст наезжает на текст: ${r.text.join("; ")}`);
+  if (r.image.length) problems.push(`${label}: текст поверх картинки: ${r.image.join("; ")}`);
+  if (r.cut.length) problems.push(`${label}: ${r.cut.join("; ")}`);
+  if (r.covered.length) problems.push(`${label}: ${r.covered.join("; ")}`);
+}
+
 async function checkLayout(page, url, problems, label, { report = false } = {}) {
   const errors = watch(page);
   await page.goto(url, { waitUntil: "load" });
@@ -125,6 +253,7 @@ async function checkLayout(page, url, problems, label, { report = false } = {}) 
     out.junk = /\b(NaN|undefined|Infinity|null)\b/.test(document.body.innerText);
     return out;
   }, report);
+  await checkOverlaps(page, problems, label);
   if (r.overflow > 0) problems.push(`${label}: страница шире экрана на ${r.overflow} px`);
   if (r.wide.length) problems.push(`${label}: блоки за краем экрана: ${r.wide.join(", ")}`);
   if (r.broken.length) problems.push(`${label}: слово разорвано между строками: ${r.broken.map((w) => `«${w}»`).join(", ")}`);

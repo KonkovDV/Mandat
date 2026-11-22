@@ -101,7 +101,7 @@ def test_pages_make_no_external_requests_and_run_no_inline_scripts(site):
         assert ' style="' not in page, f"{name}: встроенный стиль запрещён политикой CSP"
     for value in re.findall(r"url\(\"?([^)\"]+)\"?\)", css):
         assert not value.startswith(("http:", "https:", "//")), value
-        assert (site / value).is_file(), value
+        assert (site / value.split("?")[0]).is_file(), value
     for script in (site / "js").glob("*.js"):
         text = script.read_text(encoding="utf-8")
         for target in re.findall(r"""\bimport\b[^"']*["']([^"']+)["']""", text):
@@ -157,7 +157,8 @@ def test_page_is_ready_for_phones_and_sharing(site):
     assert (site / "apple-touch-icon.png").is_file()
     image = re.search(r'property="og:image" content="([^"]+)"', page)
     assert image is not None and image.group(1).startswith(build_site.SITE_URL)
-    assert (site / image.group(1).removeprefix(build_site.SITE_URL)).is_file()
+    assert (site / image.group(1).removeprefix(build_site.SITE_URL).split("?")[0]).is_file()
+    assert re.search(r"\?v=[0-9a-f]{8}$", image.group(1)), "превью ссылки без версии: мессенджер покажет старое"
     assert (site / "404.html").is_file()
 
 

@@ -22,6 +22,7 @@
   --ok: #14663f; --no: #b3261e; --review: #7a5400; --gap: #465570;
   --ok-bg: #e3f5ec; --no-bg: #fde8e8; --review-bg: #fff1d4; --gap-bg: #eceff5;
   --ok-mark: #1a9f68; --no-mark: #e5484d; --review-mark: #f5a300; --gap-mark: #6b7a99;
+  --logo-navy: #10223d; --logo-deep: #081a34; --logo-blue: #1a59ea; --logo-word: #0a1a33;
   --series: #004cbc; --series-soft: #9db8e8; --series-wash: rgb(0 76 188 / 10%); --grid: #e3e9f2;
   --seg-ok: #13734a; --seg-no: #c22a2a; --seg-gap: #5a6987; --seg-review: #f5a300;
   --shadow: 0 1px 2px rgb(11 31 68 / 5%), 0 8px 24px rgb(11 31 68 / 6%);
@@ -40,6 +41,7 @@
   --ok: #5fdca6; --no: #ff9c8a; --review: #ffcb66; --gap: #b9c5de;
   --ok-bg: #0f3526; --no-bg: #3d1c17; --review-bg: #3a2c0a; --gap-bg: #1d2b48;
   --ok-mark: #3fbf87; --no-mark: #f06b6b; --review-mark: #f2b23a; --gap-mark: #8796b5;
+  --logo-navy: #eaf0fb; --logo-deep: #b7c8e8; --logo-blue: #5a8fff; --logo-word: #eaf0fb;
   --series: #7cb1ff; --series-soft: #3d5f97; --series-wash: rgb(124 177 255 / 12%); --grid: #20335a;
   --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 25%);
   --glow: 0 10px 30px rgb(0 0 0 / 35%);
@@ -54,6 +56,7 @@
     --ok: #5fdca6; --no: #ff9c8a; --review: #ffcb66; --gap: #b9c5de;
     --ok-bg: #0f3526; --no-bg: #3d1c17; --review-bg: #3a2c0a; --gap-bg: #1d2b48;
     --ok-mark: #3fbf87; --no-mark: #f06b6b; --review-mark: #f2b23a; --gap-mark: #8796b5;
+    --logo-navy: #eaf0fb; --logo-deep: #b7c8e8; --logo-blue: #5a8fff; --logo-word: #eaf0fb;
     --series: #7cb1ff; --series-soft: #3d5f97; --series-wash: rgb(124 177 255 / 12%); --grid: #20335a;
     --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 25%);
     --glow: 0 10px 30px rgb(0 0 0 / 35%);
@@ -76,8 +79,8 @@ p, li { text-wrap: pretty; }
 [hidden] { display: none !important; }
 .wrap { max-width: 1180px; margin: 0 auto; padding: 0 max(16px, env(safe-area-inset-left)) 0 max(16px, env(safe-area-inset-right)); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-.skip { position: absolute; left: -999px; }
-.skip:focus { left: 12px; top: 12px; z-index: 20; background: var(--bg); padding: 8px 12px; border-radius: 8px; }
+.skip-link { position: absolute; left: -999px; }
+.skip-link:focus { left: 12px; top: 12px; z-index: 20; background: var(--bg); padding: 8px 12px; border-radius: 8px; }
 .nowrap, .rule { white-space: nowrap; }
 .num { font-variant-numeric: tabular-nums; }
 
@@ -85,7 +88,8 @@ p, li { text-wrap: pretty; }
 .top { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 84%, transparent); -webkit-backdrop-filter: saturate(160%) blur(12px); backdrop-filter: saturate(160%) blur(12px); border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
 .bar { display: flex; align-items: center; gap: 8px 14px; min-height: 60px; flex-wrap: wrap; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 800; letter-spacing: -0.02em; font-size: 20px; color: var(--ink); text-decoration: none; margin-right: auto; min-height: 44px; }
-.brand img { width: 28px; height: 28px; }
+.brand .logo { display: block; width: auto; height: 26px; }
+.logo .lg-n { fill: var(--logo-navy); } .logo .lg-d { fill: var(--logo-deep); } .logo .lg-b { fill: var(--logo-blue); } .logo .lg-w { fill: var(--logo-word); }
 .nav { display: flex; gap: 2px; }
 .nav a { display: inline-flex; align-items: center; min-height: 40px; color: var(--muted); text-decoration: none; font-weight: 600; font-size: 15px; padding: 8px 10px; border-radius: 10px; white-space: nowrap; transition: color .2s, background-color .2s; }
 .nav a:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
@@ -153,15 +157,15 @@ input[type="range"] { width: 100%; accent-color: var(--accent); min-height: 32px
 .hero.slim { padding: clamp(32px, 5vw, 56px) 0 clamp(20px, 3vw, 32px); }
 .hero h1 { max-width: 21ch; }
 .hero.slim h1 { font-size: clamp(28px, 4.2vw, 46px); max-width: 24ch; }
-.hero-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: center; }
-@media (max-width: 860px) { .hero-grid { grid-template-columns: minmax(0, 1fr); } .hero-art { width: 100%; max-width: 480px; justify-self: center; } }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: center; }
+@media (max-width: 1023px) { .hero-grid { grid-template-columns: minmax(0, 1fr); } }
 
 /* Амбассадор и 3D-значки — изображения из Figma (docs/VISUALS.md). Анна вымышлена, это подписано рядом с фото. */
 .credit { display: block; font-size: 12px; line-height: 1.35; color: var(--faint); }
 .hero-art { position: relative; margin: 0; display: grid; justify-items: end; }
-.hero-art .anna { display: block; width: 76%; aspect-ratio: 2 / 3; border-radius: 28px; overflow: hidden; background: #0a1f5c; box-shadow: 0 0 0 1px rgb(214 178 106 / 40%), 0 28px 60px rgb(10 41 115 / 28%); }
+.hero-art .anna { display: block; width: 54%; aspect-ratio: 2 / 3; border-radius: 28px; overflow: hidden; background: #0a1f5c; box-shadow: 0 0 0 1px rgb(214 178 106 / 40%), 0 28px 60px rgb(10 41 115 / 28%); }
 .hero-art .anna img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.hero-art .chain { position: absolute; left: 0; bottom: 7%; width: 64%; padding: 8px; border-radius: 22px; border: 1px solid color-mix(in srgb, var(--line-2) 70%, transparent);
+.hero-art .chain { position: absolute; left: 0; bottom: 6%; width: 56%; padding: 8px; border-radius: 22px; border: 1px solid color-mix(in srgb, var(--line-2) 70%, transparent);
   background: color-mix(in srgb, var(--card) 82%, transparent); -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3); box-shadow: var(--glow); }
 .hero-art .chain svg { filter: none; }
 .hero-art .credit { position: absolute; right: 14px; bottom: 12px; max-width: 30%; text-align: right; color: #dbe7ff; text-shadow: 0 1px 3px rgb(0 0 0 / 60%); }
@@ -175,11 +179,17 @@ input[type="range"] { width: 100%; accent-color: var(--accent); min-height: 32px
 }
 @keyframes float { 50% { transform: translateY(-8px); } }
 @keyframes sheen { 0% { opacity: 0; transform: translateX(-160%) rotate(16deg); } 6% { opacity: 1; } 24% { opacity: 1; transform: translateX(360%) rotate(16deg); } 25%, 100% { opacity: 0; transform: translateX(360%) rotate(16deg); } }
-@media (max-width: 520px) {
-  .hero-art { justify-items: center; }
-  .hero-art .anna { width: 86%; }
-  .hero-art .chain { position: relative; left: auto; bottom: auto; width: 100%; margin-top: -34%; }
+/* Уже 1024 px портрет и цепочка стоят рядом, а на телефоне — друг под другом: друг на друга они не заходят. */
+@media (max-width: 1023px) {
+  .hero-art { display: flex; justify-content: center; align-items: center; gap: 20px; width: 100%; max-width: 720px; justify-self: center; }
+  .hero-art .anna { width: min(46%, 320px); flex: none; }
+  .hero-art .chain { position: relative; left: auto; bottom: auto; width: min(50%, 360px); flex: none; }
   .hero-art .credit { position: static; max-width: none; margin-top: 8px; text-align: center; color: var(--faint); text-shadow: none; }
+}
+@media (max-width: 600px) {
+  .hero-art { flex-direction: column; gap: 16px; }
+  .hero-art .anna { width: min(80%, 320px); }
+  .hero-art .chain { width: min(100%, 380px); }
 }
 .page-art { float: right; width: clamp(96px, 15vw, 190px); height: auto; margin: -12px -8px 8px 20px; }
 figure.page-art { margin: 0 0 8px 24px; width: clamp(120px, 17vw, 200px); }
@@ -189,14 +199,14 @@ figure.page-art { margin: 0 0 8px 24px; width: clamp(120px, 17vw, 200px); }
 /* На узком телефоне картинка шапки не обтекается текстом: иначе длинное слово заголовка не влезает в строку. */
 @media (max-width: 480px) { .page-art { float: none; display: block; width: 64px; margin: -6px 0 6px -6px; } figure.page-art { display: none; } }
 .banner { position: relative; margin: 0 0 32px; border-radius: 22px; overflow: hidden; background: #0a1f5c; box-shadow: var(--shadow); }
-.banner img { display: block; width: 100%; height: clamp(240px, 32vw, 380px); object-fit: cover; object-position: 72% 38%; }
-.banner figcaption { position: absolute; inset: 0 auto 0 0; display: flex; flex-direction: column; justify-content: center; gap: 10px; width: min(58%, 540px);
+.banner img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; object-position: 70% 0%; }
+.banner figcaption { position: absolute; inset: 0 auto 0 0; display: flex; flex-direction: column; justify-content: center; gap: 10px; width: min(46%, 520px);
   padding: clamp(20px, 4vw, 44px); color: #fff; background: linear-gradient(90deg, rgb(6 26 74 / 90%), rgb(6 26 74 / 62%) 72%, transparent); }
 .banner figcaption b { font-family: var(--display); font-weight: 800; letter-spacing: -0.02em; font-size: clamp(22px, 2.6vw, 32px); line-height: 1.12; }
 .banner figcaption span { color: #dbe7ff; font-size: clamp(15px, 1.5vw, 17px); }
 .banner .credit { color: #b9cdf2; }
 @media (max-width: 640px) {
-  .banner img { height: 220px; object-position: 82% 40%; }
+  .banner img { aspect-ratio: 3 / 2; object-position: 50% 0%; }
   .banner figcaption { position: static; width: auto; background: #0a1f5c; }
 }
 .tour-art { display: block; width: 76px; height: 76px; margin: -10px 0 0 -10px; transition: transform .35s var(--ease); }
@@ -291,6 +301,37 @@ figure.page-art { margin: 0 0 8px 24px; width: clamp(120px, 17vw, 200px); }
 .value b { display: block; font-family: var(--display); font-weight: 800; font-size: clamp(30px, 3.6vw, 44px); line-height: 1.06; letter-spacing: -0.03em; font-variant-numeric: tabular-nums lining-nums; color: var(--accent); }
 .value span { display: block; margin-top: 8px; color: var(--muted); font-size: 15px; }
 /* Тёмная полоса на атласном фоне из Figma: один премиальный акцент на странице, текст на притемнённой части. */
+/* Четыре экрана: прозрачная картинка, одинаково ложится на светлую и тёмную тему. */
+.devices { margin: 26px 0 0; }
+.devices img { display: block; width: 100%; height: auto; }
+.devices figcaption { margin-top: 14px; max-width: 760px; color: var(--muted); font-size: 14.5px; }
+/* Тёмная полоса с рендером цепочки из Figma: текст слева, стеклянные листы справа. Кадр лежит отдельным слоем
+   с растворёнными краями, а подложка повторяет его край (тёмно-синий сверху, чёрный снизу): шва нет на любой ширине. */
+.sec.keynote { position: relative; isolation: isolate; overflow: hidden; padding: 0; color: #e8eefb; background: linear-gradient(180deg, #010924, #00020c 50%, #000 100%); }
+.sec.keynote::after { content: ""; position: absolute; z-index: -2; top: 0; bottom: 0; right: max(0px, calc(50% - 680px)); aspect-ratio: 16 / 9;
+  background: url("img/chain-1536.webp") center / cover no-repeat;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 90%, transparent); mask-image: linear-gradient(90deg, transparent, #000 22%, #000 90%, transparent); }
+.sec.keynote::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, #020a1f 0%, rgb(2 10 31 / 80%) 30%, rgb(2 10 31 / 0%) 52%); }
+.keynote .wrap { display: flex; flex-direction: column; justify-content: center; min-height: clamp(440px, 40vw, 600px); padding-block: clamp(48px, 6vw, 80px); }
+.keynote-copy { max-width: 470px; }
+.keynote .kicker { color: #7cb1ff; }
+.keynote h2 { color: #fff; font-size: clamp(30px, 3.6vw, 48px); letter-spacing: -0.03em; line-height: 1.06; }
+.keynote .serif { color: #8fd0ff; }
+.keynote p { color: #cfdcf5; font-size: clamp(16px, 1.35vw, 18px); }
+@media (min-width: 901px) and (max-width: 1040px) { .keynote-copy { max-width: 420px; } }
+/* Планшет и телефон: кадр сверху во всю ширину, текст под ним. */
+@media (max-width: 900px) {
+  .sec.keynote { padding: 44vw 0 clamp(36px, 8vw, 56px); }
+  .sec.keynote::after { inset: 0 0 auto auto; width: 100%; height: auto;
+    -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 96%); mask-image: linear-gradient(180deg, #000 55%, transparent 96%); }
+  .sec.keynote::before { display: none; }
+  .keynote .wrap { min-height: 0; padding-block: 0; }
+  .keynote-copy { max-width: 640px; }
+}
+@media (max-width: 600px) {
+  .sec.keynote { padding-top: 66vw; }
+  .sec.keynote::after { width: 160vw; height: 90vw; aspect-ratio: auto; background-image: url("img/chain-768.webp"); }
+}
 .sec.lux { position: relative; isolation: isolate; color: #e8eefb; background: #061a4a url("img/bg-lux-1536.webp") 70% 50% / cover no-repeat; }
 .sec.lux::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgb(6 26 74 / 92%), rgb(6 26 74 / 70%) 55%, rgb(6 26 74 / 35%)); }
 .sec.lux h2 { color: #fff; }
@@ -598,7 +639,7 @@ video { display: block; width: 100%; border-radius: 14px; border: 1px solid var(
 }
 @media print {
   :root { color-scheme: light; }
-  .top, .skip, .cta, .hero-art, .page-art, .tour-art, .banner img, .controls, .theme, .tabs, .crit-tools, .thumbs, .toggles { display: none !important; }
+  .top, .skip-link, .cta, .hero-art, .page-art, .tour-art, .banner img, .controls, .theme, .tabs, .crit-tools, .thumbs, .toggles { display: none !important; }
   .banner figcaption { position: static; width: auto; background: none; color: inherit; }
   .hero, .alt { background: none; }
   .sec { padding: 16px 0; }
@@ -607,6 +648,13 @@ video { display: block; width: 100%; border-radius: 14px; border: 1px solid var(
   .reveal { animation: none !important; opacity: 1 !important; transform: none !important; }
   .js .track li.later { opacity: 1; }
   .panel[hidden] { display: block !important; }
+  /* Тёмные полосы на бумаге: фон не печатается, поэтому текст возвращается к обычному цвету. */
+  .sec.lux, .sec.keynote { background: none; color: inherit; padding: 16px 0; }
+  .sec.lux::before, .sec.keynote::before, .sec.keynote::after { display: none; }
+  .sec.lux h2, .sec.lux p, .sec.lux .serif, .sec.lux .more, .sec.lux .value b, .sec.lux .value span,
+  .keynote h2, .keynote p, .keynote .kicker, .keynote .serif { color: inherit; }
+  .sec.lux .value li { background: none; }
+  .keynote .wrap { min-height: 0; padding-block: 0; }
 }
 
 /* ---------- Шкала даты операции на главной ---------- */
@@ -633,7 +681,7 @@ video { display: block; width: 100%; border-radius: 14px; border: 1px solid var(
 .scrub-marks span b { display: block; color: var(--ink-2); font-weight: 600; }
 .scrub-marks span:first-child { transform: translateX(-10%); }
 .scrub-marks span:last-child { transform: translateX(-90%); }
-@media (max-width: 700px) { .scrub-marks span { font-size: 11px; } .scrub-marks span:nth-child(3) { top: 26px; } }
+@media (max-width: 700px) { .scrub-marks span { font-size: 11px; } }
 .scrub-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
 .scrub-result { display: grid; grid-template-columns: minmax(180px, 220px) minmax(0, 1fr); gap: 18px; align-items: start; }
 @media (max-width: 760px) { .scrub-result { grid-template-columns: minmax(0, 1fr); } }
@@ -698,10 +746,12 @@ video { display: block; width: 100%; border-radius: 14px; border: 1px solid var(
 }
 @keyframes shake { 0%, 100% { translate: 0; } 25% { translate: -6px; } 50% { translate: 5px; } 75% { translate: -3px; } }
 @media (max-width: 560px) { .seal { width: 88px; height: 88px; top: 12px; right: 12px; } .seal-mark { font-size: 30px; } .seal-text { font-size: 9.5px; } }
-.sealed > h2, .sealed > .note { padding-right: 120px; }
-@media (max-width: 560px) { .sealed > h2, .sealed > .note { padding-right: 96px; } }
+/* Место под печать: круг справа сверху, текст обтекает его по окружности и не уходит под печать. */
+.sealed::before { content: ""; float: right; width: 110px; height: 110px; shape-outside: circle(56px at 56px 54px); shape-margin: 6px; }
+.sealed > .fields { clear: right; }
+@media (max-width: 560px) { .sealed::before { width: 80px; height: 80px; shape-outside: circle(44px at 44px 36px); } }
 @media (max-width: 400px) { .seal { width: 72px; height: 72px; top: 10px; right: 10px; } .seal-mark { font-size: 24px; } .seal-text { font-size: 8.5px; }
-  .sealed > h2 { padding-right: 76px; } .sealed > .note { padding-right: 0; } }
+  .sealed::before { width: 62px; height: 62px; shape-outside: circle(36px at 36px 26px); } }
 
 .verdict-line { margin: 0 0 14px; font-size: clamp(20px, 2.3vw, 26px); }
 

@@ -17,6 +17,34 @@ function segmentAt(iso) {
   return scrub.segments.find((s) => s.from <= iso && iso <= s.to);
 }
 
+// Подписи дат не наезжают друг на друга: каждая встаёт в первый ряд, где ей хватает места.
+// Сдвиг подписи — как в CSS: первая на 10 % своей ширины, последняя на 90 %, остальные по центру.
+function stackLabels(labels, track) {
+  const tags = [...labels.children];
+  const ROW = 32, GAP = 12, BASE = 46;
+  const place = () => {
+    const width = labels.clientWidth;
+    if (!width) return;
+    const ends = [];
+    tags.forEach((tag, i) => {
+      const w = tag.offsetWidth;
+      const shift = i === 0 ? 0.1 : i === tags.length - 1 ? 0.9 : 0.5;
+      // Подпись не выходит за края шкалы: у края она сдвигается внутрь, а не обрезается экраном.
+      const left = Math.min(Math.max((Number(tag.dataset.pos) / 100) * width - shift * w, 0), Math.max(width - w, 0));
+      let row = ends.findIndex((end) => left >= end + GAP);
+      if (row < 0) row = ends.push(-Infinity) - 1;
+      ends[row] = left + w;
+      tag.style.left = `${left}px`;
+      tag.style.transform = "none";
+      tag.style.top = `${row * ROW}px`;
+    });
+    track.style.paddingBottom = `${BASE + (Math.max(ends.length, 1) - 1) * ROW}px`;
+  };
+  place();
+  document.fonts.ready.then(place);
+  new ResizeObserver(place).observe(labels);
+}
+
 function drawTrack(track, total) {
   const x = (i) => (i / total) * W;
   const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", class: "scrub-svg", "aria-hidden": "true" });
@@ -35,10 +63,12 @@ function drawTrack(track, total) {
     const pos = (100 * dayIndex(m.date)) / total;
     if (pos < 0 || pos > 100) continue;
     const tag = el("span", {}, el("b", { text: ruDate(m.date) }), m.text);
+    tag.dataset.pos = String(pos);
     tag.style.left = `${pos}%`;
     labels.append(tag);
   }
   track.append(labels);
+  stackLabels(labels, track);
   // Подпись вердикта на отрезке, если он достаточно широк: смысл не держится на одном цвете.
   const words = el("div", { class: "scrub-words", "aria-hidden": "true" });
   for (const s of scrub.segments) {
