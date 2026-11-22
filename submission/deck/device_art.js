@@ -5,7 +5,7 @@
 //
 // Снимки делаются с настоящих страниц при каждой сборке картинки: что на экранах — то и есть на сайте этого коммита.
 // Рамки устройств нарисованы здесь же векторами, без чужих макетов и логотипов производителей.
-// Пишет site/img/devices-1200.webp и devices-2400.webp — прозрачный фон, годится для светлой и тёмной темы.
+// Пишет site/img/devices-1200 и devices-2400 в WebP и AVIF — прозрачный фон, годится для светлой и тёмной темы.
 "use strict";
 const fs = require("fs");
 const http = require("http");
@@ -151,10 +151,14 @@ function phone(s, shot) {
   const master = await sharp(Buffer.from(svg)).png().toBuffer();
   const trimmed = await sharp(master).trim({ threshold: 1 }).toBuffer({ resolveWithObject: true });
   for (const width of [1200, 2400]) {
-    const file = path.join(OUT, `devices-${width}.webp`);
-    await sharp(trimmed.data).resize({ width }).webp({ quality: 84, alphaQuality: 90, effort: 6 }).toFile(file);
-    const meta = await sharp(file).metadata();
-    console.log(`${path.relative(ROOT, file)}: ${meta.width}×${meta.height}, ${Math.round(fs.statSync(file).size / 1024)} КБ`);
+    const sized = await sharp(trimmed.data).resize({ width }).png().toBuffer();
+    // AVIF — для браузеров, которые его понимают (почти вдвое легче), WebP — для остальных.
+    for (const [ext, encode] of [["webp", (s) => s.webp({ quality: 84, alphaQuality: 90, effort: 6 })], ["avif", (s) => s.avif({ quality: 58, effort: 7 })]]) {
+      const file = path.join(OUT, `devices-${width}.${ext}`);
+      await encode(sharp(sized)).toFile(file);
+      const meta = await sharp(file).metadata();
+      console.log(`${path.relative(ROOT, file)}: ${meta.width}×${meta.height}, ${Math.round(fs.statSync(file).size / 1024)} КБ`);
+    }
   }
 })().catch((e) => {
   console.error(e);

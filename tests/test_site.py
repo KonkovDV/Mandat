@@ -87,6 +87,8 @@ def test_pages_make_no_external_requests_and_run_no_inline_scripts(site):
         for tag in re.findall(r"<script\b[^>]*>", page, re.I):
             if 'type="application/json"' in tag:
                 continue
+            if 'type="speculationrules"' in tag:
+                continue  # правила предзагрузки — данные, а не код; проверяются отдельно
             src = re.search(r'\ssrc="([^"]+)"', tag)
             assert src is not None, f"{name}: встроенный скрипт {tag}"
             assert not src.group(1).startswith(("http:", "https:", "//")), src.group(1)
@@ -320,3 +322,19 @@ def test_pitch_page_shows_every_slide_of_the_deck(site):
         assert (site / "slides" / slide["image"]).is_file(), slide["image"]
     page = _page(site, "pitch")
     assert page.count('<li id="slide-') == count
+
+
+def test_speculation_rules_prerender_only_site_pages(site):
+    """Предзагрузка по наведению — только страницы сайта; CSP разрешает её JSON, но не встроенный код."""
+    for name in PAGES:
+        page = _page(site, name)
+        rules = re.findall(r'<script type="speculationrules">(.*?)</script>', page, re.S)
+        assert len(rules) == 1, name
+        prerender = json.loads(rules[0])["prerender"]
+        assert [r["eagerness"] for r in prerender] == ["moderate"]
+        where = json.dumps(prerender[0]["where"])
+        for skipped in ("materials", "reports", "slides", "assets"):
+            assert f"/Mandat/{skipped}/*" in where, (name, skipped)
+        csp = re.search(r'http-equiv="Content-Security-Policy" content="([^"]+)"', page).group(1)
+        script_src = next(d for d in csp.split(";") if d.strip().startswith("script-src")).split()
+        assert script_src == ["script-src", "'self'", "'inline-speculation-rules'"], script_src

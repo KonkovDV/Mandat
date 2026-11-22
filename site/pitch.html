@@ -14,6 +14,8 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="preload" href="assets/fonts/GolosText-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/Manrope-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
 <script src="js/theme.js"></script>
 <script type="module" src="js/pitch.js"></script>
@@ -41,7 +43,7 @@ $header
   <div class="wrap">
     <div class="viewer" id="viewer" hidden>
       <div class="stage" id="stage">
-        <img id="slide-img" alt="" width="1600" height="900">
+        <img id="slide-img" src="slides/$first_slide_src" alt="$first_slide_alt" width="1600" height="900" fetchpriority="high">
       </div>
       <div class="controls">
         <button class="btn small" type="button" id="prev" aria-label="Предыдущий слайд">←</button>

@@ -77,6 +77,12 @@ p, li { text-wrap: pretty; }
 /* Акцентное слово заголовка: курсив антиквы чуть крупнее, у Cormorant низкий очко строчных. */
 .serif { font-family: var(--serif); font-style: italic; font-weight: 600; font-size: 1.14em; letter-spacing: 0; line-height: 0.9; color: var(--accent); }
 [hidden] { display: none !important; }
+/* Переход между страницами сайта: содержимое плавно сменяется, шапка стоит на месте (Chrome, Edge, Safari 18.2+;
+   остальные браузеры просто открывают страницу). При «уменьшить движение» переходов нет. */
+@view-transition { navigation: auto; }
+.top { view-transition-name: site-header; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .2s; }
+@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
 .wrap { max-width: 1180px; margin: 0 auto; padding: 0 max(16px, env(safe-area-inset-left)) 0 max(16px, env(safe-area-inset-right)); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .skip-link { position: absolute; left: -999px; }
@@ -303,13 +309,14 @@ figure.page-art { margin: 0 0 8px 24px; width: clamp(120px, 17vw, 200px); }
 /* Тёмная полоса на атласном фоне из Figma: один премиальный акцент на странице, текст на притемнённой части. */
 /* Четыре экрана: прозрачная картинка, одинаково ложится на светлую и тёмную тему. */
 .devices { margin: 26px 0 0; }
-.devices img { display: block; width: 100%; height: auto; }
+.devices picture, .devices img { display: block; width: 100%; height: auto; }
 .devices figcaption { margin-top: 14px; max-width: 760px; color: var(--muted); font-size: 14.5px; }
 /* Тёмная полоса с рендером цепочки из Figma: текст слева, стеклянные листы справа. Кадр лежит отдельным слоем
    с растворёнными краями, а подложка повторяет его край (тёмно-синий сверху, чёрный снизу): шва нет на любой ширине. */
 .sec.keynote { position: relative; isolation: isolate; overflow: hidden; padding: 0; color: #e8eefb; background: linear-gradient(180deg, #010924, #00020c 50%, #000 100%); }
 .sec.keynote::after { content: ""; position: absolute; z-index: -2; top: 0; bottom: 0; right: max(0px, calc(50% - 680px)); aspect-ratio: 16 / 9;
   background: url("img/chain-1536.webp") center / cover no-repeat;
+  background-image: image-set(url("img/chain-1536.avif") type("image/avif"), url("img/chain-1536.webp") type("image/webp"));
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 90%, transparent); mask-image: linear-gradient(90deg, transparent, #000 22%, #000 90%, transparent); }
 .sec.keynote::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, #020a1f 0%, rgb(2 10 31 / 80%) 30%, rgb(2 10 31 / 0%) 52%); }
 .keynote .wrap { display: flex; flex-direction: column; justify-content: center; min-height: clamp(440px, 40vw, 600px); padding-block: clamp(48px, 6vw, 80px); }
@@ -330,7 +337,8 @@ figure.page-art { margin: 0 0 8px 24px; width: clamp(120px, 17vw, 200px); }
 }
 @media (max-width: 600px) {
   .sec.keynote { padding-top: 66vw; }
-  .sec.keynote::after { width: 160vw; height: 90vw; aspect-ratio: auto; background-image: url("img/chain-768.webp"); }
+  .sec.keynote::after { width: 160vw; height: 90vw; aspect-ratio: auto; background-image: url("img/chain-768.webp");
+    background-image: image-set(url("img/chain-768.avif") type("image/avif"), url("img/chain-768.webp") type("image/webp")); }
 }
 .sec.lux { position: relative; isolation: isolate; color: #e8eefb; background: #061a4a url("img/bg-lux-1536.webp") 70% 50% / cover no-repeat; }
 .sec.lux::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgb(6 26 74 / 92%), rgb(6 26 74 / 70%) 55%, rgb(6 26 74 / 35%)); }
@@ -491,7 +499,12 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space:
   .track li .body { padding: 10px; }
   .track li .body b { font-size: 16px; }
 }
-.js .track li.later { opacity: .28; }
+/* Шаги впереди приглушены цветом, а не прозрачностью: текст читается (контраст не ниже 4,5:1), исход шага скрыт
+   до его очереди и место под ним сохранено — список не прыгает, пока идёт сценарий. */
+.js .track li.later .body { background: transparent; border-style: dashed; }
+.js .track li.later .body b { color: var(--muted); }
+.js .track li.later .n { background: var(--card); border-color: var(--line-2); color: var(--muted); }
+.js .track li.later .badge { visibility: hidden; }
 .state { display: grid; gap: 10px; position: sticky; top: 140px; }
 .state .card { padding: 14px 16px; }
 .state dt { font-size: 13px; color: var(--muted); }
@@ -513,6 +526,10 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space:
 .vsteps li.ok .mark { background: var(--ok-mark); border-color: var(--ok-mark); color: #fff; }
 .vsteps li.no .mark { background: var(--no-mark); border-color: var(--no-mark); color: #fff; }
 .vsteps li small { display: block; font: 12.5px/1.4 var(--mono); color: var(--faint); overflow-wrap: anywhere; }
+/* Калькулятор строится скриптом: пока он не готов, место под ним занято, и таблица сценариев не прыгает вниз
+   на глазах (сдвиг вёрстки). Без JavaScript блок скрыт, как раньше. */
+.js #scenarios.seg[hidden] { display: block !important; visibility: hidden; min-height: 50px; }
+.js #calc.calc[hidden] { display: block !important; visibility: hidden; min-height: max(1320px, 100vh); }
 .result { margin-top: 14px; padding: 14px 16px; border-radius: 14px; font-weight: 600; }
 .result.ok { background: var(--ok-bg); color: var(--ok); }
 .result.no { background: var(--no-bg); color: var(--no); }
@@ -615,7 +632,12 @@ video { display: block; width: 100%; border-radius: 14px; border: 1px solid var(
 .slide-list figure { margin: 0; }
 .slide-list img { border-radius: 10px; border: 1px solid var(--line); }
 .slide-list figcaption { font-size: 14px; color: var(--muted); margin-top: 4px; }
-.js .slide-list.enhanced { display: none; }
+/* С JavaScript плеер виден с первой отрисовки: главная картинка страницы рисуется сразу, а не после загрузки
+   модуля, и список не мелькает перед заменой на плеер. Ленте и тексту выступления место занято заранее. */
+.js .viewer[hidden] { display: block !important; }
+.js .slide-list { display: none; }
+.js .thumbs:empty { min-height: 92px; }
+.js .notes:empty { min-height: 160px; }
 
 /* ---------- Подвал ---------- */
 .foot { padding: 28px 0 calc(40px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
@@ -646,7 +668,7 @@ video { display: block; width: 100%; border-radius: 14px; border: 1px solid var(
   a { color: inherit; }
   .table-wrap { overflow: visible; border: 0; }
   .reveal { animation: none !important; opacity: 1 !important; transform: none !important; }
-  .js .track li.later { opacity: 1; }
+  .js .track li.later .badge { visibility: visible; }
   .panel[hidden] { display: block !important; }
   /* Тёмные полосы на бумаге: фон не печатается, поэтому текст возвращается к обычному цвету. */
   .sec.lux, .sec.keynote { background: none; color: inherit; padding: 16px 0; }

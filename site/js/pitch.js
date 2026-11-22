@@ -61,7 +61,7 @@ if (slides.length) {
   viewer.hidden = false;
   document.getElementById("slide-list").classList.add("enhanced");
   for (const s of slides) {
-    const a = el("a", { href: `#${s.n}`, "aria-label": `Слайд ${s.n}: ${s.title}`, "aria-current": "false" }, el("img", { src: `slides/${s.src || s.image}`, alt: "", width: 128, height: 72, loading: "lazy", decoding: "async" }));
+    const a = el("a", { href: `#${s.n}`, "aria-label": `Слайд ${s.n}: ${s.title}`, "aria-current": "false" }, el("img", { src: `slides/${s.thumb_src || s.src || s.image}`, alt: "", width: 128, height: 72, loading: "lazy", decoding: "async" }));
     a.addEventListener("click", (event) => { event.preventDefault(); go(s.n - 1); });
     thumbs.append(a);
   }

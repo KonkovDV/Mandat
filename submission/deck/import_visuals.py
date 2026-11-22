@@ -116,6 +116,19 @@ def icons(src: Path) -> None:
             "webp:method=6",
             str(SITE / f"icon-{name}.webp"),
         )
+        # Карточки обзора показывают значок в 76 px: им хватает 160 px (вдвое для экранов Retina), а не всей клетки.
+        _im(
+            str(png),
+            "-resize",
+            "160x160",
+            "-quality",
+            "86",
+            "-define",
+            "webp:alpha-quality=90",
+            "-define",
+            "webp:method=6",
+            str(SITE / f"icon-{name}-160.webp"),
+        )
 
 
 def _logo_png(svg: Path, height: int, out: Path) -> None:

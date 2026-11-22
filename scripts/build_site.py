@@ -92,9 +92,18 @@ PAGES = (
     ("pitch", "Слайды"),
 )
 # Политика страниц: скрипты, стили, шрифты и картинки — только со своего адреса; встроенных скриптов и стилей нет.
+# 'inline-speculation-rules' разрешает только JSON правил предзагрузки (SPECULATION), а не встроенный код.
 CSP = (
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; "
-    "connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
+    "default-src 'self'; script-src 'self' 'inline-speculation-rules'; style-src 'self'; img-src 'self' data:; "
+    "font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
+)
+# Страница, на ссылку которой навели курсор, готовится заранее (Speculation Rules в Chrome и Edge) и открывается
+# мгновенно. Только страницы сайта: файлы для скачивания, отчёты, слайды и шрифты не трогаем.
+SPECULATION = (
+    '<script type="speculationrules">{"prerender":[{"where":{"and":[{"href_matches":"/Mandat/*"},'
+    '{"not":{"href_matches":"/Mandat/materials/*"}},{"not":{"href_matches":"/Mandat/reports/*"}},'
+    '{"not":{"href_matches":"/Mandat/slides/*"}},{"not":{"href_matches":"/Mandat/assets/*"}}]},'
+    '"eagerness":"moderate"}]}</script>'
 )
 # Сценарий показа: события захвата для mandat monitor и кейс, удостоверение которого проверяется в браузере.
 TAKEOVER = ROOT / "examples" / "events" / "takeover.json"
@@ -756,16 +765,20 @@ def _slides() -> dict[str, Any]:
         raise SystemExit("нет site/slides/slides.json: соберите колоду и выполните submission/deck/export_slides.py")
     slides = json.loads(path.read_text(encoding="utf-8"))
     for slide in slides["slides"]:
-        if not (SITE / "slides" / slide["image"]).is_file():
-            raise SystemExit(f"нет картинки слайда {slide['image']}")
+        for key in ("image", "thumb"):
+            if not (SITE / "slides" / slide[key]).is_file():
+                raise SystemExit(f"нет картинки слайда {slide[key]}: выполните submission/deck/export_slides.py")
         # Слайды при пересборке колоды меняются под теми же именами: версия в адресе, как у стилей и скриптов.
         slide["src"] = f"{slide['image']}?v={_version(SITE / 'slides' / slide['image'])}"
+        slide["thumb_src"] = f"{slide['thumb']}?v={_version(SITE / 'slides' / slide['thumb'])}"
     return slides
 
 
 def _slide_items(slides: dict[str, Any]) -> str:
     return "\n".join(
-        f'<li id="slide-{s["n"]}"><figure><a href="slides/{_esc(s["src"])}"><img src="slides/{_esc(s["src"])}" '
+        f'<li id="slide-{s["n"]}"><figure><a href="slides/{_esc(s["src"])}"><img src="slides/{_esc(s["thumb_src"])}" '
+        f'srcset="slides/{_esc(s["thumb_src"])} 400w, slides/{_esc(s["src"])} 1600w" '
+        f'sizes="(max-width: 600px) calc(100vw - 32px), 360px" '
         f'alt="Слайд {s["n"]}: {_esc(s["title"])}" width="{s["width"]}" height="{s["height"]}" loading="lazy" '
         f'decoding="async"></a><figcaption>{s["n"]}. {_esc(s["title"])}</figcaption></figure></li>'
         for s in slides["slides"]
@@ -1024,6 +1037,9 @@ def build(out: Path, demo_dir: Path | None = None) -> Path:
         "econ_as_of": _esc(model["as_of"]),
         "slide_items": _slide_items(slides),
         "slide_count": str(len(slides["slides"])),
+        # Первый слайд — в разметке, а не только в скрипте: браузер находит главную картинку страницы сразу.
+        "first_slide_src": _esc(slides["slides"][0]["src"]),
+        "first_slide_alt": _esc(f"Слайд 1: {slides['slides'][0]['title']}"),
         "pitch_count": str(slides["pitch"]),
         "verify_seq": str(verify["journal"]["seq"]),
         "verify_size": str(verify["journal"]["size"]),
@@ -1040,6 +1056,7 @@ def build(out: Path, demo_dir: Path | None = None) -> Path:
             "data": _json_block(page_data[name]) if page_data[name] is not None else "null",
         }
         page = Template((SITE / f"{name}.html").read_text(encoding="utf-8")).substitute(mapping)
+        page = page.replace("</head>", f"{SPECULATION}\n</head>", 1)
         (out / f"{name}.html").write_text(_typo(page), encoding="utf-8")
     page404 = Template((SITE / "404.html").read_text(encoding="utf-8")).substitute(
         {**base, "header": _header(""), "footer": footer, "data": "null"}
@@ -1070,10 +1087,10 @@ ASSET = re.compile(r'((?:href|src)=")((?:/Mandat/)?(?:style\.css|js/[\w-]+\.js))
 # Картинки, которые меняются при пересборке под тем же именем: фото и рисунки страниц, значки, превью ссылки.
 PICTURE = re.compile(
     r'((?:href|src|content)=")((?:/Mandat/|' + re.escape(SITE_URL) + r")?"
-    r'(?:og\.jpg|favicon\.svg|apple-touch-icon\.png|img/[\w.-]+\.(?:webp|png|jpg|svg)))(")'
+    r'(?:og\.jpg|favicon\.svg|apple-touch-icon\.png|img/[\w.-]+\.(?:webp|avif|png|jpg|svg)))(")'
 )
 SRCSET = re.compile(r'(srcset=")([^"]+)(")')
-CSS_URL = re.compile(r'(url\(")(img/[\w.-]+\.(?:webp|png|jpg|svg))("\))')
+CSS_URL = re.compile(r'(url\(")(img/[\w.-]+\.(?:webp|avif|png|jpg|svg))("\))')
 
 
 def _version(path: Path) -> str:
@@ -1111,7 +1128,7 @@ def _stamp(out: Path) -> None:
         items = []
         for item in m.group(2).split(","):
             url, _, size = item.strip().partition(" ")
-            if re.fullmatch(r"img/[\w.-]+\.(?:webp|png|jpg)", url):
+            if re.fullmatch(r"img/[\w.-]+\.(?:webp|avif|png|jpg)", url):
                 url = f"{url}?v={_version(out / url)}"
             items.append(f"{url} {size}".strip())
         return f"{m.group(1)}{', '.join(items)}{m.group(3)}"

@@ -2,7 +2,8 @@
 
     python submission/deck/export_slides.py submission/slides/Mandat_VTB.pptx submission/slides/Mandat_VTB.pdf
 
-Картинки — страницы PDF (pdftoppm из poppler) в WebP 1600×900 в ``site/slides`` (convert из ImageMagick).
+Картинки — страницы PDF (pdftoppm из poppler) в WebP 1600×900 и миниатюры 400 px в ``site/slides``
+(convert из ImageMagick).
 Заголовок, надзаголовок, строка источника и заметки берутся из XML самой колоды,
 поэтому текст на сайте не расходится со слайдами.
 Там же пишется ``submission/deck/SPEAKER_NOTES.md``: текст выступления по слайдам с хронометражем,
@@ -26,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "site" / "slides"
 NOTES_MD = ROOT / "submission" / "deck" / "SPEAKER_NOTES.md"
 WIDTH = 1600
+THUMB = 400
 MAX_WORDS_PER_SECOND = 2.8
 TIME = re.compile(r"^\[(\d+):(\d{2})[–-](\d+):(\d{2})\]\s*")
 
@@ -108,6 +110,13 @@ def export(pptx: Path, pdf: Path) -> dict:
                 ["convert", str(page), "-strip", "-quality", "82", "-define", "webp:method=6", str(OUT / image)],
                 check=True,
             )
+            # Миниатюра для ленты слайдов и списка: 400 px вместо 1600 — лента из 41 слайда весит в десятки раз меньше.
+            thumb = f"slide-{i:02d}-400.webp"
+            subprocess.run(
+                ["convert", str(page), "-strip", "-resize", f"{THUMB}x", "-quality", "80"]
+                + ["-define", "webp:method=6", str(OUT / thumb)],
+                check=True,
+            )
             ph = _placeholders(z.read(name).decode("utf-8"))
             raw = _notes(z, i)
             when = TIME.match(raw)
@@ -116,6 +125,7 @@ def export(pptx: Path, pdf: Path) -> dict:
                 {
                     "n": i,
                     "image": image,
+                    "thumb": thumb,
                     "width": width,
                     "height": height,
                     "title": ph.get("title", "").replace("\n", " "),
