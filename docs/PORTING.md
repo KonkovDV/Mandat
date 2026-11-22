@@ -45,7 +45,7 @@
 | Калькулятор сверяется с эталонной моделью, написанной заново, на случайных допущениях с фиксированным зерном | rightrack | `scripts/check_site_devices.js` (`reference`) |
 | Проверка PDF колоды по рамкам слов `pdftotext -bbox-layout` и по `pdffonts` | InvaRadar: `presentation/qa/check_collisions.py` | `submission/deck/qa_deck.py`, расширена разрывами слов, переполнением рамок и висячим словом в заголовке |
 | Сайт проекта на GitHub Pages: сборка на каждом PR, публикация из `main` | SynAPS-MobiRoute, InvaRadar | `.github/workflows/pages.yml` |
-| Изображения: промты и правила образа записаны текстом, кадры генерируются в Figma, в репозиторий попадают готовые файлы | Synergy | [VISUALS](VISUALS.md), `submission/deck/import_visuals.py` |
+| Изображения: правила образа записаны текстом, кадры делаются в Figma, в репозиторий попадают готовые файлы | Synergy | [VISUALS](VISUALS.md), `submission/deck/import_visuals.py` |
 
 Из rightrack, SynAPS-MobiRoute и Synergy перенесены приёмы, а не файлы.
 

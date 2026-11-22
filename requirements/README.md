@@ -20,6 +20,6 @@ uv pip compile requirements/build.in --universal --python-version 3.11 --generat
 
 Сам пакет ставится поверх без зависимостей: `pip install --no-deps --no-build-isolation -e .`.
 
-## Dependabot
+## Обновление версий
 
-Dependabot видит `pyproject.toml`, но не эти lock-файлы: в [#117](https://github.com/KonkovDV/Mandat/pull/117) он поднял `cedarpy` только в `pyproject.toml`, а `dev.lock` остался на прежней версии. Такой PR сам по себе ничего не обновляет: CI ставит зависимости из lock-файла. Перед влитием в ту же ветку добавляется пересборка lock-файлов командами выше. Для `cedarpy` версия закреплена точно, и дифференциальный тест `tests/test_cedar.py` должен пройти на новой версии.
+Версии поднимаются вручную: нижняя граница в `pyproject.toml` и lock-файлы меняются в одном PR, lock пересобирается командами выше, CI ставит зависимости только из lock-файлов. Для `cedarpy` версия закреплена точно, и дифференциальный тест `tests/test_cedar.py` должен пройти на новой версии.

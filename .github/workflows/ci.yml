@@ -209,6 +209,19 @@ jobs:
         if: always()
         run: docker compose -f docker-compose.yml -f deploy/compose.pilot.yml down -v
 
+  # Известные уязвимости в npm-зависимостях колоды и проверки сайта: по lock-файлам, на каждом PR и по расписанию.
+  npm-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: npm audit for the deck and the site check
+        run: |
+          npm audit --audit-level=high --prefix submission/deck
+          npm audit --audit-level=high --prefix scripts
+
   # Пакет, SBOM и подписанное происхождение сборки (SLSA provenance) только для main.
   package:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

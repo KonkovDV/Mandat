@@ -31,7 +31,6 @@ python scripts/build_evidence.py --verify-source
 - Правка в `src`, `tests`, `scripts` или `examples` меняет хеш исходников в `evidence.json`. Руками его не правят: пересборка — `make evidence` на Linux (Docker или WSL), иначе поедут версия Python и замеры скорости. `build_evidence.py --verify-source` сверяет хеш исходников и число собранных тестов.
 - На Windows без WSL и Docker гоняйте затронутые тесты, полный прогон делает CI (задача `windows`).
 - CI сверх этого проверяет, что ни один тест не пропущен (`scripts/check_no_skips.py`), ищет известные уязвимости в зависимостях (`pip-audit`) и в образе (Trivy), проверяет рабочие процессы `actionlint`. Пороги и что блокирует влитие — в [SECURITY.md](SECURITY.md#зависимости-и-сканеры). Если `pip-audit` красный, пакет поднимают `uv pip compile --upgrade-package` и обновляют lock; проверку не отключают.
-- PR Dependabot по pip двигает `pyproject.toml`, но не lock-файлы: до влития lock пересобирают ([requirements/README.md](requirements/README.md#dependabot)).
 - Числа в документах сверяются с [реестром утверждений](CLAIMS_REGISTRY.md). Формулировки из [BANNED_CLAIMS.txt](BANNED_CLAIMS.txt) не используются даже с отрицанием: `lint_claims.py` ищет подстроку.
 - Секреты, токены и реальные персональные данные не попадают ни в код, ни в логи, ни в коммиты. В отслеживаемых файлах нет трейлеров соавторства и локальных временных путей: это проверяет `test_no_coauthor_trailers_or_local_paths_in_repository`.
 

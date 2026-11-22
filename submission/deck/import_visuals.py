@@ -2,7 +2,7 @@
 
     python submission/deck/import_visuals.py ПАПКА
 
-В ПАПКЕ лежат файлы, скачанные из Figma (generate_image, модель gpt-image-2.5): ``anna-hero.png``,
+В ПАПКЕ лежат файлы, выгруженные из Figma: ``anna-hero.png``,
 ``anna-final.png``, ``anna-vision.png``, ``anna-office.png``, ``bg-lux.png`` (фон тёмных слайдов) и ``icons-3d.png`` —
 лист 3×3 с прозрачным фоном.
 Промты, правила и где что используется — docs/VISUALS.md. Скрипт пишет:
