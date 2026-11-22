@@ -97,6 +97,8 @@ border-radius:0 10px 10px 0}
 .facts dt{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
 .facts dd{margin:2px 0 0}
 table{border-collapse:collapse;width:100%}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.table-wrap:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 th,td{border-bottom:1px solid var(--line);padding:9px 10px;text-align:left;vertical-align:top;font-size:14px}
 th{background:var(--soft);color:var(--muted);font-weight:600;font-size:13px}
 caption{text-align:left;padding:0 0 8px}
@@ -248,7 +250,7 @@ def render(report: dict[str, Any]) -> str:
 <p class="muted">Очередь: {_e(QUEUE_RU.get(str(routing.get("queue")), routing.get("queue")))}
  · приоритет {_e(routing.get("priority") or "—")} · SLA {_e(routing.get("sla_hours") or "—")} ч (заглушка до калибровки с банком)</p>
 {right_html}</div>
-<div class="card"><h2>Группы проверок</h2><table><caption class="muted">Статус каждой группы проверок</caption><tr><th scope="col">Группа</th><th scope="col">Статус</th></tr>{checks}</table></div>
+<div class="card"><h2>Группы проверок</h2><div class="table-wrap" role="region" aria-label="Группы проверок" tabindex="0"><table><caption class="muted">Статус каждой группы проверок</caption><tr><th scope="col">Группа</th><th scope="col">Статус</th></tr>{checks}</table></div></div>
 <div class="card"><h2>Находки и доказательства</h2><table class="stack"><caption class="muted">Правило, его эффект, вывод и ссылка на источник</caption><tr class="head"><th scope="col">Правило</th><th scope="col">Эффект</th><th scope="col">Вывод</th>
 <th scope="col">Источник</th></tr>{"".join(rows)}</table></div>
 <div class="card warn"><h2>Границы результата</h2><ul>{warnings}

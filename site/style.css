@@ -395,6 +395,15 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space:
 .track li .body b { display: block; color: var(--ink-2); }
 .track li .body p { margin: 6px 0 0; color: var(--muted); font-size: 14.5px; }
 .track li.current .body { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
+/* Самые узкие экраны (сложенный Galaxy Z Fold, 280 px): шагу больше места, чтобы длинное слово заголовка
+   «удостоверению» не рвалось и при более широком запасном шрифте. */
+@media (max-width: 340px) {
+  .track::before { left: 15px; }
+  .track li { grid-template-columns: 32px minmax(0, 1fr); gap: 8px; }
+  .track li .n { width: 32px; height: 32px; }
+  .track li .body { padding: 10px; }
+  .track li .body b { font-size: 16px; }
+}
 .js .track li.later { opacity: .28; }
 .state { display: grid; gap: 10px; position: sticky; top: 140px; }
 .state .card { padding: 14px 16px; }
