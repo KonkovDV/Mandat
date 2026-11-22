@@ -1,7 +1,7 @@
 {
  "pitch": 22,
- "pptx_sha256": "e5925a3456be3aa74868ce6acfc7d7e6c749024cf660a7d8dce4c7c1e15f2481",
- "pdf_sha256": "4a4f768a18e99cc8989671dd8fea9b0b6b0810a9dcc4c3653dfbeef645d9fa80",
+ "pptx_sha256": "18ca1c6279841d79aef43657c5c830c0ca2b02fdba9e4aa7857f8722870c460a",
+ "pdf_sha256": "33648d2035233a8ad9fc47a74d3bcbde340a18867f952d4975ca304c43a95889",
  "slides": [
   {
    "n": 1,
@@ -114,7 +114,7 @@
    "height": 900,
    "title": "Это уже работает: 14 демо-кейсов, удостоверения и журнал собираются одной командой",
    "kicker": "ПРОДУКТ СЕГОДНЯ",
-   "source": "Скриншот и вывод — настоящие, сняты с ./run-demo.sh при сборке колоды (capture_demo.js); «…» — пропущенные строки. Сценарий показа — docs/DEMO.md. v0.3.0, evidence.json от 22.11.2026",
+   "source": "Скриншот и вывод — настоящие, сняты с ./run-demo.sh при сборке колоды (capture_demo.js); «…» — пропущенные строки. Сценарий показа — docs/DEMO.md. v0.4.0, evidence.json от 22.11.2026",
    "time": "2:00–2:14",
    "start": 120,
    "end": 134,
@@ -140,7 +140,7 @@
    "height": 900,
    "title": "Ноль ложных «подтверждено» на 288 кейсах, где подтверждать нельзя",
    "kicker": "КАЧЕСТВО",
-   "source": "Корпус: 294 сгенерированных кейса, 49 видов ситуаций по нормам ГК РФ и формату МЧД. Воспроизводится: mandat eval --per-defect 6; pytest tests/test_properties.py tests/test_cedar.py tests/test_redteam_fuzz.py; python scripts/bench.py → evidence.json от 22.11.2026, v0.3.0",
+   "source": "Корпус: 294 сгенерированных кейса, 49 видов ситуаций по нормам ГК РФ и формату МЧД. Воспроизводится: mandat eval --per-defect 6; pytest tests/test_properties.py tests/test_cedar.py tests/test_redteam_fuzz.py; python scripts/bench.py → evidence.json от 22.11.2026, v0.4.0",
    "time": "2:34–2:48",
    "start": 154,
    "end": 168,
@@ -218,7 +218,7 @@
    "height": 900,
    "title": "Встаёт в контур ВТБ on-prem: ядро готово, источники подключаются через порты",
    "kicker": "ВСТРОЙКА",
-   "source": "vtb.ru — «Комплект МЧД и КЭП» в «ВТБ Бизнес»; репозиторий «Мандата» v0.3.0, evidence.json от 22.11.2026; docs/ARCHITECTURE.md, docs/PILOT.md",
+   "source": "vtb.ru — «Комплект МЧД и КЭП» в «ВТБ Бизнес»; репозиторий «Мандата» v0.4.0, evidence.json от 22.11.2026; docs/ARCHITECTURE.md, docs/PILOT.md",
    "time": "3:52–4:02",
    "start": 232,
    "end": 242,
