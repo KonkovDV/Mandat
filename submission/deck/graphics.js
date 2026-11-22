@@ -96,16 +96,32 @@ function bgDark() {
 </svg>`;
 }
 
-// Знак «Мандата»: изометрическая «М», правая диагональ — голубой акцент, как на логотипе проекта.
+// Логотип «Мандата» — тот же, что в README: контуры знака и надписи берутся из docs/assets/logo.svg.
+// Грани знака тёмно-синие, нижняя средняя темнее, диагональ синяя; на тёмном фоне грани и надпись светлые.
+const LOGO = (() => {
+  const svg = fs.readFileSync(path.join(__dirname, "..", "..", "docs", "assets", "logo.svg"), "utf8");
+  const paths = [...svg.matchAll(/<path[^>]*?\sd="([^"]+)"/g)].map((m) => m[1]);
+  if (paths.length !== 4) throw new Error("docs/assets/logo.svg: ожидались четыре контура");
+  const [navy, deep, blue, word] = paths;
+  return { navy, deep, blue, word };
+})();
+const LOGO_COLORS = {
+  light: { navy: "#10223D", deep: "#081A34", blue: "#1A59EA", word: "#0A1A33" },
+  dark: { navy: "#EAF0FB", deep: "#B7C8E8", blue: "#5A8FFF", word: "#EAF0FB" },
+};
+// Знак без надписи: 157 × 132 в единицах исходного файла.
 function mark(onDark = false) {
-  const pillar = onDark ? "#FFFFFF" : BRAND.navy;
-  const inner = onDark ? "#CFE3FF" : "#1B3F9A";
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="360" viewBox="0 0 100 90">
-  <defs><linearGradient id="acc" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="${BRAND.cobalt}"/><stop offset="1" stop-color="${BRAND.sky}"/></linearGradient></defs>
-  <polygon points="6,20 26,8 26,82 6,70" fill="${pillar}"/>
-  <polygon points="26,8 50,34 50,56 26,30" fill="${inner}"/>
-  <polygon points="50,34 74,8 74,30 50,56" fill="url(#acc)"/>
-  <polygon points="74,8 94,20 94,70 74,82" fill="${pillar}"/>
+  const c = LOGO_COLORS[onDark ? "dark" : "light"];
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="471" height="396" viewBox="120 148 157 132">
+  <path fill="${c.navy}" d="${LOGO.navy}"/><path fill="${c.deep}" d="${LOGO.deep}"/><path fill="${c.blue}" d="${LOGO.blue}"/>
+</svg>`;
+}
+// Знак с надписью «МАНДАТ»: 660 × 132, пропорция 5 : 1.
+function lockup(onDark = false) {
+  const c = LOGO_COLORS[onDark ? "dark" : "light"];
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1980" height="396" viewBox="120 148 660 132">
+  <path fill="${c.navy}" d="${LOGO.navy}"/><path fill="${c.deep}" d="${LOGO.deep}"/><path fill="${c.blue}" d="${LOGO.blue}"/>
+  <path fill="${c.word}" fill-rule="evenodd" d="${LOGO.word}"/>
 </svg>`;
 }
 
@@ -202,8 +218,12 @@ async function buildGraphics(opts = {}) {
 
   save("mandat-mark", mark(false));
   save("mandat-mark-on-dark", mark(true));
-  out.mark = await png(mark(false), 400, 360);
-  out.markDark = await png(mark(true), 400, 360);
+  save("mandat-logo", lockup(false));
+  save("mandat-logo-on-dark", lockup(true));
+  out.mark = await png(mark(false), 471, 396);
+  out.markDark = await png(mark(true), 471, 396);
+  out.lockup = await png(lockup(false), 1980, 396);
+  out.lockupDark = await png(lockup(true), 1980, 396);
 
   // Прозрачная заглушка для зон-ссылок на слайдах.
   out.clear = await sharp({ create: { width: 4, height: 4, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 0 } } }).png().toBuffer().then((b) => "image/png;base64," + b.toString("base64"));

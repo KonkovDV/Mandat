@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="Мандат" width="420">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-on-dark.svg">
+    <img src="docs/assets/logo.png" alt="Мандат" width="420">
+  </picture>
 </p>
 
 <p align="center">

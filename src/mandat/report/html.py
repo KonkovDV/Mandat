@@ -55,10 +55,14 @@ _ICON_PATH = {
     "needs_review": "M12 6v8M12 18h.01",
     "insufficient_data": "M9.2 9a3 3 0 1 1 4.3 2.7c-.9.4-1.5 1.2-1.5 2.1V14M12 18h.01",
 }
+# Знак «Мандата» — тот же, что в README, на сайте и в презентации (docs/assets/logo-mark.svg).
+# Цвета частей заданы в CSS отчёта, поэтому в тёмной теме знак светлеет вместе с текстом.
 _MARK = (
-    '<svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">'
-    '<rect width="32" height="32" rx="7" fill="#004CBC"/>'
-    '<path d="M7 24V8h4l5 7 5-7h4v16h-4V14.5l-5 7-5-7V24z" fill="#fff"/></svg>'
+    '<svg class="mark" viewBox="120 148 157 132" aria-hidden="true" focusable="false">'
+    '<path class="m-n" d="M273 185.5 242 204 242 271 273 251.5ZM147 152 124 168 124 246.5 133 255 153.5 266'
+    ' 153.5 185.5 159 185.5 181 200 204.5 185.5Z"/>'
+    '<path class="m-d" d="M167 209 167 251.5 204.5 276 204.5 232Z"/>'
+    '<path class="m-b" d="M273 157 264 152 183 200 207 215.5 273 175Z"/></svg>'
 )
 
 CSS = """
@@ -66,8 +70,8 @@ CSS = """
 --line:#dbe3f0;--soft:#eef2f8;--accent:#004cbc;--warn-bg:#fff6e5;--warn-line:#f0c36d;--stand-bg:#eef3fb;
 --stand-line:#9db4d6;--ok:#14663f;--ok-bg:#e3f5ec;--no:#a3341a;--no-bg:#fde8e3;--review:#7a5400;
 --review-bg:#fff1d4;--gap:#465570;--gap-bg:#eceff5;--info:#3d5a80;--info-bg:#e8eef8;
---shadow:0 1px 2px rgb(11 31 68/4%),0 8px 24px rgb(11 31 68/6%)}
-@media (prefers-color-scheme:dark){:root{--bg:#0b1426;--card:#101d36;--ink:#e8eefb;--ink-2:#d6e2fb;
+--shadow:0 1px 2px rgb(11 31 68/4%),0 8px 24px rgb(11 31 68/6%);--logo-n:#10223d;--logo-d:#081a34;--logo-b:#1a59ea}
+@media (prefers-color-scheme:dark){:root{--logo-n:#eaf0fb;--logo-d:#b7c8e8;--logo-b:#5a8fff;--bg:#0b1426;--card:#101d36;--ink:#e8eefb;--ink-2:#d6e2fb;
 --muted:#a8b6d4;--line:#24375c;--soft:#15264a;--accent:#7cb1ff;--warn-bg:#33270c;--warn-line:#7a5a17;
 --stand-bg:#13284a;--stand-line:#33568c;--ok:#5fdca6;--ok-bg:#0f3526;--no:#ff9c8a;--no-bg:#3d1c17;
 --review:#ffcb66;--review-bg:#3a2c0a;--gap:#b9c5de;--gap-bg:#1d2b48;--info:#a9c4f0;--info-bg:#18294a;
@@ -81,7 +85,7 @@ main{max-width:1080px;margin:0 auto}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:clamp(14px,3vw,24px);
 margin:0 0 14px;box-shadow:var(--shadow)}
 .brand{display:flex;align-items:center;gap:10px;margin:0 0 6px}
-.mark{width:28px;height:28px;flex:none}
+.mark{width:33px;height:28px;flex:none}.mark .m-n{fill:var(--logo-n)}.mark .m-d{fill:var(--logo-d)}.mark .m-b{fill:var(--logo-b)}
 h1{margin:4px 0 12px;font-size:clamp(22px,5.2vw,32px);line-height:1.15;color:var(--ink-2);overflow-wrap:anywhere}
 h2{margin:0 0 10px;font-size:clamp(17px,2.6vw,20px);line-height:1.25;color:var(--ink-2)}
 p{margin:10px 0}

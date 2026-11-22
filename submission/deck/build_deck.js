@@ -305,7 +305,8 @@ const TERMINAL = {
     title: "Обложка",
     background: { data: G.bgDark },
     objects: [
-      { placeholder: { options: { name: "title", type: "title", x: 1.72, y: 1.5, w: 5.4, h: 1.0, fontSize: 56, bold: true, color: C.background1, align: "left", valign: "middle", margin: 0 }, text: "" } },
+      // Название продукта — логотип над заголовком; сам заголовок обложки — что это за продукт.
+      { placeholder: { options: { name: "title", type: "title", x: L, y: 2.62, w: 6.6, h: 1.1, fontSize: 24, bold: true, color: C.background1, align: "left", valign: "top", margin: 0 }, text: "" } },
     ],
   });
   pres.defineSlideMaster({
@@ -313,8 +314,7 @@ const TERMINAL = {
     background: { color: HEX.lt2 },
     margin: [0.5, 0.6, 0.6, 0.6],
     objects: [
-      { image: { x: 11.66, y: 0.3, w: 0.36, h: 0.324, data: G.mark, altText: "Знак «Мандата»" } },
-      { text: { text: "Мандат", options: { x: 12.06, y: 0.28, w: 0.67, h: 0.36, fontSize: 12, bold: true, color: C.text2, align: "right", valign: "middle", margin: 0 } } },
+      { image: { x: R - 1.15, y: 0.335, w: 1.15, h: 0.23, data: G.lockup, altText: "Логотип «Мандата»" } },
       { placeholder: { options: { name: "kicker", type: "body", x: L, y: 0.3, w: 8.5, h: 0.3, fontSize: 11, bold: true, color: C.accent1, charSpacing: 1.5, align: "left", valign: "middle", margin: 0 }, text: "" } },
       { placeholder: { options: { name: "title", type: "title", x: L, y: 0.64, w: W, h: 0.92, fontSize: 26, bold: true, color: C.text2, align: "left", valign: "top", margin: 0, lineSpacingMultiple: 0.95 }, text: "" } },
       { placeholder: { options: { name: "source", type: "body", x: L, y: 6.86, w: 11.25, h: 0.46, fontSize: 10, color: TINT.muted, align: "left", valign: "middle", margin: 0 }, text: "" } },
@@ -463,9 +463,8 @@ const TERMINAL = {
     const s = pres.addSlide({ masterName: "Обложка", sectionTitle: "Питч" });
     s.addImage({ data: ANNA.cover.data, x: ANNA.cover.x, y: 0, w: ANNA.cover.w, h: ANNA.cover.h, altText: "Анна, амбассадор «Мандата», в тёмно-синем костюме", objectName: "Фото амбассадора" });
     T(s, "Академия Финтеха 2026 · трек ВТБ «Финтех без границ» · задача «Онбординг и проверка полномочий»", L, 0.55, 7.0, 0.55, { size: 12, color: TINT.ice });
-    s.addImage({ data: G.markDark, x: L, y: 1.6, w: 0.92, h: 0.83, altText: "Знак «Мандата»" });
-    s.addText("Мандат", { placeholder: "title" });
-    T(s, [{ text: "Единое окно полномочий", options: { breakLine: true } }, { text: "для бизнес-клиентов банка", options: { fontFace: SERIF, italic: true, bold: false, fontSize: 30, color: "8FD0FF" } }], L, 2.7, 6.6, 1.05, { size: 24, bold: true, color: C.background1 });
+    s.addImage({ data: G.lockupDark, x: L, y: 1.6, w: 3.9, h: 0.78, altText: "Логотип «Мандата»", objectName: "Логотип" });
+    s.addText(typoRuns([{ text: "Единое окно полномочий", options: { breakLine: true } }, { text: "для бизнес-клиентов банка", options: { fontFace: SERIF, italic: true, bold: false, fontSize: 30, color: "8FD0FF" } }]), { placeholder: "title" });
     T(s, "Отвечает, может ли человек провести операцию от имени компании в этот день, и показывает, на чём держится ответ: поле документа, запись реестра, статья закона", L, 3.8, 6.3, 1.0, { size: 15, color: TINT.ice, lsm: 1.1 });
     let px = L;
     for (const k of ["ok", "no", "rv", "nd"]) px += pill(s, px, 5.0, k, { size: 9.5, h: 0.34 }) + 0.12;
@@ -1370,8 +1369,7 @@ const TERMINAL = {
   {
     const s = pres.addSlide({ masterName: "Финал", sectionTitle: "Питч" });
     s.addImage({ data: ANNA.final.data, x: ANNA.final.x, y: 0, w: ANNA.final.w, h: ANNA.final.h, altText: "Анна, амбассадор «Мандата», с планшетом", objectName: "Фото амбассадора" });
-    s.addImage({ data: G.markDark, x: L, y: 0.6, w: 0.62, h: 0.56, altText: "Знак «Мандата»" });
-    T(s, "Команда «Мандат»", L + 0.8, 0.6, 5.0, 0.56, { size: 16, bold: true, color: C.background1, valign: "middle" });
+    s.addImage({ data: G.lockupDark, x: L, y: 0.66, w: 2.4, h: 0.48, altText: "Логотип «Мандата»", objectName: "Логотип" });
     s.addText(typo("Спасибо! Готовы к теневому пилоту в ВТБ"), { placeholder: "title" });
     const rows = [
       ["Phone", "Коньков Дмитрий, капитан", "+7 915 452-88-64 · konkov-dmitrij@yandex.ru"],

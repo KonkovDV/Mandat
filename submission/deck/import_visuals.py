@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import tempfile
@@ -117,6 +118,29 @@ def icons(src: Path) -> None:
         )
 
 
+def _logo_png(svg: Path, height: int, out: Path) -> None:
+    """Логотип из docs/assets для превью: в SVG одни многоугольники (M … Z), поэтому он рисуется без SVG-движка —
+    PIL с четырёхкратным сглаживанием и чётно-нечётной заливкой, чтобы у букв остались отверстия."""
+    from PIL import Image, ImageChops, ImageColor, ImageDraw
+
+    text = svg.read_text(encoding="utf-8")
+    x0, y0, vw, vh = map(float, re.search(r'viewBox="([^"]+)"', text).group(1).split())
+    k = 4
+    scale = height * k / vh
+    w, h = round(vw * scale), height * k
+    canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    for fill, d in re.findall(r'<path fill="(#[0-9A-Fa-f]{6})"[^>]*?\sd="([^"]+)"', text):
+        mask = Image.new("1", (w, h), 0)
+        for sub in re.findall(r"M([^MZ]+)Z", d):
+            nums = [float(v) for v in sub.split()]
+            pts = [((nums[i] - x0) * scale, (nums[i + 1] - y0) * scale) for i in range(0, len(nums), 2)]
+            one = Image.new("1", (w, h), 0)
+            ImageDraw.Draw(one).polygon(pts, fill=1)
+            mask = ImageChops.logical_xor(mask, one)
+        canvas.paste(Image.new("RGBA", (w, h), (*ImageColor.getrgb(fill), 255)), (0, 0), mask.convert("L"))
+    canvas.convert("RGBa").resize((w // k, h // k), Image.Resampling.LANCZOS).convert("RGBA").save(out)
+
+
 def og(src: Path) -> None:
     """Превью ссылки: вопрос продукта слева, амбассадор справа с мягким переходом в фон."""
     bold, regular = str(FONTS / "GolosText-Bold.ttf"), str(FONTS / "GolosText-Regular.ttf")
@@ -176,6 +200,8 @@ def og(src: Path) -> None:
             "-composite",
             str(t / "anna.png"),
         )
+        # Логотип — тот же, что в README и на сайте, светлый вариант для тёмного фона.
+        _logo_png(ROOT / "docs" / "assets" / "logo-on-dark.svg", 60, t / "logo.png")
         _im(
             str(t / "bg.png"),
             str(t / "anna.png"),
@@ -186,26 +212,18 @@ def og(src: Path) -> None:
             "-compose",
             "over",
             "-composite",
-            "-fill",
-            "#0050D0",
-            "-draw",
-            "roundrectangle 80,72 144,136 14,14",
+            str(t / "logo.png"),
+            "-gravity",
+            "northwest",
+            "-geometry",
+            "+80+74",
+            "-compose",
+            "over",
+            "-composite",
             "-font",
             bold,
             "-fill",
             "white",
-            "-pointsize",
-            "40",
-            "-gravity",
-            "northwest",
-            "-annotate",
-            "+95+80",
-            "М",
-            "-pointsize",
-            "32",
-            "-annotate",
-            "+164+84",
-            "Мандат",
             "-pointsize",
             "56",
             "-interline-spacing",
