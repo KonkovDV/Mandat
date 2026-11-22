@@ -28,6 +28,12 @@ python -m pytest
 
 Для проверок как в CI зависимости ставятся из lock-файлов с хешами ([CONTRIBUTING](../CONTRIBUTING.md#проверки-перед-pr)). Проверка на Cedar ставится отдельно: `pip install -e ".[dev,api,cedar]"`.
 
+Готовый образ из релиза, с подписью и аттестацией происхождения ([как проверить](../SECURITY.md#проверить-пакет)):
+
+```bash
+docker pull ghcr.io/konkovdv/mandat:0.4.0
+```
+
 ## API
 
 Docker поднимает API только на localhost: `docker compose up --build`. Сначала положите в `.env` токен или список пользователей (образец в `.env.example`). Без них compose не стартует, чтобы стенд не оказался открыт с паролем по умолчанию.

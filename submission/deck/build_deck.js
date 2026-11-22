@@ -1029,7 +1029,7 @@ const TERMINAL = {
     const items = [
       ["KeyRound", "Ключи: ", "HSM по PKCS#11, Vault Transit или KMS; без ключей pilot и prod не стартуют"],
       ["Scale", "152-ФЗ: ", "минимум данных и псевдонимы, удаление по ст. 21; идентификация по 115-ФЗ — у банка"],
-      ["Container", "Сборка: ", "pip-audit, Trivy, gitleaks, CodeQL, SBOM CycloneDX"],
+      ["Container", "Сборка: ", "pip-audit, Trivy, gitleaks, CodeQL, фаззинг входа, подписанный релиз"],
     ];
     items.forEach(([ic, lead, t], i) => {
       const y = y1 + 0.1 + i * 0.42;
@@ -1622,7 +1622,7 @@ const TERMINAL = {
       ["FileX", "Вредоносные файлы", "защита от XML-бомб и внешних сущностей, строгий JSON на всех внешних входах, лимиты размера и глубины"],
       ["KeyRound", "API и роли", "оператор, рецензент, аудитор и учётная запись ДБО: допуск к платежу — только ей; чужой кейс не виден; токены — хеши"],
       ["Scale", "152-ФЗ и 115-ФЗ", "спроектировано с учётом 152-ФЗ; идентификацию по 115-ФЗ не подменяем — она за каналами банка"],
-      ["Container", "Подпись и сборка", "КЭП — через СКЗИ банка, ключ — HSM, Vault или KMS; правило утверждает только подпись юриста; pip-audit, Trivy и gitleaks — в CI и по расписанию, CodeQL, SBOM"],
+      ["Container", "Подпись и сборка", "КЭП — через СКЗИ банка, ключ — HSM, Vault или KMS; правило утверждает только подпись юриста; pip-audit, Trivy и gitleaks — в CI и по расписанию, CodeQL, фаззинг входа, подписанный релиз"],
     ];
     const cw = (W - 2 * GAP) / 3, ch = (BOTTOM - TOP - GAP) / 2;
     tiles.forEach(([ic, head, t], i) => {
@@ -1703,7 +1703,7 @@ const TERMINAL = {
       ["Webhook", "Standard Webhooks", "подписанные события о полномочиях для антифрода банка"],
       ["IdCard", "GLEIF vLEI · ISO 17442-3", "роль представителя как проверяемое удостоверение — тот же принцип"],
       ["ShieldAlert", "OWASP LLM Top 10 2025", "риски советника-ИИ разобраны: шлюз цитат, данные в маркерах, без инструментов"],
-      ["Container", "SLSA, SBOM, Scorecard", "подписанное происхождение сборки, CycloneDX SBOM, закреплённые версии"],
+      ["Container", "SLSA, SBOM, Scorecard", "подпись Sigstore и происхождение SLSA у релиза, CycloneDX SBOM, закреплённые версии"],
     ];
     const gap = 0.2, cw = (W - 3 * gap) / 4, ch = (BOTTOM - TOP - 0.95 - gap) / 2;
     std.forEach(([ic, head, t], i) => {

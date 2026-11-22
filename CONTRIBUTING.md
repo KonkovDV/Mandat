@@ -19,8 +19,8 @@ python -m venv .venv && . .venv/bin/activate
 python -m pip install --require-hashes -r requirements/pip.lock
 python -m pip install --require-hashes -r requirements/dev.lock -r requirements/build.lock
 python -m pip install --no-deps --no-build-isolation -e .
-python -m ruff check src tests scripts tools
-python -m ruff format --check src tests scripts tools
+python -m ruff check src tests scripts tools fuzz
+python -m ruff format --check src tests scripts tools fuzz
 python -m mypy
 python -m pytest --cov=mandat
 python scripts/lint_claims.py
@@ -36,7 +36,7 @@ python scripts/build_evidence.py --verify-source
 
 ## Сборка пакета
 
-Так же, как задача `package` в CI, на Python 3.12. У файлов в `dist/` нет подписи: подписанный артефакт есть только у прогона `main` ([как проверить](SECURITY.md#проверить-пакет)).
+Так же, как задача `package` в CI, на Python 3.12. У файлов в `dist/` нет подписи: подписанные файлы есть только у прогона `main` и у релиза ([как проверить](SECURITY.md#проверить-пакет)).
 
 ```bash
 python -m pip install --require-hashes -r requirements/tools.lock
@@ -45,6 +45,27 @@ python -m build --no-isolation
 ```
 
 `build` берётся из `tools.lock`, бэкенд `setuptools` — из `build.lock`. Без `--no-isolation` pip скачал бы бэкенд без хеша.
+
+## Фаззинг
+
+Цели лежат в `fuzz/`: разбор МЧД в XML, выписки ЕГРЮЛ, манифеста кейса и маскировка ПДн перед моделью. Каждая цель — функция `test_one_input(data: bytes)`; допустимые отказы разбора перечислены в ней самой, любое другое исключение или зависание — находка. В CI их гоняет ClusterFuzzLite (`.clusterfuzzlite/`, рабочий процесс `cflite`), обычные тесты прогоняют цели на затравочном корпусе (`tests/test_fuzz_targets.py`).
+
+Локально нужен atheris, у него есть колёса для Python 3.11:
+
+```bash
+python3.11 -m venv .fuzz && . .fuzz/bin/activate
+pip install atheris && pip install --require-hashes -r requirements/runtime.lock
+python fuzz/seed_corpus.py var/fuzz && (cd var/fuzz && unzip -oq fuzz_emchd_seed_corpus.zip -d emchd)
+PYTHONPATH=src python fuzz/fuzz_emchd.py var/fuzz/emchd -max_total_time=60
+```
+
+Найденный вход сохраняется рядом как `crash-…`. Исправление закрепляется тестом с этим входом, сам файл в репозиторий не кладут.
+
+## Релиз
+
+1. Поднять версию в `pyproject.toml`, `src/mandat/__init__.py` и `CITATION.cff`, переименовать раздел «Не выпущено» в `CHANGELOG.md` в `## X.Y.Z — ДД.ММ.ГГГГ`, пересобрать `evidence.json`, презентацию и пакет аналитики.
+2. Влить в `main` и запустить рабочий процесс `release` с той же версией: Actions → release → Run workflow.
+3. Процесс сверит версию с `pyproject.toml` и `CHANGELOG.md`, подпишет файлы, опубликует образ в GHCR и страницу релиза. Проверка подписи — в [SECURITY.md](SECURITY.md#проверить-пакет).
 
 ## Коммиты
 

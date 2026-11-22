@@ -10,7 +10,7 @@
 
 ## Поддерживаемые версии
 
-Релизов нет. Исправления выходят только в `main`. Веток поддержки старых версий нет: проверяйте уязвимость на последнем коммите `main`. Срок, до которого отдельная версия ещё получает исправления, не задан: такой версии нет.
+Поддерживается последний релиз и `main`. Исправления выходят в `main` и в следующем релизе; веток поддержки старых версий нет, поэтому уязвимость проверяйте на последнем коммите `main`.
 
 ## Что уже защищено
 
@@ -33,23 +33,32 @@
 | Внешний JSON | `strictjson` по I-JSON (RFC 7493): повтор ключа, NaN, бесконечность, число вне IEEE 754, одиночный суррогат и глубина больше 64 — ошибка входа. Так читаются тела трёх POST (в API это 422), манифест кейса, выписка ЕГРЮЛ, ответ модели, удостоверение, списки статусов, журнал, список пользователей и импорт классификатора. Не-символы вроде U+FFFE остаются: каноническая запись пишет их однозначно, а тот же разбор читает журнал. Ответ read-back якоря тоже читается строго и не длиннее 1 МБ: слишком глубокий документ — отказ, а не падение проверки |
 | Допуск операции | `authorize_operation` сверяет организацию, день операции по Москве, операцию, сумму, представителя, получателя и одноразовый `nonce` (C-18). HTTP-маршрута допуска нет. На стенде вызов без запроса привязку не проверяет; в `pilot` и `prod` без запроса — отказ |
 | Подпись событий | [Standard Webhooks 1.0](https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md): HMAC-SHA256 над `id.timestamp.body`, секрет `whsec_` от 24 до 64 байт или ключ Ed25519 `whsk_` (подпись `v1a`), несколько подписей в заголовке для смены ключа без простоя, окно ±5 минут, метка времени — от 1 до 12 цифр, повтор `webhook-id` отвергается при переданном хранилище. В `pilot` и `prod` без хранилища повторов событие отклоняется. Проверено на тестовом векторе эталонной библиотеки |
-| CI и цепочка поставки | у токена по умолчанию нет прав, каждой задаче выдаются только нужные. Все действия закреплены полными хешами коммитов с версией в комментарии, базовый образ — по дайджесту. `pip-audit` на каждом прогоне, статический анализ CodeQL на PR в `main` и раз в неделю, OpenSSF Scorecard раз в неделю. Для `main` собираются пакет и CycloneDX SBOM, к ним выпускаются подписанные аттестации происхождения (SLSA provenance) и SBOM. Как проверить артефакт — [ниже](#проверить-пакет) |
+| CI и цепочка поставки | у токена по умолчанию нет прав, каждой задаче выдаются только нужные. Все действия закреплены полными хешами коммитов с версией в комментарии, базовый образ — по дайджесту. `pip-audit` на каждом прогоне, статический анализ CodeQL на PR в `main` и раз в неделю, OpenSSF Scorecard раз в неделю, фаззинг разбора входа в ClusterFuzzLite на PR и раз в неделю. Для `main` собираются пакет и CycloneDX SBOM с подписанными аттестациями происхождения (SLSA provenance) и SBOM. Каждый файл релиза подписан Sigstore, образ контейнера публикуется в GHCR со своей аттестацией. Как проверить — [ниже](#проверить-пакет) |
 
 ## Проверить пакет
 
-Артефакт `dist` собирается только при push в `main` и хранится 30 дней. Релизов на GitHub нет: подпись относится к этому артефакту, а не к странице Releases. Локальная сборка из исходников эту подпись не получает ([как собрать](CONTRIBUTING.md#сборка-пакета)).
+Релиз выпускает рабочий процесс `release.yml` по номеру версии из `pyproject.toml`. В релизе колесо, sdist, SBOM CycloneDX, презентация и пакет аналитики; у каждого файла рядом подпись Sigstore (`*.sigstore.json`), происхождение сборки SLSA лежит в `mandat-<версия>.intoto.jsonl` и в аттестациях GitHub. Образ `ghcr.io/konkovdv/mandat:<версия>` несёт свою аттестацию.
 
-В артефакте три файла: колесо `mandat-<версия>-py3-none-any.whl`, sdist `mandat-<версия>.tar.gz` и `mandat.cdx.json` (SBOM CycloneDX). Версия — из `pyproject.toml`, сейчас 0.3.0. Происхождение SLSA (предикат `https://slsa.dev/provenance/v1`) покрывает колесо и sdist. Аттестация SBOM (предикат `https://cyclonedx.org/bom`) покрывает колесо.
+```bash
+gh release download v0.4.0 --repo KonkovDV/Mandat -D release
+gh attestation verify release/mandat-0.4.0-py3-none-any.whl --repo KonkovDV/Mandat --signer-workflow KonkovDV/Mandat/.github/workflows/release.yml
+gh attestation verify oci://ghcr.io/konkovdv/mandat:0.4.0 --repo KonkovDV/Mandat
+python -m sigstore verify github release/Mandat_VTB-0.4.0.pdf --repository KonkovDV/Mandat --name release --trigger workflow_dispatch
+```
+
+Кроме релизов, артефакт `dist` собирается при каждом push в `main` и хранится 30 дней. Локальная сборка из исходников подписи не получает ([как собрать](CONTRIBUTING.md#сборка-пакета)).
+
+В артефакте три файла: колесо `mandat-<версия>-py3-none-any.whl`, sdist `mandat-<версия>.tar.gz` и `mandat.cdx.json` (SBOM CycloneDX). Версия — из `pyproject.toml`, сейчас 0.4.0. Происхождение SLSA (предикат `https://slsa.dev/provenance/v1`) покрывает колесо и sdist. Аттестация SBOM (предикат `https://cyclonedx.org/bom`) покрывает колесо.
 
 Ожидаемая подпись сборки — рабочий процесс `https://github.com/KonkovDV/Mandat/.github/workflows/ci.yml` на `refs/heads/main`.
 
 ```bash
 gh run download <id> -n dist -D dist
-gh attestation verify dist/mandat-0.3.0-py3-none-any.whl --repo KonkovDV/Mandat --signer-workflow KonkovDV/Mandat/.github/workflows/ci.yml --source-ref refs/heads/main
-gh attestation verify dist/mandat-0.3.0-py3-none-any.whl --repo KonkovDV/Mandat --predicate-type https://cyclonedx.org/bom
+gh attestation verify dist/mandat-0.4.0-py3-none-any.whl --repo KonkovDV/Mandat --signer-workflow KonkovDV/Mandat/.github/workflows/ci.yml --source-ref refs/heads/main
+gh attestation verify dist/mandat-0.4.0-py3-none-any.whl --repo KonkovDV/Mandat --predicate-type https://cyclonedx.org/bom
 ```
 
-Команды проверены 27.10.2026 на колесе из артефакта прогона [40456329213](https://github.com/KonkovDV/Mandat/actions/runs/40456329213) (коммит `1c61c24`): обе завершились с кодом 0. Чужой `--source-ref` и файл с изменённым байтом дают код 1: у изменённого файла аттестации нет. Та же проверка происхождения применяется к sdist: в аттестации он указан рядом с колесом.
+Команды проверены 27.10.2026 на колесе из артефакта `main`: обе завершились с кодом 0. Чужой `--source-ref` и файл с изменённым байтом дают код 1: у изменённого файла аттестации нет. Та же проверка происхождения применяется к sdist: в аттестации он указан рядом с колесом.
 
 ## Зависимости и сканеры
 
@@ -57,7 +66,7 @@ gh attestation verify dist/mandat-0.3.0-py3-none-any.whl --repo KonkovDV/Mandat 
 
 **Получение.** Ставятся lock-файлы с хешами (`uv pip compile --generate-hashes`, [requirements/README.md](requirements/README.md)). Сборочный бэкенд — `requirements/build.lock`, сборка идёт с `--no-isolation`, чтобы pip не скачал бэкенд без хеша. Базовый образ контейнера закреплён дайджестом.
 
-**Учёт.** Версии поднимаются вручную: lock-файлы пересобираются вместе с тестами ([requirements/README.md](requirements/README.md#обновление-версий)), а `pip-audit`, Trivy и `npm audit` на каждом PR и по расписанию сообщают, что пора. Для `main` к артефакту прилагается SBOM CycloneDX.
+**Учёт.** Версии поднимаются вручную: lock-файлы пересобираются вместе с тестами ([requirements/README.md](requirements/README.md#обновление-версий)), а `pip-audit`, Trivy и `npm audit` на каждом PR и по расписанию сообщают, что пора. Dependabot настроен только на уязвимости: плановых PR с новыми версиями он не открывает (`open-pull-requests-limit: 0` в `.github/dependabot.yml`). Для `main` и релизов к пакету прилагается SBOM CycloneDX.
 
 **Порог.** Находка не помечается как неэксплуатируемая: списка подавлений нет. Единственное послабление — Trivy не валит сборку на уязвимости, для которых исправления ещё нет.
 
@@ -69,6 +78,7 @@ gh attestation verify dist/mandat-0.3.0-py3-none-any.whl --repo KonkovDV/Mandat 
 Обе проверки идут на каждом push и PR, а на `main` ещё и по расписанию, по понедельникам и четвергам: новая консультация появляется без изменения кода, и красный прогон по расписанию виден до следующего PR.
 | ruff, правила `S` | срабатывание блокирует; глобально пропущен `S101`, в `tests` пропущены `S` и `B`, в `scripts` — `S603` и `S607` | задача `test` |
 | CodeQL | отчёт на PR в `main` и по понедельникам | ничего: задача `analyze` не входит в обязательные проверки |
+| ClusterFuzzLite, цели `fuzz/fuzz_*.py` | любое исключение, кроме объявленных отказов разбора, и зависание; на PR 5 минут по целям, которые задевает изменение, по понедельникам 30 минут по всем | задача `pr` рабочего процесса `cflite` на PR, в обязательные проверки не входит |
 | gitleaks 8.30.1 (бинарник по SHA-256) | любая находка во всей истории git; найденное значение в лог не попадает (`--redact`) | ничего: задача `secret-scan` идёт на push, PR и по вторникам, но в обязательные проверки не входит |
 
 Исключения gitleaks в `.gitleaks.toml` — не подавленные находки, а совпадения, которые секретом не являются: аннотации типов `key: Ed25519PrivateKey`, опубликованный тестовый вектор W3C vc-di-eddsa и пример из спецификации Standard Webhooks. У каждого — объяснение; новое добавляется только так же. Исключение по шаблону действует на само совпадение, а не на всю строку: токен, дописанный в строку с аннотацией, проверка ловит. В отличие от secret scanning GitHub, эта проверка переносится в контур банка: GitLab или Gitea запускают тот же бинарник с тем же файлом.
@@ -77,12 +87,13 @@ gh attestation verify dist/mandat-0.3.0-py3-none-any.whl --repo KonkovDV/Mandat 
 
 ## Настройки репозитория
 
-Снято с API репозитория 27.10.2026.
+Что должно быть включено в настройках GitHub. Сверять после любой смены владельца или переноса репозитория.
 
-- Secret scanning и push protection включены. Автоматических PR с обновлениями нет: версии двигает пересборка lock-файлов.
+- Secret scanning и push protection включены. Dependabot alerts и security updates включены; плановых PR нет, их выключает `.github/dependabot.yml`.
 - Private vulnerability reporting выключен. Куда писать — [выше](#нашли-уязвимость).
-- Защита `main` требует свежие проверки (`strict`): `analysis` (OpenSSF Scorecard), `docker`, `package`, `test (3.11)`, `test (3.12)`, `test (3.13)`. Не обязательны `test (3.14)`, `test (3.15)`, `redis`, `compose-pilot` и CodeQL `analyze`. Задача `package` запускается только при push в `main`, на PR её нет: пакет собирается после влития.
-- Обязательного ревью нет. Правило не распространяется на администраторов: администратор может влить изменение в обход проверок. Force-push и удаление ветки `main` запрещены.
+- Защита `main`: запрещены force-push и удаление ветки, перед влитием нужны свежие проверки (`strict`) `docker`, `test (3.11)`, `test (3.12)`, `test (3.13)` и `analysis` (OpenSSF Scorecard). Задача `package` идёт только при push в `main`, поэтому в обязательные её не включают.
+- Изменения идут через PR с одобрением второго участника команды: это учитывает проверка Code-Review в OpenSSF Scorecard.
+- Pages публикуются из GitHub Actions, переменная `PAGES_ENABLED` = `true`.
 
 ## Журнал и внешний якорь
 

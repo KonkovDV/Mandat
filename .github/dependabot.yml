@@ -1,0 +1,30 @@
+# Dependabot следит только за уязвимостями. Плановых PR с новыми версиями нет (open-pull-requests-limit: 0):
+# lock-файлы обновляются вручную и проверяются pip-audit, Trivy и npm audit (requirements/README.md).
+# Исправления уязвимостей Dependabot предлагает, когда в настройках репозитория включены security updates.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+  - package-ecosystem: npm
+    directory: "/submission/deck"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+  - package-ecosystem: npm
+    directory: "/scripts"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
