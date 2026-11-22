@@ -275,7 +275,7 @@ function reference(p) {
   const prevented = p.incidents_q * 4 * p.vtb_share * p.authority_share * (p.loss_q / p.incidents_q);
   const effect = fte * costFte * p.realization + prevented * p.bank_loss_share;
   const oneOff = p.impl_t1 * (1 + p.vat) + p.bank_integration_py * p.bank_it_cost + p.bank_infra + p.bank_security;
-  const annual = p.fixed_t1 + p.clients * p.price_client + p.bank_support_py * p.bank_it_cost;
+  const annual = p.fixed_t1 * (1 + p.vat) + p.clients * p.price_client + p.bank_support_py * p.bank_it_cost;
   const y1 = effect * p.ramp - annual, y2 = effect - annual;
   const payback = y1 >= oneOff ? (12 * oneOff) / y1 : y2 <= 0 ? Infinity : 12 + (12 * (oneOff - y1)) / y2;
   return { fte, prevented, payback };

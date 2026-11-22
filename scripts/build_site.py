@@ -566,8 +566,9 @@ def economics() -> dict[str, str]:
         "prevented": _num(float(bank["prevented_round"][1])),
         "fte": str(fte),
         "fte_word": _plural(fte, "ставка", "ставки", "ставок"),
-        "incidents_h1": _num(2 * float(effect["incidentsPerQuarter"])),
-        "loss_h1_bln": _num(2 * float(effect["lossPerQuarterMln"]) / 1000, 1),
+        # База эффекта — среднее за квартал I–III кварталов 2026 года, итог за девять месяцев — трижды среднее.
+        "incidents_9m": _num(3 * float(effect["incidentsPerQuarter"])),
+        "loss_9m_bln": _num(3 * float(effect["lossPerQuarterMln"]) / 1000, 1),
     }
 
 

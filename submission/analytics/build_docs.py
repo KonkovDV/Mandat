@@ -874,7 +874,8 @@ def pdf_fonts(path: Path) -> set[str]:
 # ---------------------------------------------------------------- сборка
 
 
-# Банк России, операции без согласия у юрлиц (M-07, M-15); те же числа — в колоде (build_deck.js, CBR).
+# Банк России, операции без согласия у юрлиц (M-07, M-15, M-52); те же числа — в колоде (build_deck.js, CBR).
+# III кв. 2026 — страница обзора от 19.11.2026, данные предварительные.
 CBR = {
     "q1_ops": 818,
     "q1_loss": 573.0,
@@ -884,24 +885,31 @@ CBR = {
     "q2_loss": 831.4,
     "q2_refund_accounts": 0.195,
     "q2_refund_sbp": 0.005,
-    "q2_all_ops": 458655,
-    "q2_all_loss": 7350.7,
+    "q3_ops": 931,
+    "q3_accounts": 868,
+    "q3_sbp": 63,
+    "q3_loss": 695.1,
+    "q3_refund_accounts": 0.112,
+    "q3_refund_sbp": 0.0,
+    "q3_all_ops": 477401,
+    "q3_all_loss": 7250.3,
     "share_q1": 0.078,
     "share_q2": 0.113,
+    "share_q3": 0.096,
 }
 
 
 def cbr(inp: dict) -> SimpleNamespace:
-    """Производные числа обзоров Банка России; база эффекта в модели — среднее за квартал I полугодия."""
+    """Производные числа обзоров Банка России; база эффекта в модели — среднее за квартал I–III кварталов 2026."""
     c = dict(CBR)
-    c["h1_ops"] = c["q1_ops"] + c["q2_ops"]
-    c["h1_loss"] = c["q1_loss"] + c["q2_loss"]
-    c["q2_avg"] = c["q2_loss"] / c["q2_ops"]
-    c["h1_avg"] = c["h1_loss"] / c["h1_ops"]
-    c["q2_ratio"] = round(c["q2_avg"] * 1000 / (c["q2_all_loss"] * 1000 / c["q2_all_ops"]))
-    c["growth"] = (c["q2_loss"] - c["q1_loss"]) / c["q1_loss"]
-    if c["h1_ops"] / 2 != inp["incidents_q"]["values"][0] or abs(c["h1_loss"] / 2 - inp["loss_q"]["values"][0]) > 0.05:
-        raise SystemExit("effect_scenarios.json расходится с данными Банка России за I полугодие 2026")
+    c["m9_ops"] = c["q1_ops"] + c["q2_ops"] + c["q3_ops"]
+    c["m9_loss"] = c["q1_loss"] + c["q2_loss"] + c["q3_loss"]
+    c["q3_avg"] = c["q3_loss"] / c["q3_ops"]
+    c["m9_avg"] = c["m9_loss"] / c["m9_ops"]
+    c["q3_ratio"] = round(c["q3_avg"] * 1000 / (c["q3_all_loss"] * 1000 / c["q3_all_ops"]))
+    c["change"] = (c["q3_loss"] - c["q2_loss"]) / c["q2_loss"]
+    if c["m9_ops"] / 3 != inp["incidents_q"]["values"][0] or abs(c["m9_loss"] / 3 - inp["loss_q"]["values"][0]) > 0.05:
+        raise SystemExit("effect_scenarios.json расходится с данными Банка России за I–III кварталы 2026")
     return SimpleNamespace(**c)
 
 

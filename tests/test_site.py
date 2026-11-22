@@ -209,7 +209,7 @@ def test_sprint_2_criteria_and_value_for_the_bank_come_from_the_model(site):
     values = build_site.economics()
     unit = build_site.effect_model.unit_economics()[1]
     assert values["unit_manual"] == build_site._num(round(float(unit["manual_check_rub"]) / 10) * 10)
-    for key in ("unit_manual", "unit_mandat", "payback", "prevented", "incidents_h1", "loss_h1_bln"):
+    for key in ("unit_manual", "unit_mandat", "payback", "prevented", "incidents_9m", "loss_9m_bln"):
         assert values[key] in page, key
     form = (ROOT / "submission" / "FORM_SPRINT2.md").read_text(encoding="utf-8")
     for phrase in (

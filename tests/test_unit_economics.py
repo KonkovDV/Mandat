@@ -41,10 +41,10 @@ def test_documented_table_matches_the_model():
 
 def test_base_scenario_is_what_the_claims_registry_says():
     base = next(r for r in ROWS if r["scenario"] == "Базовый")
-    assert base["manual_check_rub"] == 542 and base["mandat_cost_per_check_rub"] == 64
-    assert base["manual_to_mandat"] == 8.5
+    assert base["manual_check_rub"] == 542 and base["mandat_cost_per_check_rub"] == 69
+    assert base["manual_to_mandat"] == 7.9
     registry = (ROOT / "CLAIMS_REGISTRY.md").read_text(encoding="utf-8")
-    assert "около 540 ₽" in registry and "около 64 ₽" in registry and "8,5 раза" in registry
+    assert "около 540 ₽" in registry and "около 69 ₽" in registry and "7,9 раза" in registry
 
 
 @pytest.mark.parametrize("row", ROWS, ids=lambda r: r["scenario"])

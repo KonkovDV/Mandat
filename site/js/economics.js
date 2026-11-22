@@ -19,7 +19,9 @@ export function compute(p) {
   const prevented = ops_year * p.vtb_share * p.authority_share * loss_op;
   const bank_loss = prevented * p.bank_loss_share;
   const effect_cash = cash_saving + bank_loss;
-  const sub_vtb = p.fixed_t1 + p.clients * p.price_client;
+  // Постоянная часть подписки — услуга (сопровождение правил и поддержка): НДС 22 %, банк не принимает его к вычету.
+  // Плата за клиентов — лицензия на ПО из реестра российского ПО, без НДС (пп. 26 п. 2 ст. 149 НК РФ).
+  const sub_vtb = p.fixed_t1 * (1 + p.vat) + p.clients * p.price_client;
   const impl_vat = p.impl_t1 * (1 + p.vat);
   const integration = p.bank_integration_py * p.bank_it_cost;
   const one_off = impl_vat + integration + p.bank_infra + p.bank_security;
