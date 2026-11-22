@@ -46,6 +46,8 @@ gh attestation verify oci://ghcr.io/konkovdv/mandat:0.4.0 --repo KonkovDV/Mandat
 python -m sigstore verify github release/Mandat_VTB-0.4.0.pdf --repository KonkovDV/Mandat --name release --trigger workflow_dispatch
 ```
 
+Проверено 22.11.2026 на файлах релиза 0.4.0: колесо и презентация проходят `sigstore verify` с привязкой к репозиторию, процессу `release` и ветке `main`, а презентация с одним добавленным байтом не проходит. В `mandat-0.4.0.intoto.jsonl` — конверт DSSE с выпиской SLSA provenance v1 на все шесть файлов.
+
 Кроме релизов, артефакт `dist` собирается при каждом push в `main` и хранится 30 дней. Локальная сборка из исходников подписи не получает ([как собрать](CONTRIBUTING.md#сборка-пакета)).
 
 В артефакте три файла: колесо `mandat-<версия>-py3-none-any.whl`, sdist `mandat-<версия>.tar.gz` и `mandat.cdx.json` (SBOM CycloneDX). Версия — из `pyproject.toml`, сейчас 0.4.0. Происхождение SLSA (предикат `https://slsa.dev/provenance/v1`) покрывает колесо и sdist. Аттестация SBOM (предикат `https://cyclonedx.org/bom`) покрывает колесо.

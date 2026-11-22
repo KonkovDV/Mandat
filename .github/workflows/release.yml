@@ -143,6 +143,9 @@ jobs:
           text = open("CHANGELOG.md", encoding="utf-8").read()
           version = os.environ["VERSION"]
           section = re.search(rf"^## {re.escape(version)} — .*?$(.*?)(?=^## |\Z)", text, re.M | re.S).group(1).strip()
+          # Относительные ссылки CHANGELOG.md на странице релиза не открываются: ведём их на файлы этого тега.
+          base = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/blob/v{version}/"
+          section = re.sub(r"\]\((?!https?://|#)([^)]+)\)", lambda m: f"]({base}{m.group(1)})", section)
           image = f"ghcr.io/konkovdv/mandat:{version}"
           check = (
               "\n\n## Проверка подписи\n\n"
