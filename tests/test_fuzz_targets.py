@@ -54,7 +54,7 @@ def _mutations(seed: bytes, rnd: random.Random, count: int) -> list[bytes]:
     return out
 
 
-@pytest.mark.parametrize("name", ["fuzz_emchd", "fuzz_egrul", "fuzz_privacy", "fuzz_case"])
+@pytest.mark.parametrize("name", ["fuzz_emchd", "fuzz_egrul", "fuzz_privacy", "fuzz_case", "fuzz_monitoring"])
 def test_target_survives_its_seeds_and_mutations(name):
     target: Callable[[bytes], None] = _load(name).test_one_input
     seeds = [data for _, data in SEEDS[name]]

@@ -27,7 +27,13 @@ def inline_manifest(case_dir: Path) -> bytes:
 
 
 def seeds() -> dict[str, list[tuple[str, bytes]]]:
-    out: dict[str, list[tuple[str, bytes]]] = {"fuzz_emchd": [], "fuzz_egrul": [], "fuzz_privacy": [], "fuzz_case": []}
+    out: dict[str, list[tuple[str, bytes]]] = {
+        "fuzz_emchd": [],
+        "fuzz_egrul": [],
+        "fuzz_privacy": [],
+        "fuzz_case": [],
+        "fuzz_monitoring": [(p.name, p.read_bytes()) for p in sorted((ROOT / "examples" / "events").glob("*.json"))],
+    }
     for case in CASES:
         for xml in sorted(case.glob("*.xml")):
             out["fuzz_emchd"].append((f"{case.name}-{xml.name}", xml.read_bytes()))
