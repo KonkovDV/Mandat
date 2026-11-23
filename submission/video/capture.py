@@ -29,6 +29,8 @@ STEPS = [
     ("monitor_revoked", ["mandat", "monitor", "examples/events/poa_revoked.json", "--status-dir", "var/demo/status"]),
     ("verify_revoked", ["mandat", "attest-verify", "var/demo/attestations/03_subdelegation_ok.json", *STATUS]),
     ("monitor_takeover", ["mandat", "monitor", "examples/events/takeover.json", "--status-dir", "var/demo/status"]),
+    # Без --status-dir: сроки показываются тревогами и не меняют статусы удостоверений стенда для следующих сцен.
+    ("monitor_expiring", ["mandat", "monitor", "examples/events/poa_expiring.json"]),
     ("verify_after", ["mandat", "attest-verify", "var/demo/attestations/01_ok.json", *STATUS]),
     ("journal_verify", ["mandat", "journal-verify", "var/demo/journal.jsonl"]),
     ("journal_proof", ["mandat", "journal-proof", "var/demo/journal.jsonl", "--seq", "3"]),

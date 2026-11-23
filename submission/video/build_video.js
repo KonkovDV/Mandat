@@ -166,16 +166,21 @@ function scenes(cardInfo) {
         { cmd: cmdOf("verify_after"), out: [...outLines("verify_after"), code("verify_after")] },
       ],
       caption: "Смена директора, новая МЧД и смена реквизитов за 72 часа — <b>удостоверения приостановлены до платежа</b>" },
-    { kind: "term", step: "9 · захват до платежа", hold: 8, termTitle: "mandat showcase · ДБО спрашивает «Мандат» перед каждым платежом",
+    { kind: "term", step: "9 · мониторинг: сроки МЧД", hold: 3.5, termTitle: "mandat · удостоверения и мониторинг",
+      steps: [
+        { cmd: cmdOf("monitor_expiring"), out: pick("monitor_expiring", ['"kind": "poa_expiring"', "перевыпустить МЧД до 03.12.2026", "до конца срока 10 дней", '"kind": "poa_invalidated"', "срок истёк", '"attestation_action": "revocation"']) },
+      ],
+      caption: "За 30 дней до конца срока МЧД — <b>напоминание, пока платёж не сорвался</b>; срок прошёл, а реестр молчит — права всё равно падают" },
+    { kind: "term", step: "10 · захват до платежа", hold: 8, termTitle: "mandat showcase · ДБО спрашивает «Мандат» перед каждым платежом",
       steps: [{ cmd: run.showcase.cmd, out: showcaseLines() }],
       caption: "Повтор и завышенная сумма — отказ; после признаков захвата <b>следующий платёж не проходит до списания денег</b>" },
-    { kind: "term", step: "10 · журнал решений", hold: 4, termTitle: "mandat · журнал",
+    { kind: "term", step: "11 · журнал решений", hold: 4, termTitle: "mandat · журнал",
       steps: [
         { cmd: cmdOf("journal_verify"), out: outLines("journal_verify") },
         { cmd: cmdOf("journal_proof"), out: pick("journal_proof", ['"seq": 3', '"size": 14', '"case_id"', '"verdict"', '"leaf_hash"', '"root"', '"verified": true']) },
       ],
       caption: "Журнал решений: правку записи видно, <b>аудитор получает доказательство одной записи</b> без всего журнала" },
-    { kind: "term", step: "11 · HTTP API", hold: 6, narrow: true, termTitle: "ДБО или АБС банка → «Мандат»", json: apiJson,
+    { kind: "term", step: "12 · HTTP API", hold: 6, narrow: true, termTitle: "ДБО или АБС банка → «Мандат»", json: apiJson,
       steps: [
         { cmd: "curl -s -X POST http://127.0.0.1:8000/v1/cases \\", out: [
           { type: "out", text: '    -H "Authorization: Bearer $MANDAT_API_TOKEN" \\' },
