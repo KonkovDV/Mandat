@@ -30,6 +30,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
@@ -41,6 +42,9 @@ EVENT_KINDS = {"EIO_CHANGED", "POA_REVOKED", "POA_EXPIRED", "NEW_POA", "REQUISIT
 HIJACK_PATTERN = {"EIO_CHANGED", "NEW_POA", "REQUISITES_CHANGE_REQUEST"}
 # За сколько дней до конца срока МЧД предупреждать: месяца хватает перевыпустить и зарегистрировать новую.
 NOTICE_DAYS = 30
+# Сколько связей «тревога — право» даёт одна пачка. Повтор события по тысячам прав иначе раздувает ответ
+# до гигабайт; обычная пачка за день — тысячи связей, большую банк делит по организациям.
+MAX_ALERT_RIGHTS = 1_000_000
 
 
 @dataclass(frozen=True)
@@ -144,10 +148,12 @@ def _valid_until(value: Any, numbers: tuple[str, ...]) -> tuple[tuple[str, date]
         return ()
     if not isinstance(value, dict):
         raise ValueError("poa_valid_until должен быть объектом «номер МЧД → дата»")
+    # Номер → место в цепочке: поиск по кортежу на каждом сроке делал длинную цепочку квадратичной.
+    position = {number: i for i, number in reversed(list(enumerate(numbers)))}
     out = []
     for raw, day in value.items():
         number = normalize_poa_number(raw)
-        if not number or number not in numbers:
+        if not number or number not in position:
             raise ValueError(f"срок указан для МЧД {raw!r}, которой нет в цепочке права")
         if not isinstance(day, str):
             raise ValueError("дата окончания МЧД должна быть строкой ГГГГ-ММ-ДД")
@@ -155,7 +161,7 @@ def _valid_until(value: Any, numbers: tuple[str, ...]) -> tuple[tuple[str, date]
             out.append((number, date.fromisoformat(day)))
         except ValueError as exc:
             raise ValueError(f"дата окончания МЧД не разобрана: {day!r}") from exc
-    return tuple(sorted(out, key=lambda pair: numbers.index(pair[0])))
+    return tuple(sorted(out, key=lambda pair: position[pair[0]]))
 
 
 def parse_as_of(payload: dict[str, Any], warnings: list[str] | None = None) -> datetime | None:
@@ -273,6 +279,28 @@ def _expiry_alerts(rights: list[GrantedRight], events: list[Event], as_of: datet
     return alerts
 
 
+def _takeover_window(evs: list[Event], window: timedelta) -> list[Event] | None:
+    """Первое окно [t, t + window] с тремя сигналами захвата. События отсортированы по времени.
+
+    Окно скользит за один проход. Раньше каждое начало окна заново перебирало все события организации,
+    и пачка из 20 тысяч событий одной компании считалась 23 секунды.
+    """
+    counts: Counter[str] = Counter()
+    start = end = 0
+    while start < len(evs):
+        moment = evs[start].at
+        while end < len(evs) and evs[end].at <= moment + window:
+            counts[evs[end].kind] += 1
+            end += 1
+        if all(counts[kind] for kind in HIJACK_PATTERN):
+            return evs[start:end]
+        # События с тем же временем дают то же окно: следующее начало — следующий момент.
+        while start < len(evs) and evs[start].at == moment:
+            counts[evs[start].kind] -= 1
+            start += 1
+    return None
+
+
 def evaluate(
     rights: list[GrantedRight],
     events: list[Event],
@@ -283,26 +311,39 @@ def evaluate(
 ) -> list[Alert]:
     """Тревоги по событиям, а с моментом ``as_of`` — ещё и по срокам МЧД из самих прав."""
     alerts: list[Alert] = []
+    linked = 0
+
+    def add(alert: Alert) -> None:
+        nonlocal linked
+        linked += len(alert.affected_rights)
+        if linked > MAX_ALERT_RIGHTS:
+            limit = f"{MAX_ALERT_RIGHTS:_}".replace("_", " ")
+            raise ValueError(f"пачка даёт больше {limit} связей «тревога — право»: разбейте её по организациям")
+        alerts.append(alert)
+
+    # Повторная доставка того же события (очередь «хотя бы один раз») не даёт второй тревоги.
+    events = list({ev.event_id: ev for ev in events}.values())
     by_org: dict[str, list[Event]] = {}
     for ev in sorted(events, key=lambda e: e.at):
         by_org.setdefault(ev.org_inn, []).append(ev)
+    rights_by_org: dict[str, list[GrantedRight]] = {}
+    for right in rights:
+        rights_by_org.setdefault(right.org_inn, []).append(right)
+    window = timedelta(hours=window_hours)
 
     for org, evs in by_org.items():
-        org_rights = [r for r in rights if r.org_inn == org]
-        window = timedelta(hours=window_hours)
+        org_rights = rights_by_org.get(org, [])
+        # Права по номеру МЧД цепочки: отмена находит свои права сразу, а не перебором всех прав организации.
+        by_number: dict[str, list[GrantedRight]] = {}
+        for right in org_rights:
+            for number in dict.fromkeys(right.poa_numbers):
+                by_number.setdefault(number, []).append(right)
         # Окно не привязано к смене руководителя: любой из трёх сигналов может быть первым.
         # Тревога захвата не отменяет остальные сигналы той же пачки: отмена МЧД
         # остаётся отдельным вето.
-        hijack = next(
-            (
-                [e for e in evs if start.at <= e.at <= start.at + window]
-                for start in evs
-                if HIJACK_PATTERN <= {e.kind for e in evs if start.at <= e.at <= start.at + window}
-            ),
-            None,
-        )
+        hijack = _takeover_window(evs, window)
         if hijack:
-            alerts.append(
+            add(
                 Alert(
                     kind="possible_takeover",
                     risk="high",
@@ -322,13 +363,13 @@ def evaluate(
         for ev in evs:
             if ev.kind in {"POA_REVOKED", "POA_EXPIRED"}:
                 number = str(ev.payload.get("number", ""))
-                hit_rights = [r for r in org_rights if number in r.poa_numbers]
+                hit_rights = by_number.get(number, [])
                 if hit_rights:
                     word = "отменена" if ev.kind == "POA_REVOKED" else "истекла"
                     reasons = [f"МЧД {number} {word}"]
                     if any(r.poa_numbers and r.poa_numbers[-1] != number for r in hit_rights):
                         reasons.append("вместе с ней теряет силу передоверие (п. 3 ст. 188 ГК РФ)")
-                    alerts.append(
+                    add(
                         Alert(
                             "poa_invalidated",
                             "medium",
@@ -349,7 +390,7 @@ def evaluate(
                 by_poa = tuple(r.right_id for r in former if r.right_id not in own)
                 grn = f"новая запись ЕГРЮЛ: ГРН {ev.payload.get('grn', '—')}"
                 if by_poa:
-                    alerts.append(
+                    add(
                         Alert(
                             "eio_changed",
                             "medium",
@@ -366,7 +407,7 @@ def evaluate(
                 if own:
                     # Новый руководитель не назван: возможно, переназначен тот же человек. Приостановка обратима.
                     known = new_inn is not None
-                    alerts.append(
+                    add(
                         Alert(
                             "eio_authority_ended",
                             "medium",
@@ -389,5 +430,6 @@ def evaluate(
                         )
                     )
     if as_of is not None:
-        alerts.extend(_expiry_alerts(rights, events, as_of, notice_days))
+        for alert in _expiry_alerts(rights, events, as_of, notice_days):
+            add(alert)
     return alerts

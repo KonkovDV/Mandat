@@ -866,7 +866,10 @@ def create_app(
             as_of = parse_as_of(payload, warnings) or datetime.now(UTC)
         except (KeyError, ValueError, TypeError) as exc:
             raise ApiProblem(422, "события не разобраны", f"{type(exc).__name__}: {exc}") from exc
-        found = evaluate(rights, events, window_hours=window_hours, as_of=as_of, notice_days=notice_days)
+        try:
+            found = evaluate(rights, events, window_hours=window_hours, as_of=as_of, notice_days=notice_days)
+        except ValueError as exc:
+            raise ApiProblem(422, "пачка слишком велика: разбейте её по организациям", str(exc)) from exc
         moment = as_of.astimezone(MOSCOW).isoformat()
         return {"alerts": [a.as_dict() for a in found], "warnings": warnings, "as_of": moment}
 
