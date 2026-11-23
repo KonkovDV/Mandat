@@ -27,7 +27,7 @@
 | `bg-lux` | атласные волны, голубой свет, золотые нити | фон обложки, оглавления приложения и финала | тёмная полоса «Ценность для банка», `og.jpg` |
 | `icons-3d` | девять 3D-значков из стекла и металла | слайды 2 и 21 | шапки страниц, карточки обзора, 404 |
 | `chain` | три стеклянных листа — доверенность, реестр, устав — на световой линии даты, в конце печать с галочкой | — | тёмная полоса «Цепочка полномочий» на главной |
-| `devices` | сайт на мониторе, ноутбуке, планшете и телефоне: снимки настоящих страниц сборки | — | полоса «Четыре экрана» на главной |
+| `devices` | сайт на большом экране, мониторе компьютера, ноутбуке, планшете, iPhone и Android: снимки настоящих страниц сборки | — | полоса «Шесть экранов» на главной |
 
 Значки листа по строкам: кейсы (папка с печатью), захват (песочные часы с колоколом), проверка (щит с ключом),
 экономика (монеты и столбцы), пилот (календарь с флажком), закон (весы), критерии (планшет с галочками),
@@ -55,7 +55,7 @@
   отрывается от единицы (`_typo` в `scripts/build_site.py`, `typo()` в `submission/deck/build_deck.js`);
 - шрифты сайта — WOFF2 с `unicode-range`, `font-display: swap`; заранее грузятся только три файла первого экрана.
 
-## Цепочка и четыре экрана
+## Цепочка и шесть экранов
 
 `chain` сделан генерацией изображения в Figma (модель gpt-image-2.5-flare, 1536×864), исходник лежит в файле
 «Мандат — схемы». Запрос: тёмно-синий, почти чёрный фон, пустая левая половина под текст; справа три тонких листа
@@ -64,9 +64,12 @@
 отражения на глянцевом полу, без текста, букв и логотипов. На сайте кадр лежит отдельным слоем с растворёнными краями,
 подложка повторяет край кадра, поэтому на мониторе 2560 px нет шва.
 
-`devices` собирает `submission/deck/device_art.js` из собранного сайта: Playwright снимает четыре страницы (главная —
-монитор, разбор кейса в тёмной теме — ноутбук, проверка подписи с печатью — планшет, ось дат — телефон), рамки устройств
-нарисованы векторами в том же скрипте, без чужих макетов и логотипов производителей. После правки страниц:
+`devices` собирает `submission/deck/device_art.js` из собранного сайта: Playwright снимает шесть страниц — захват по
+шагам на большом экране 2560 px, главная на мониторе компьютера 1920 px, разбор кейса в тёмной теме на ноутбуке,
+проверка подписи с печатью на планшете, ось дат в тёмной теме на iPhone, план пилота на Android. Рамки устройств
+нарисованы векторами в том же скрипте, без чужих макетов и логотипов производителей. Устройства стоят так, чтобы ни
+одно не закрывало текст на экране другого, а в просвете между ними не оказалось объёмного предмета со страницы: он
+читается как вещь между устройствами, а не как часть экрана. После правки страниц:
 
 ```bash
 python scripts/build_site.py --out _site
@@ -82,8 +85,8 @@ node submission/deck/device_art.js _site
 
 ## Форматы и загрузка
 
-- Фото, значки и слайды — WebP. Цепочка и «четыре экрана» — ещё и AVIF: тёмный кадр со свечением и снимки экранов в
-  AVIF почти вдвое легче (цепочка 57 → 27 КБ, четыре экрана 196 → 114 КБ). Браузер выбирает формат сам: `<picture>`
+- Фото, значки и слайды — WebP. Цепочка и «шесть экранов» — ещё и AVIF: тёмный кадр со свечением и снимки экранов в
+  AVIF почти вдвое легче (цепочка 57 → 27 КБ, шесть экранов 190 → 111 КБ). Браузер выбирает формат сам: `<picture>`
   для картинок, `image-set()` для фона. На фото Анны AVIF выигрывает 5–10 %, а повторное сжатие добавляет
   артефакты, поэтому фото остаются в WebP. Цепочку пересжимает `node submission/deck/avif.js`.
 - Значки карточек обзора показываются в 76 px и грузятся в 160 px, а не всей клеткой листа (341 px).
@@ -105,17 +108,27 @@ node submission/deck/device_art.js _site
    `python scripts/build_site.py --out _site`, `(cd scripts && npm ci)` и `node scripts/check_site_devices.js _site`: девять устройств,
    светлая и тёмная тема, разрывы слов, WCAG 2.2 AA.
 
-## Следующие кадры для сайта: стиль Apple
+## Предметы у разделов: стиль Apple
 
-План на сессию с подключённой Figma. Язык — как у страниц продуктов Apple: один предмет крупно, стекло и свет, много воздуха, ни одной надписи на картинке; текст и числа набирает страница. Каждый кадр — в двух вариантах фона, для светлой и тёмной темы. Модель — gpt-image-2.5-sunburst, размер — в таблице.
+Язык — как у страниц продуктов Apple: один предмет крупно, стекло и металл, много воздуха, ни одной надписи на
+картинке; текст и числа набирает страница. Предметы сгенерированы в Figma моделью gpt-image-2.5-sunburst сразу на
+прозрачном фоне, поэтому один файл годится для светлой и тёмной темы. Каждый предмет повторяет мысль своего раздела.
 
-| Кадр | Где на сайте | Размер | Промт |
+| Файл | Где на сайте | Что значит | Промт |
 |---|---|---|---|
-| `card-hero` | первый экран главной, справа от вопроса | 1536×1024 | A single premium credential card made of frosted glass floats at a slight angle above a reflective surface; a soft cobalt-to-sky-blue (#004CBC to #00AAFF) glow inside the glass, a small embossed check mark seal in one corner, crisp beveled edges catching a white rim light. Seamless {light #F3F6FB / deep navy #0B1426} studio background, soft shadow, Apple product keynote photography style, photorealistic 3D render, generous empty space. No text, numbers, logos or UI. |
-| `bento-zero` | плитка «0 из 288» в сетке доказательств | 1024×1024 | A precise grid of 288 tiny glass spheres on a matte surface, all glowing soft green, one row slightly in focus, shallow depth of field; calm, exact, scientific mood. Seamless {light / navy} background, Apple product photography, no text. |
-| `bento-date` | плитка «на дату операции» | 1024×1024 | A minimalist frosted glass calendar disc with a single illuminated ring segment marking one day, cobalt glow, soft shadow, Apple product render, seamless {light / navy} background, no numbers or text. |
-| `bento-perimeter` | плитка «данные остаются в банке» | 1024×1024 | A compact brushed-aluminium server block inside a transparent glass cube, a faint blue light inside, the cube closed on all sides, studio lighting, Apple product render, seamless {light / navy} background, no text or logos. |
-| `bento-pilot` | плитка «шесть недель пилота» | 1024×1024 | Six thin frosted glass panes standing in a row with a soft light passing through them, the last one slightly brighter, Apple product render, seamless {light / navy} background, no text or numbers. |
+| `obj-card-960` | «Проверка», рядом с заголовком | удостоверение, которое проверяет сам браузер | Apple product keynote render of a single premium credential card made of thick frosted glass, floating at a gentle three-quarter angle. Inside the glass a soft cobalt-to-sky-blue glow (#004CBC to #00AAFF) gradually fades; one corner carries a small embossed circular seal with a check mark, cut into the glass like jewellery. Crisp polished bevelled edges catch a thin white rim light, subtle refraction and caustics, a faint soft contact shadow below. Isolated object on a fully transparent background, centered with generous empty space around it. Minimal, precise, calm, ultra high-end product photography, photorealistic 3D render. No text, letters, numbers, logos, UI or people anywhere. |
+| `obj-dial-640` | главная, «Сдвиньте дату операции» | ответ зависит от дня операции | Apple product render: a minimalist dial made of frosted glass and brushed aluminium, like a precision instrument, seen at a three-quarter angle. Around the dial runs a thin ring of tick marks without any numbers; exactly one short segment of the ring glows bright cobalt-to-sky-blue, marking a single chosen day, while the rest stays matte. Soft studio light from the top left, crisp bevelled edges, a faint soft contact shadow. Isolated object on a fully transparent background with generous empty space. Photorealistic 3D render, premium product photography. No text, letters, numbers, logos or UI. |
+| `obj-zero-640` | главная, «Каждое число можно повторить» | 288 проверок, где «да» было бы ошибкой: 16 × 18 зелёных шаров | Apple product render: a perfectly regular square grid of small polished glass spheres, sixteen by eighteen, resting on an invisible plane and seen from a low three-quarter angle with shallow depth of field. Every sphere glows a soft calm green from within, the front rows in crisp focus, the back rows softly blurred. Precise, exact, scientific mood, delicate reflections and a faint soft shadow under the grid. Isolated on a fully transparent background with empty space around. Photorealistic 3D render, premium product photography. No text, numbers, logos or UI. |
+| `obj-perimeter-640` | главная, «Данные клиента не покидают банк» | ядро закрыто в контуре банка со всех сторон | Apple product render: a compact brushed-aluminium server block with a few thin blue light lines on its front, enclosed inside a perfectly clear closed glass cube with crisp polished edges; the cube is sealed on all six sides, symbolising data that never leaves the perimeter. Soft cobalt glow inside the cube, gentle refraction, one large soft studio light from the top left, a faint soft contact shadow. Isolated on a fully transparent background with generous empty space. Photorealistic 3D render, premium product photography. No text, logos, numbers or UI. |
+| `obj-weeks-640` | главная, «Пилот: шесть недель в тени» | шесть недель, луч проходит через все | Apple product render: six thin vertical panes of frosted glass standing upright in a row with even spacing, seen at a three-quarter angle, like a timeline of six weeks. A soft beam of cobalt-to-sky-blue light passes through all of them from left to right, and the last pane glows slightly brighter. Crisp polished edges, subtle refraction, a faint soft contact shadow. Isolated on a fully transparent background with generous empty space. Photorealistic 3D render, premium product photography. No text, numbers, logos or UI. |
 
-Порядок: сгенерировать в Figma, скачать PNG, положить в папку и прогнать `python submission/deck/import_visuals.py ПАПКА` после того, как в нём появятся имена этих кадров; затем сборка сайта и проверка на девяти устройствах.
+Кадр 1024×1024, у карточки 1536×1024. PNG из Figma переводит
 
+```bash
+python submission/deck/import_visuals.py --objects ПАПКА
+```
+
+Скрипт срезает почти прозрачную дымку, обрезает кадр по предмету и пишет WebP с прозрачностью: 640 px по длинной
+стороне, карточка — 960 px. На странице предмет стоит справа от заголовка раздела (`.sec-art`): текст его обтекает,
+таблицы и схемы начинаются ниже и не сжимаются. На узком телефоне предмет уменьшается до 112 px и встаёт над заголовком
+раздела, в печати скрыт. Текст `alt` пустой: предмет оформляет раздел, а смысл несут заголовок и текст рядом.

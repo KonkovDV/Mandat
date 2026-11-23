@@ -1,4 +1,4 @@
-// «Мандат» на четырёх экранах: живые страницы собранного сайта в рамках монитора, ноутбука, планшета и телефона.
+// «Мандат» на шести экранах: живые страницы собранного сайта в рамках монитора, ноутбука, планшета и телефона.
 //
 //   python scripts/build_site.py --out _site      # из корня репозитория
 //   node submission/deck/device_art.js _site       # Playwright с Chromium; sharp — из submission/deck
@@ -19,12 +19,15 @@ const OUT = path.join(ROOT, "site", "img");
 const TYPES = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp", ".jpg": "image/jpeg", ".woff2": "font/woff2", ".json": "application/json", ".webmanifest": "application/manifest+json" };
 
 // Холст и устройства, в пикселях холста. Экран — место под снимок; viewport — окно браузера в CSS-пикселях.
-const W = 2400, H = 1400;
+// Шесть экранов, от дальнего к ближнему: большой экран 2560, компьютер с монитором 1920, ноутбук, планшет, iPhone и Android.
+const W = 2800, H = 1520;
 const DEV = {
-  display: { screen: { x: 560, y: 40, w: 1280, h: 720 }, viewport: { width: 1600, height: 900 }, page: "index.html", theme: "light" },
-  laptop: { screen: { x: 150, y: 690, w: 860, h: 558 }, viewport: { width: 1512, height: 982 }, page: "cases.html#14_old_director_charter_cleared", theme: "dark", scrollTo: "#explorer, .explorer" },
-  tablet: { screen: { x: 1846, y: 600, w: 452, h: 648 }, viewport: { width: 834, height: 1194 }, page: "verify.html", theme: "light", click: "#check-sig", scrollTo: ".sealed" },
-  phone: { screen: { x: 1534, y: 806, w: 246, h: 534 }, viewport: { width: 393, height: 852 }, page: "index.html", theme: "dark", scrollTo: "#scrub" },
+  wall: { screen: { x: 640, y: 30, w: 1600, h: 900 }, viewport: { width: 2560, height: 1440 }, page: "showcase.html", theme: "light", scale: 1 },
+  display: { screen: { x: 60, y: 430, w: 880, h: 495 }, viewport: { width: 1920, height: 1080 }, page: "index.html", theme: "light", scale: 1 },
+  tablet: { screen: { x: 2290, y: 690, w: 452, h: 648 }, viewport: { width: 834, height: 1194 }, page: "verify.html", theme: "light", click: "#check-sig", scrollTo: ".sealed" },
+  laptop: { screen: { x: 820, y: 790, w: 860, h: 558 }, viewport: { width: 1512, height: 982 }, page: "cases.html#14_old_director_charter_cleared", theme: "dark", scrollTo: "#explorer, .explorer" },
+  android: { screen: { x: 1985, y: 850, w: 250, h: 556 }, viewport: { width: 412, height: 915 }, page: "pilot.html", theme: "light" },
+  phone: { screen: { x: 1700, y: 900, w: 246, h: 534 }, viewport: { width: 393, height: 852 }, page: "index.html", theme: "dark", scrollTo: "#scrub" },
 };
 
 function serve(root) {
@@ -45,7 +48,7 @@ function serve(root) {
 }
 
 async function shoot(browser, base, d) {
-  const ctx = await browser.newContext({ viewport: d.viewport, deviceScaleFactor: 2, colorScheme: d.theme, reducedMotion: "reduce", locale: "ru-RU" });
+  const ctx = await browser.newContext({ viewport: d.viewport, deviceScaleFactor: d.scale ?? 2, colorScheme: d.theme, reducedMotion: "reduce", locale: "ru-RU" });
   await ctx.addInitScript((theme) => { try { localStorage.setItem("mandat-theme", theme); } catch {} }, d.theme);
   const page = await ctx.newPage();
   await page.goto(base + d.page, { waitUntil: "networkidle" });
@@ -118,6 +121,33 @@ function phone(s, shot) {
   <rect x="${s.x + s.w / 2 - 40}" y="${s.y + 10}" width="80" height="24" rx="12" fill="#0c0d10"/>`;
 }
 
+// Большой экран: тонкая рамка и низкая подставка, как у дисплея на стене переговорной.
+function wall(s, shot) {
+  const b = 12, r = 14, x = s.x - b, y = s.y - b, w = s.w + 2 * b, h = s.h + 2 * b, cx = s.x + s.w / 2;
+  return `
+  <ellipse cx="${cx}" cy="${y + h + 70}" rx="${w / 2.6}" ry="18" fill="#0b1f44" opacity=".14" filter="url(#soft)"/>
+  <rect x="${cx - 260}" y="${y + h - 4}" width="520" height="54" rx="6" fill="url(#alu-neck)"/>
+  <rect x="${cx - 330}" y="${y + h + 48}" width="660" height="14" rx="7" fill="url(#alu-base)"/>
+  <rect x="${x - 2}" y="${y - 2}" width="${w + 4}" height="${h + 4}" rx="${r + 2}" fill="url(#ti-edge)"/>
+  <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="#0c0d10"/>
+  <clipPath id="c-wall"><rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="4"/></clipPath>
+  <image href="${img(shot)}" x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="xMidYMin slice" clip-path="url(#c-wall)"/>`;
+}
+
+// Android: графитовый корпус, камера-точка в экране, кнопки на правой грани.
+function android(s, shot) {
+  const b = 9, f = 4, r = 40, x = s.x - b - f, y = s.y - b - f, w = s.w + 2 * (b + f), h = s.h + 2 * (b + f);
+  return `
+  <ellipse cx="${x + w / 2}" cy="${y + h + 8}" rx="${w / 2 + 6}" ry="11" fill="#0b1f44" opacity=".26" filter="url(#soft)"/>
+  <rect x="${x + w - 1}" y="${y + 140}" width="4" height="46" rx="2" fill="#3c3f45"/>
+  <rect x="${x + w - 1}" y="${y + 200}" width="4" height="96" rx="2" fill="#3c3f45"/>
+  <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="url(#graphite)"/>
+  <rect x="${x + f}" y="${y + f}" width="${w - 2 * f}" height="${h - 2 * f}" rx="${r - f}" fill="#0c0d10"/>
+  <clipPath id="c-android"><rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="${r - f - b + 4}"/></clipPath>
+  <image href="${img(shot)}" x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="xMidYMin slice" clip-path="url(#c-android)"/>
+  <circle cx="${s.x + s.w / 2}" cy="${s.y + 18}" r="8" fill="#0c0d10"/>`;
+}
+
 (async () => {
   if (!fs.existsSync(path.join(SITE, "index.html"))) throw new Error(`нет собранного сайта в ${SITE}: python scripts/build_site.py --out _site`);
   const srv = await serve(SITE);
@@ -140,12 +170,15 @@ function phone(s, shot) {
     <linearGradient id="alu-edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dfe1e5"/><stop offset=".5" stop-color="#b9bcc2"/><stop offset="1" stop-color="#8f939a"/></linearGradient>
     <linearGradient id="ti-edge" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a7a9ae"/><stop offset=".5" stop-color="#6d7077"/><stop offset="1" stop-color="#9a9da3"/></linearGradient>
     <linearGradient id="alu-neck" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#a9adb3"/><stop offset=".5" stop-color="#e6e8eb"/><stop offset="1" stop-color="#a3a7ad"/></linearGradient>
+    <linearGradient id="graphite" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4a4d54"/><stop offset=".5" stop-color="#24262b"/><stop offset="1" stop-color="#3e4148"/></linearGradient>
     <linearGradient id="alu-base" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eceef1"/><stop offset=".55" stop-color="#c3c6cb"/><stop offset="1" stop-color="#8e9298"/></linearGradient>
   </defs>`;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W * 2}" height="${H * 2}" viewBox="0 0 ${W} ${H}">${defs}
+  ${wall(DEV.wall.screen, shots.wall)}
   ${display(DEV.display.screen, shots.display)}
   ${tablet(DEV.tablet.screen, shots.tablet)}
   ${laptop(DEV.laptop.screen, shots.laptop)}
+  ${android(DEV.android.screen, shots.android)}
   ${phone(DEV.phone.screen, shots.phone)}
   </svg>`;
   const master = await sharp(Buffer.from(svg)).png().toBuffer();

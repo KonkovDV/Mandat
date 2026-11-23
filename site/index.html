@@ -82,6 +82,7 @@ $header
 
 <section id="date" class="sec">
   <div class="wrap">
+    <img class="sec-art" src="img/obj-dial-640.webp" width="628" height="640" alt="" loading="lazy" decoding="async">
     <p class="kicker">Одна доверенность — шесть ответов</p>
     <h2 class="reveal">Сдвиньте дату операции, и ответ изменится</h2>
     <p class="sub reveal">Кейс 14: тот же представитель, та же МЧД, та же выписка. Меняется только день, когда представитель хочет подписать платёж на $scrub_amount&nbsp;₽. Ответ на каждый день посчитало ядро «Мандата» при сборке этой страницы.</p>
@@ -166,15 +167,23 @@ $stages
 
 <section id="screens" class="sec">
   <div class="wrap">
-    <p class="kicker">Четыре экрана</p>
-    <h2 class="reveal">Один сайт на мониторе, ноутбуке, планшете и телефоне</h2>
+    <p class="kicker">Шесть экранов</p>
+    <h2 class="reveal">От iPhone и Android до большого экрана</h2>
     <figure class="devices reveal">
       <picture>
         <source type="image/avif" srcset="img/devices-1200.avif 1200w, img/devices-2400.avif 2400w" sizes="(max-width: 1240px) calc(100vw - 32px), 1200px">
-        <img src="img/devices-1200.webp" srcset="img/devices-1200.webp 1200w, img/devices-2400.webp 2400w" sizes="(max-width: 1240px) calc(100vw - 32px), 1200px" width="1200" height="723" loading="lazy" decoding="async" alt="Сайт «Мандата» на четырёх устройствах: главная страница на мониторе, разбор кейса в тёмной теме на ноутбуке, проверка подписи с печатью на планшете, ось дат операции на телефоне">
+        <img src="img/devices-1200.webp" srcset="img/devices-1200.webp 1200w, img/devices-2400.webp 2400w" sizes="(max-width: 1240px) calc(100vw - 32px), 1200px" width="1200" height="647" loading="lazy" decoding="async" alt="Сайт «Мандата» на шести устройствах: захват компании по шагам на большом экране, главная на мониторе компьютера, разбор кейса в тёмной теме на ноутбуке, проверка подписи с печатью на планшете, ось дат операции на iPhone и план пилота на Android">
       </picture>
-      <figcaption>Снимки настоящих страниц этой сборки. Перед публикацией каждая страница проходит проверку на девяти экранах, от сложенного Galaxy Z Fold до монитора 2560&nbsp;px, в светлой и тёмной теме.</figcaption>
+      <figcaption>Снимки настоящих страниц этой сборки, не макеты. Перед публикацией каждая страница проходит проверку на девяти экранах, от сложенного Galaxy Z Fold до монитора 2560&nbsp;px, в светлой и тёмной теме.</figcaption>
     </figure>
+    <ul class="device-list reveal" aria-label="Что открыто на каждом экране">
+        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M7 21h10"/></svg><b>Большой экран</b><span>2560&nbsp;px, захват по шагам</span></li>
+        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg><b>Компьютер</b><span>1920&nbsp;px, главная</span></li>
+        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/></svg><b>Ноутбук</b><span>1512&nbsp;px, разбор кейса в тёмной теме</span></li>
+        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M12 18h.01"/></svg><b>Планшет</b><span>834&nbsp;px, проверка подписи</span></li>
+        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg><b>iPhone</b><span>393&nbsp;px, ось дат в тёмной теме</span></li>
+        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg><b>Android</b><span>412&nbsp;px, план пилота</span></li>
+    </ul>
   </div>
 </section>
 
@@ -225,6 +234,7 @@ $stages
 
 <section id="proof" class="sec">
   <div class="wrap">
+    <img class="sec-art wide" src="img/obj-zero-640.webp" width="640" height="315" alt="" loading="lazy" decoding="async">
     <h2 class="reveal">Каждое число можно повторить</h2>
     <p>Движок $engine, пакет правил $pack_version. Команды из таблицы дают те же числа на вашей машине.</p>
     <div class="table-wrap reveal">
@@ -245,7 +255,9 @@ $stages
 
 <section id="data" class="sec alt">
   <div class="wrap">
+    <img class="sec-art" src="img/obj-perimeter-640.webp" width="640" height="599" alt="" loading="lazy" decoding="async">
     <h2 class="reveal">Данные клиента не покидают банк</h2>
+    <p>Ядро проверяет без внешней сети. Если банк включит модель, она получит только строки устава о&nbsp;полномочиях, где ФИО, паспорт, СНИЛС и&nbsp;ИНН уже заменены метками.</p>
     <figure class="perimeter reveal">
       <figcaption class="perimeter-cap">Контур банка · без внешней сети</figcaption>
       <ol class="flow">
@@ -294,6 +306,7 @@ $stages
 
 <section id="pilot" class="sec">
   <div class="wrap">
+    <img class="sec-art wide" src="img/obj-weeks-640.webp" width="640" height="368" alt="" loading="lazy" decoding="async">
     <h2 class="reveal">Пилот: шесть недель в тени</h2>
     <p class="reveal">«Мандат» проверяет те же пакеты, что и сотрудники банка, но на выдачу прав не влияет. Операция одна: право подписи платёжных документов в интернет-банке для представителя по МЧД.</p>
     <figure class="ptrack reveal">

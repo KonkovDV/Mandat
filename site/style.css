@@ -792,3 +792,24 @@ video { display: block; width: 100%; border-radius: 14px; border: 1px solid var(
 .scrub-words span.gap { background: var(--seg-gap); }
 .scrub-words span.review { background: var(--seg-review); }
 @media (max-width: 480px) { .scrub-words { display: none; } }
+
+/* Предметы из Figma у заголовков разделов: стекло и металл на прозрачном фоне, по одному на раздел.
+   Текст обтекает предмет, а таблицы, схемы и шкалы начинаются под ним и не сжимаются. */
+.sec-art { float: right; width: clamp(120px, 17vw, 220px); height: auto; margin: -18px -6px 12px 28px; }
+.sec-art.wide { width: clamp(150px, 22vw, 300px); }
+.page-art.wide { width: clamp(150px, 24vw, 320px); }
+.sec-art ~ figure, .sec-art ~ .table-wrap, .sec-art ~ ol, .sec-art ~ ul, .sec-art ~ .scrub, .sec-art ~ .two, .sec-art ~ div { clear: both; }
+@media (max-width: 560px) { .sec-art, .sec-art.wide { width: 120px; margin: -6px -4px 6px 14px; } .page-art.wide { width: 140px; } }
+@media (max-width: 480px) { .sec-art, .sec-art.wide { float: none; display: block; width: 112px; margin: -6px 0 8px -4px; } }
+@media print { .sec-art { display: none; } }
+
+/* Подписи к шести экранам: что открыто на каждом устройстве. */
+.device-list { list-style: none; margin: 26px 0 0; padding: 22px 0 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px 20px; }
+.device-list li { display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 10px; align-items: start; }
+.device-list .ic { grid-row: 1 / span 2; width: 24px; height: 24px; margin-top: 1px; fill: none; stroke: var(--accent); stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.device-list b { color: var(--ink); font-family: var(--display); font-size: 15px; font-weight: 700; line-height: 1.3; }
+.device-list span { color: var(--muted); font-size: 13.5px; line-height: 1.4; }
+@media (max-width: 1100px) { .device-list { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .device-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 14px; } }
+@media (max-width: 380px) { .device-list { grid-template-columns: minmax(0, 1fr); } }
+
