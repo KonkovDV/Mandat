@@ -1,6 +1,6 @@
 PY ?= python
 
-.PHONY: install lint test claims rules-doc cedar check demo showcase eval evidence serve doctor clean deck demo-cards analytics video submission
+.PHONY: install lint test claims rules-doc cedar check demo showcase eval evidence hooks serve doctor clean deck demo-cards analytics video submission
 
 install:
 	$(PY) -m pip install --require-hashes -r requirements/pip.lock
@@ -39,6 +39,10 @@ eval:
 
 evidence:
 	$(PY) scripts/build_evidence.py
+
+# Хук перед push: evidence.json и числа в текстах сверяются до того, как красным станет CI.
+hooks:
+	git config core.hooksPath scripts/hooks
 
 serve:
 	mandat serve

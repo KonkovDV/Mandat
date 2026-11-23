@@ -101,6 +101,21 @@ def source_digest() -> str:
     return digest.hexdigest()
 
 
+def untracked_sources() -> list[str]:
+    """Файлы в каталогах исходников, которых нет в git и которые git не игнорирует.
+
+    Хеш видит только файлы git. evidence.json, собранный до ``git add`` нового теста или примера, после коммита
+    в CI не сходится: так main был красным 22.11 и 23.11.2026. Поэтому сборка с такими файлами не идёт.
+    """
+    listed = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard", "-z", "--", *SOURCE_DIRS],
+        cwd=ROOT,
+        capture_output=True,
+        check=True,
+    ).stdout.split(b"\0")
+    return sorted(p.decode("utf-8") for p in listed if p)
+
+
 def source_binding() -> dict:
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
     return {
@@ -137,6 +152,13 @@ def main() -> int:
     args = parser.parse_args()
     if args.verify_source:
         return verify_source()
+    stray = untracked_sources()
+    if stray:
+        shown = ", ".join(stray[:5]) + (" …" if len(stray) > 5 else "")
+        raise SystemExit(
+            f"в {', '.join(SOURCE_DIRS)} есть файлы вне git: {shown}. Добавьте их (git add) или уберите "
+            "и соберите снова: хеш исходников видит только файлы git, и CI отвергнет такой evidence.json"
+        )
 
     pack, catalog, classifier = default_pack(), default_catalog(), default_classifier()
     demo = {}

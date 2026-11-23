@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-11-23T12:14:57+00:00",
+  "generated_at": "2026-11-23T16:55:43+00:00",
   "engine": "mandat/0.4.0",
   "source": {
-    "base_commit": "4ac8181862f43134f8561fddb801419ad4006c22",
+    "base_commit": "648cb8846a63368e2b733d2552764ed1d35e283d",
     "sources": [
       "src",
       "tests",
       "scripts",
       "examples"
     ],
-    "sha256": "affd70323ad8882b5b6dd2629aed1b74688158f5808414da0f41ddaa2b285fea",
+    "sha256": "dcd3589c954f8a460d52ea54e5510c022449e6e7287c8ef408d7517f622ef067",
     "check": "python scripts/build_evidence.py --verify-source"
   },
   "python": "3.13.18",
@@ -157,17 +157,17 @@
   "latency": {
     "command": "python scripts/bench.py --rounds 20",
     "cases": 280,
-    "median_ms": 1.95,
-    "p95_ms": 3.29,
+    "median_ms": 2.95,
+    "p95_ms": 4.9,
     "machine": "x86_64, Python 3.13.18",
     "scope": "разбор XML и JSON, 39 правил, свёртка, отчёт; без сети и без модели"
   },
   "tests": {
     "command": "python -m pytest -q",
     "returncode": 0,
-    "summary": "2041 passed in 138.16s (0:02:18)",
-    "passed": 2041,
-    "collected": 2041,
+    "summary": "2044 passed in 175.49s (0:02:55)",
+    "passed": 2044,
+    "collected": 2044,
     "coverage_percent": 95.9
   }
 }
