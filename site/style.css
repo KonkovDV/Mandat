@@ -813,3 +813,116 @@ video { display: block; width: 100%; border-radius: 14px; border: 1px solid var(
 @media (max-width: 560px) { .device-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 14px; } }
 @media (max-width: 380px) { .device-list { grid-template-columns: minmax(0, 1fr); } }
 
+
+/* ---------- Навигация: маршруты по ролям, «Назад» и «Дальше», оглавление, карта сайта ---------- */
+/* Лента меню на телефоне: со скриптом края гаснут только там, где лента продолжается. */
+@media (max-width: 1080px) {
+  .js .nav { -webkit-mask-image: none; mask-image: none; }
+  .js .nav.can-right { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); }
+  .js .nav.can-left { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
+  .js .nav.can-left.can-right { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
+}
+
+/* «Маршрут для» в первом экране главной и «Кому полезно» в начале страниц. */
+.roles, .audience, .toc { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 760px; margin: 18px 0 0; }
+.roles-h, .audience-h, .toc-h { margin-right: 4px; color: var(--muted); font-size: 12.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.roles a, .audience a { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 6px 14px 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--card) 82%, transparent); color: var(--ink); font-size: 14.5px; font-weight: 600; text-decoration: none; transition: border-color .2s, background-color .2s, color .2s; }
+.roles a .ic, .audience a .ic { width: 18px; height: 18px; fill: none; stroke: var(--accent); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.roles a:hover, .audience a:hover, .roles a.is-on, .audience a.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.roles .roles-more { padding-left: 14px; border-style: dashed; color: var(--accent); }
+.toc { margin-top: 12px; gap: 6px 8px; }
+.toc a { display: inline-flex; align-items: center; min-height: 32px; padding: 4px 12px; border: 1px solid transparent; border-radius: 999px; background: color-mix(in srgb, var(--accent-soft) 70%, transparent); color: var(--ink-2); font-size: 14px; font-weight: 600; text-decoration: none; }
+.toc a:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Пять маршрутов на главной: жюри — во всю ширину, шаги линией; остальные роли — по два в ряд. */
+.routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 24px; }
+.route { display: flex; flex-direction: column; gap: 12px; padding: 22px 22px 20px; border: 1px solid var(--line); border-radius: 20px; background: var(--card); box-shadow: var(--shadow); }
+.route.featured { grid-column: 1 / -1; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: var(--glow); }
+.route-head { display: flex; align-items: center; gap: 14px; }
+.route-head .ic { flex: none; box-sizing: border-box; width: 48px; height: 48px; padding: 12px; border-radius: 14px; background: var(--accent-soft); fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.route h3 { margin: 0; font-size: 20px; }
+.route-meta { margin: 2px 0 0; color: var(--muted); font-size: 14px; font-weight: 600; }
+.route-lead { margin: 0; color: var(--muted); font-size: 15.5px; }
+.route-steps { list-style: none; margin: 4px 0 0; padding: 0; counter-reset: step; display: grid; }
+.route-steps li { counter-increment: step; position: relative; padding-left: 44px; }
+.route-steps li::before { content: counter(step); position: absolute; left: 0; top: 6px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font: 700 14px/1 var(--display); }
+.route-steps li:not(:last-child)::after { content: ""; position: absolute; left: 13px; top: 38px; bottom: -4px; width: 2px; background: color-mix(in srgb, var(--accent) 30%, var(--line)); }
+.route-steps a { display: grid; gap: 2px; padding: 6px 0 12px; color: var(--ink); text-decoration: none; }
+.route-steps b { font-family: var(--display); font-weight: 800; font-size: 16.5px; color: var(--ink-2); }
+.route-steps span { color: var(--muted); font-size: 14.5px; }
+.route-steps a:hover b { color: var(--accent); }
+.route-docs { margin: 0; color: var(--muted); font-size: 14px; }
+.route-docs span { font-weight: 700; }
+.route-go { align-self: flex-start; margin-top: auto; }
+.route-go .ar, .pager .ar, .rb-next .ar { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@media (min-width: 900px) {
+  .route.featured .route-steps { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+  .route.featured .route-steps li { padding: 40px 0 0; }
+  .route.featured .route-steps li::before { top: 0; }
+  .route.featured .route-steps li:not(:last-child)::after { left: 36px; right: -10px; top: 13px; bottom: auto; width: auto; height: 2px; }
+}
+@media (max-width: 760px) { .routes { grid-template-columns: minmax(0, 1fr); } .route { padding: 18px 16px; } }
+
+/* «Назад» и «Дальше» внизу страницы и полоса хода: где эта страница среди девяти или шаг маршрута. */
+.pager-sec { padding-top: 8px; }
+.pager { display: grid; gap: 16px; padding-top: 28px; border-top: 1px solid var(--line); }
+.pager-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; }
+.pager-pos { margin: 0; color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.pager-track { list-style: none; margin: 0; padding: 0; display: flex; gap: 2px; flex: 1 1 260px; max-width: 520px; }
+.pager-track li { flex: 1; }
+.pager-track a { display: flex; align-items: center; height: 24px; }
+.pager-track a::before { content: ""; display: block; width: 100%; height: 4px; border-radius: 4px; background: var(--line); transition: background-color .2s; }
+.pager-track .done a::before { background: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.pager-track .now a::before { height: 6px; background: var(--accent); }
+.pager-track a:hover::before { background: var(--accent-2); }
+.pager-cards { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 14px; }
+.pager-card { position: relative; display: flex; flex-direction: column; gap: 4px; min-height: 120px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 18px; background: transparent; color: var(--ink); text-decoration: none; transition: transform .25s var(--ease), box-shadow .25s var(--ease), border-color .25s; }
+.pager-card.next { padding-right: 120px; border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--card); box-shadow: var(--shadow); }
+.pager-card.finish { padding-right: 20px; }
+.pager-card b { font-family: var(--display); font-weight: 800; font-size: 21px; letter-spacing: -0.015em; color: var(--ink-2); }
+.pager-dir { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.pager-sub { color: var(--muted); font-size: 15px; }
+.pager-art { position: absolute; right: 16px; top: 50%; width: 88px; height: 88px; transform: translateY(-50%); }
+a.pager-card:hover { border-color: var(--accent); }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) { a.pager-card:hover { transform: translateY(-2px); box-shadow: var(--glow); } }
+.pager-all { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; margin: 0; font-size: 14.5px; }
+.pager-all a, .pager-stop { display: inline-flex; align-items: center; min-height: 32px; color: var(--accent); font-weight: 600; }
+.pager-stop { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
+.finish-docs { margin: 6px 0 0; padding-left: 1.1em; }
+.finish-docs li { margin: 4px 0; }
+@media (max-width: 720px) {
+  .pager-cards { grid-template-columns: minmax(0, 1fr); }
+  .pager-card.next { order: -1; padding-right: 96px; }
+  .pager-art { width: 72px; height: 72px; right: 12px; }
+}
+
+/* Ход маршрута внизу экрана: роль, шаги, «Дальше» и закрыть. Уступает место «Дальше» внизу страницы. */
+.routebar { position: fixed; z-index: 30; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 24px); padding: 6px 6px 6px 16px; border: 1px solid color-mix(in srgb, var(--line-2) 80%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--card) 88%, transparent); -webkit-backdrop-filter: saturate(160%) blur(16px); backdrop-filter: saturate(160%) blur(16px); box-shadow: 0 10px 30px rgb(11 31 68 / 18%); transition: opacity .25s var(--ease), transform .25s var(--ease), visibility .25s; }
+.routebar.is-away { opacity: 0; visibility: hidden; transform: translate(-50%, 12px); }
+.rb-name { display: inline-flex; align-items: center; min-height: 32px; color: var(--ink-2); font-family: var(--display); font-weight: 800; font-size: 15px; text-decoration: none; white-space: nowrap; }
+.rb-dots { list-style: none; display: flex; margin: 0; padding: 0; }
+.rb-dots a { display: grid; place-items: center; width: 24px; height: 32px; }
+.rb-dots a::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); transition: background-color .2s; }
+.rb-dots .done a::before { background: color-mix(in srgb, var(--accent) 55%, var(--line-2)); }
+.rb-dots .now a::before { width: 10px; height: 10px; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.rb-pos { color: var(--muted); font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+.rb-next { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 8px 16px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 14.5px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.rb-next.finish { background: var(--ok-bg); color: var(--ok); }
+.rb-close { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
+.rb-close:hover { background: var(--bg-alt); color: var(--ink); }
+.rb-close .x { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+html.on-route body { padding-bottom: 80px; }
+@media (prefers-reduced-motion: no-preference) { .routebar { animation: rb-in .35s var(--ease); } }
+@keyframes rb-in { from { opacity: 0; transform: translate(-50%, 16px); } }
+@media (max-width: 560px) { .rb-name, .rb-pos { display: none; } .routebar { padding-left: 8px; } }
+@media (max-width: 380px) { .rb-dots, .rb-to { display: none; } .rb-pos { display: inline; padding-left: 8px; } }
+
+/* Карта сайта в подвале. */
+.foot-map { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px 24px; margin: 0 0 22px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+.foot-h { margin: 0 0 6px; color: var(--ink-2); font-size: 12.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.foot-map ul { list-style: none; margin: 0; padding: 0; }
+.foot-map a { display: inline-block; padding: 4px 0; text-decoration: none; }
+.foot-map a:hover { color: var(--accent); text-decoration: underline; }
+@media (max-width: 760px) { .foot-map { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 380px) { .foot-map { grid-template-columns: minmax(0, 1fr); } }
+@media print { .routebar, .pager-sec, .roles, .audience, .toc, .foot-map { display: none !important; } }

@@ -886,10 +886,334 @@ def _footer(as_of: str, engine: str) -> str:
     links = f'<a href="{REPO}">Код на GitHub</a> · <a href="#top">Наверх</a>'
     return f"""<footer class="foot">
   <div class="wrap">
+    {_site_map()}
     <p>{note}</p>
     <div class="row"><span>Сборка {as_of} {built}{ci}, {engine}</span><span>{links}</span></div>
   </div>
 </footer>"""
+
+
+# Навигация. Страницы идут в порядке истории (PAGES): внизу каждой, кроме главной, «Назад» и «Дальше» с полосой
+# хода, у длинных в начале — оглавление разделов, в подвале — карта сайта. Маршруты по ролям ведут по тем же
+# страницам в своём порядке, и у каждого шага написано, что на этой странице смотреть. js/nav.js показывает ход
+# маршрута и ставит его следующий шаг в «Дальше»; без скриптов работают обычные ссылки в порядке сайта.
+PAGE_NOTES = {
+    "index": ("Вопрос, ответ на дату и весь «Мандат» на одной странице", None),
+    "cases": ("Демо-кейсы: на чём держится каждый ответ", "cases"),
+    "showcase": ("Захват компании останавливается до списания денег", "showcase"),
+    "verify": ("Подпись, статус и запись журнала проверяет ваш браузер", "verify"),
+    "economics": ("Сколько стоит проверка и когда окупается «Мандат»", "economics"),
+    "pilot": ("Шесть недель в тени, ворота до второго банка и роли сторон", "pilot"),
+    "law": ("Какие акты действуют на дату и какие правила на них опираются", "law"),
+    "criteria": ("Ответ на каждый критерий трека и где его проверить", "criteria"),
+    "pitch": ("Презентация и текст выступления под каждым слайдом", "search"),
+}
+# Маршруты: шаг — страница (или раздел главной) и что на ней смотреть именно этой роли; в конце — документы глубже.
+ROUTES: tuple[dict[str, Any], ...] = (
+    {
+        "id": "jury",
+        "title": "Жюри и эксперты",
+        "short": "Жюри",
+        "time": "10 минут",
+        "lead": "В порядке критериев: ответ с доказательством, захват, проверка, деньги и где что лежит.",
+        "steps": (
+            ("cases", "Поменяйте факты кейса 14: ответ даёт ядро, у каждого вывода — норма"),
+            ("showcase", "Семь шагов: допуск платежа, отказ повтору, остановка после признаков захвата"),
+            ("verify", "Подпись и статус удостоверения проверяет ваш браузер, без доступа к базе"),
+            ("economics", "Проверка вручную и с «Мандатом»: стоимость и окупаемость на ваших допущениях"),
+            ("criteria", "Каждый критерий трека: что показываем, чего пока нет и где проверить"),
+        ),
+        "docs": (
+            ("docs/JURY.md", "Для жюри: питч, демо и трудные вопросы"),
+            ("docs/SPRINT2.md", "Доказательства по критериям спринта 2"),
+        ),
+    },
+    {
+        "id": "bank",
+        "title": "Банк: бизнес и владелец процесса",
+        "short": "Банк",
+        "time": "7 минут",
+        "lead": "Что меняется для клиента и сотрудника, сколько стоит проверка и как пройти пилот без риска.",
+        "steps": (
+            ("showcase", "Платёж проходит, а признаки захвата останавливают следующий — до списания денег"),
+            ("economics", "Стоимость одной проверки, эффект и окупаемость — на ваших цифрах"),
+            ("pilot", "Шесть недель в тени на одной операции, стоп-критерий и ворота до второго банка"),
+            ("pitch", "Презентация с текстом выступления: её можно показать руководству"),
+        ),
+        "docs": (
+            ("docs/ECONOMICS.md", "Экономика: где деньги банка"),
+            ("docs/PILOT.md", "План пилота"),
+            ("docs/BANK_PRACTICE.md", "Мировая практика и боль банка"),
+        ),
+    },
+    {
+        "id": "law",
+        "title": "Юрист и правовед",
+        "short": "Юрист",
+        "time": "15 минут",
+        "lead": "На какой норме держится каждый вывод, как правила следят за сроками актов и кто их утверждает.",
+        "steps": (
+            ("cases", "Каждый вывод — с нормой, полем документа и следующим шагом сотрудника"),
+            ("law", "Какие акты действуют на выбранную дату и какие правила на них опираются"),
+            ("pilot", "Правило «утверждено» только подписью юриста; кто за что отвечает в пилоте"),
+        ),
+        "docs": (
+            ("docs/legal/README.md", "Карточка нормы на каждое правило"),
+            ("docs/LEGAL_REVIEW.md", "Вопросы юристу банка"),
+            ("docs/REGULATORY.md", "Нормативная база и сроки"),
+        ),
+    },
+    {
+        "id": "it",
+        "title": "ИТ: архитектор и разработчик",
+        "short": "ИТ",
+        "time": "15 минут",
+        "lead": "Как ДБО спрашивает допуск, что внутри удостоверения и как поставить стенд в контур банка.",
+        "steps": (
+            ("showcase", "ДБО спрашивает допуск перед каждым платежом: шаги сценария и ответы"),
+            ("verify", "W3C VC 2.0, Ed25519 и списки статусов: проверка своими средствами"),
+            ("cases", "Ядро на демо-кейсах: проверки, вердикт и отчёт сотрудника"),
+            ("pilot", "Docker и пилотный compose, общий Redis, готовность /readyz"),
+        ),
+        "docs": (
+            ("docs/ARCHITECTURE.md", "Архитектура"),
+            ("docs/RUN.md", "Запуск, команды и API"),
+        ),
+    },
+    {
+        "id": "sec",
+        "title": "ИБ и безопасность",
+        "short": "ИБ",
+        "time": "10 минут",
+        "lead": "Что уходит в модель, где ключи, чем подписан ответ и что пишется в журнал.",
+        "steps": (
+            ("index#data", "Данные не покидают банк: контур, псевдонимизация, хранилище и журнал"),
+            ("verify", "Подпись, статус и целостность журнала проверяются независимо от «Мандата»"),
+            ("pilot", "Установка в контур банка и роли сторон в пилоте"),
+        ),
+        "docs": (
+            ("docs/THREAT_MODEL.md", "Модель угроз"),
+            ("docs/TRUST_BOUNDARIES.md", "Потоки данных и доверенные границы"),
+            ("SECURITY.md", "Безопасность и уязвимости"),
+        ),
+    },
+)
+# Значки ролей — контуры в стиле значков схемы на главной: медаль, банк, весы, код, щит.
+ROLE_ICON = {
+    "jury": '<circle cx="12" cy="8" r="6"/><path d="M15.48 12.89 17 22l-5-3-5 3 1.52-9.11"/>',
+    "bank": '<path d="M3 22h18M6 18v-7M10 18v-7M14 18v-7M18 18v-7"/><path d="M12 2l8 5H4z"/>',
+    "law": (
+        '<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/>'
+        '<path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/>'
+        '<path d="M7 21h10M12 3v18M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>'
+    ),
+    "it": '<path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/>',
+    "sec": (
+        '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 '
+        '6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>'
+    ),
+}
+ARROW_LEFT = '<svg class="ar" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>'
+ARROW_RIGHT = '<svg class="ar" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>'
+TOC_ITEM = re.compile(r'<(?:h2|section)\b[^>]*\bid="([\w-]+)"[^>]*\bdata-toc="([^"]+)"')
+
+
+def _step_url(step: str, route: str | None = None, prefix: str = "") -> str:
+    page, _, anchor = step.partition("#")
+    query = f"?route={route}" if route else ""
+    return f"{prefix}{page}.html{query}" + (f"#{anchor}" if anchor else "")
+
+
+def _page_icon(name: str, prefix: str = "", cls: str = "pager-art") -> str:
+    icon = PAGE_NOTES[name][1]
+    if icon is None:
+        return ""
+    return (
+        f'<img class="{cls}" src="{prefix}img/icon-{icon}-160.webp" width="160" height="160" alt="" '
+        'loading="lazy" decoding="async">'
+    )
+
+
+def _role_icon(route_id: str) -> str:
+    return f'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">{ROLE_ICON[route_id]}</svg>'
+
+
+def _steps_word(n: int) -> str:
+    return f"{n} {_plural(n, 'шаг', 'шага', 'шагов')}"
+
+
+def _pager(name: str) -> str:
+    """«Назад» и «Дальше» по порядку сайта и полоса хода: где эта страница среди девяти. С последней — в начало."""
+    names = [n for n, _ in PAGES]
+    titles = dict(PAGES)
+    i = names.index(name)
+    prev, nxt = names[i - 1], names[(i + 1) % len(names)]
+    track = []
+    for k, n in enumerate(names):
+        state = ' class="done"' if k < i else ' class="now"' if k == i else ""
+        current = ' aria-current="step"' if k == i else ""
+        track.append(
+            f'<li{state}><a href="{n}.html"{current} title="{_esc(titles[n])}">'
+            f'<span class="sr-only">{k + 1}. {_esc(titles[n])}</span></a></li>'
+        )
+    ahead = "В начало" if nxt == "index" else "Дальше"
+    back_card = (
+        f'<a class="pager-card prev" href="{prev}.html" rel="prev"><span class="pager-dir">{ARROW_LEFT}Назад</span>'
+        f'<b>{_esc(titles[prev])}</b><span class="pager-sub">{_esc(PAGE_NOTES[prev][0])}</span></a>'
+    )
+    next_card = (
+        f'<a class="pager-card next" href="{nxt}.html" rel="next">{_page_icon(nxt)}'
+        f'<span class="pager-dir">{ahead}{ARROW_RIGHT}</span><b>{_esc(titles[nxt])}</b>'
+        f'<span class="pager-sub">{_esc(PAGE_NOTES[nxt][0])}</span></a>'
+    )
+    more = '<a href="index.html#routes">Маршруты по ролям</a><a href="index.html#try">Все страницы</a>'
+    return f"""<section class="sec pager-sec" id="pager">
+  <div class="wrap">
+    <nav class="pager" aria-label="Порядок страниц" data-page="{name}">
+      <div class="pager-head">
+        <p class="pager-pos">Страница {i + 1} из {len(names)}</p>
+        <ol class="pager-track">{"".join(track)}</ol>
+      </div>
+      <div class="pager-cards">
+        {back_card}
+        {next_card}
+      </div>
+      <p class="pager-all">{more}</p>
+    </nav>
+  </div>
+</section>
+"""
+
+
+def _audience(name: str) -> str:
+    """Кому страница полезна: роли, в маршрут которых она входит. Ссылка начинает маршрут роли с этой страницы."""
+    roles = [r for r in ROUTES if any(step.partition("#")[0] == name for step, _ in r["steps"])]
+    if not roles:
+        return ""
+    links = "".join(
+        f'<a href="{_step_url(name, r["id"])}" data-route="{r["id"]}" '
+        f'aria-label="Маршрут «{_esc(r["title"])}» с этой страницы">{_role_icon(r["id"])}{_esc(r["short"])}</a>'
+        for r in roles
+    )
+    return f'<p class="audience"><span class="audience-h">Кому полезно</span>{links}</p>'
+
+
+def _toc(page: str) -> str:
+    """Оглавление длинной страницы: разделы с id и коротким именем в data-toc, в порядке страницы."""
+    items = TOC_ITEM.findall(page)
+    if len(items) < 3:
+        return ""
+    links = "".join(f'<a href="#{anchor}">{_esc(label)}</a>' for anchor, label in items)
+    return f'<nav class="toc" aria-label="Разделы страницы"><span class="toc-h">На странице</span>{links}</nav>'
+
+
+def _route_cards() -> str:
+    """Маршруты на главной: роль, сколько шагов и минут, шаги с тем, что смотреть, и документы глубже."""
+    cards = []
+    for r in ROUTES:
+        steps = "".join(
+            f'<li><a href="{_step_url(step, r["id"])}"><b>{_esc(dict(PAGES)[step.partition("#")[0]])}'
+            f"{' · данные' if step == 'index#data' else ''}</b><span>{_esc(text)}</span></a></li>"
+            for step, text in r["steps"]
+        )
+        docs = " · ".join(f'<a href="{REPO}/blob/main/{path}">{_esc(text)}</a>' for path, text in r["docs"])
+        featured = " featured" if r["id"] == "jury" else ""
+        meta = f"{_steps_word(len(r['steps']))} · {r['time']}"
+        head = f'<div><h3>{_esc(r["title"])}</h3><p class="route-meta">{meta}</p></div>'
+        cards.append(
+            f"""<article class="route{featured} reveal" id="route-{r["id"]}">
+        <div class="route-head">{_role_icon(r["id"])}{head}</div>
+        <p class="route-lead">{_esc(r["lead"])}</p>
+        <ol class="route-steps">{steps}</ol>
+        <p class="route-docs"><span>Глубже:</span> {docs}</p>
+        <a class="btn primary route-go" href="{_step_url(r["steps"][0][0], r["id"])}">Начать маршрут{ARROW_RIGHT}</a>
+      </article>"""
+        )
+    return "\n      ".join(cards)
+
+
+def _route_pills() -> str:
+    """Строка в первом экране главной: маршрут для своей роли в одно касание."""
+    pills = "".join(
+        f'<a href="{_step_url(r["steps"][0][0], r["id"])}" data-route="{r["id"]}">'
+        f"{_role_icon(r['id'])}{_esc(r['short'])}</a>"
+        for r in ROUTES
+    )
+    return (
+        f'<p class="roles"><span class="roles-h">Маршрут для</span>{pills}'
+        '<a class="roles-more" href="#routes">Что в маршрутах</a></p>'
+    )
+
+
+def _site_map(prefix: str = "") -> str:
+    """Карта сайта в подвале: страницы, маршруты, материалы и документы."""
+    pages = "".join(f'<li><a href="{prefix}{n}.html">{_esc(t)}</a></li>' for n, t in PAGES)
+    routes = "".join(
+        f'<li><a href="{_step_url(r["steps"][0][0], r["id"], prefix)}">{_esc(r["title"])}</a></li>' for r in ROUTES
+    )
+    materials = (
+        f'<li><a href="{prefix}materials/Mandat_VTB.pdf">Презентация, PDF</a></li>'
+        f'<li><a href="{prefix}materials/Mandat_demo.mp4">Видео-демо</a></li>'
+        f'<li><a href="{prefix}materials/Mandat_analytics_all.pdf">Пакет аналитики</a></li>'
+        f'<li><a href="{prefix}materials/Mandat_financial_model.xlsx">Финансовая модель</a></li>'
+    )
+    docs = (
+        f'<li><a href="{REPO}#readme">README и запуск</a></li>'
+        f'<li><a href="{REPO}/blob/main/docs/SPRINT2.md">Доказательства спринта 2</a></li>'
+        f'<li><a href="{REPO}/blob/main/LIMITS.md">Границы стенда</a></li>'
+        f'<li><a href="{REPO}/blob/main/SECURITY.md">Безопасность</a></li>'
+    )
+    return f"""<nav class="foot-map" aria-label="Карта сайта">
+      <div><p class="foot-h">Страницы</p><ul>{pages}</ul></div>
+      <div><p class="foot-h">Маршруты</p><ul>{routes}</ul></div>
+      <div><p class="foot-h">Материалы</p><ul>{materials}</ul></div>
+      <div><p class="foot-h">Документы</p><ul>{docs}</ul></div>
+    </nav>"""
+
+
+def _lost_map() -> str:
+    """Страница 404 отдаётся по любому адресу, поэтому её ссылки — от корня сайта /Mandat/."""
+    cards = "".join(
+        f'<li><a href="/Mandat/{n}.html">{_page_icon(n, "/Mandat/", "tour-art") if PAGE_NOTES[n][1] else ""}'
+        f"<b>{_esc(t)}</b><span>{_esc(PAGE_NOTES[n][0])}</span></a></li>"
+        for n, t in PAGES
+    )
+    return f'<ul class="tour lost">{cards}</ul>'
+
+
+def _icon_src(icon: str | None) -> str | None:
+    """Адрес значка для js/nav.js — с версией файла, как у картинок в разметке."""
+    if icon is None:
+        return None
+    name = f"icon-{icon}-160.webp"
+    return f"img/{name}?v={_version(SITE / 'img' / name)}"
+
+
+def _routes_data() -> dict[str, Any]:
+    """Маршруты и страницы для js/nav.js: те же тексты, что в разметке, без повторного набора."""
+    return {
+        "pages": {
+            n: {
+                "title": t,
+                "note": PAGE_NOTES[n][0],
+                "icon_src": _icon_src(PAGE_NOTES[n][1]),
+            }
+            for n, t in PAGES
+        },
+        "routes": [
+            {
+                "id": r["id"],
+                "title": r["title"],
+                "short": r["short"],
+                "steps": [
+                    {"page": step.partition("#")[0], "href": _step_url(step, r["id"]), "text": text}
+                    for step, text in r["steps"]
+                ],
+                "docs": [{"href": f"{REPO}/blob/main/{path}", "text": text} for path, text in r["docs"]],
+            }
+            for r in ROUTES
+        ],
+    }
 
 
 def _stages(today: date) -> str:
@@ -1042,27 +1366,39 @@ def build(out: Path, demo_dir: Path | None = None) -> Path:
         "first_slide_src": _esc(slides["slides"][0]["src"]),
         "first_slide_alt": _esc(f"Слайд 1: {slides['slides'][0]['title']}"),
         "pitch_count": str(slides["pitch"]),
+        "pitch_word": _plural(slides["pitch"], "слайд", "слайда", "слайдов"),
+        "routes": _route_cards(),
+        "route_pills": _route_pills(),
         "verify_seq": str(verify["journal"]["seq"]),
         "verify_size": str(verify["journal"]["size"]),
         "verify_root": verify["journal"]["root"],
         **_scale(model),
         **_criteria_html(criteria),
     }
+    routes = _json_block(_routes_data())
     for name, _title in PAGES:
         mapping = {
             **base,
             **extra,
             "header": _header(name),
             "footer": footer,
+            "audience": _audience(name),
             "data": _json_block(page_data[name]) if page_data[name] is not None else "null",
         }
         page = Template((SITE / f"{name}.html").read_text(encoding="utf-8")).substitute(mapping)
-        page = page.replace("</head>", f"{SPECULATION}\n</head>", 1)
+        # Общая навигация: оглавление длинной страницы, «Назад» и «Дальше» в конце, маршруты для js/nav.js.
+        page = page.replace("<!--toc-->", _toc(page), 1)
+        if name != "index":
+            page = page.replace("</main>", f"{_pager(name)}</main>", 1)
+        page = page.replace("</head>", f'<script type="module" src="js/nav.js"></script>\n{SPECULATION}\n</head>', 1)
+        page = page.replace(
+            "</body>", f'<script type="application/json" id="site-routes">{routes}</script>\n</body>', 1
+        )
         (out / f"{name}.html").write_text(_typo(page), encoding="utf-8")
     page404 = Template((SITE / "404.html").read_text(encoding="utf-8")).substitute(
-        {**base, "header": _header(""), "footer": footer, "data": "null"}
+        {**base, "header": _header(""), "footer": footer, "data": "null", "sitemap": _lost_map()}
     )
-    (out / "404.html").write_text(page404, encoding="utf-8")
+    (out / "404.html").write_text(_typo(page404), encoding="utf-8")
     for name in STATIC:
         shutil.copy2(SITE / name, out / name)
     shutil.copytree(SITE / "js", out / "js")
