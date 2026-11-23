@@ -19,12 +19,19 @@
 ``revocation`` (МЧД отменена или истекла, руководитель без МЧД сменился) или ``suspension``
 (признаки захвата, смена руководителя без имени нового); его исполняет ``mandat monitor --status-dir``
 через списки статусов W3C.
+
+Сроки МЧД видны из самих прав, без событий реестра: у права может быть последний день действия каждой
+МЧД цепочки. На дату проверки за ``notice_days`` дней до конца срока выходит тревога ``poa_expiring``:
+банк напоминает клиенту перевыпустить МЧД, пока платёж не сорвался. Передоверие не живёт дольше
+основной МЧД (п. 4 ст. 187 ГК РФ), поэтому срок права — самый ранний в цепочке. Срок прошёл, а события
+об этом не было — права падают так же, как по ``POA_EXPIRED`` (подп. 1 п. 1 ст. 188 ГК РФ):
+молчание реестра не продлевает доверенность.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 
 from mandat.data import sha256_json
@@ -32,6 +39,8 @@ from mandat.domain.identifiers import normalize_inn, normalize_poa_number
 
 EVENT_KINDS = {"EIO_CHANGED", "POA_REVOKED", "POA_EXPIRED", "NEW_POA", "REQUISITES_CHANGE_REQUEST"}
 HIJACK_PATTERN = {"EIO_CHANGED", "NEW_POA", "REQUISITES_CHANGE_REQUEST"}
+# За сколько дней до конца срока МЧД предупреждать: месяца хватает перевыпустить и зарегистрировать новую.
+NOTICE_DAYS = 30
 
 
 @dataclass(frozen=True)
@@ -42,6 +51,8 @@ class GrantedRight:
     operation: str
     poa_numbers: tuple[str, ...]
     eio_inn: str | None
+    # Последний день действия МЧД цепочки, включительно, по московскому календарю: (номер, дата).
+    poa_valid_until: tuple[tuple[str, date], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -127,20 +138,48 @@ def _numbers(value: Any) -> tuple[str, ...]:
     return tuple(n for n in (normalize_poa_number(v) for v in value) if n)
 
 
+def _valid_until(value: Any, numbers: tuple[str, ...]) -> tuple[tuple[str, date], ...]:
+    """Сроки МЧД права: {номер: "ГГГГ-ММ-ДД"}. Срок МЧД не из цепочки права — ошибка, а не тихий пропуск."""
+    if value is None:
+        return ()
+    if not isinstance(value, dict):
+        raise ValueError("poa_valid_until должен быть объектом «номер МЧД → дата»")
+    out = []
+    for raw, day in value.items():
+        number = normalize_poa_number(raw)
+        if not number or number not in numbers:
+            raise ValueError(f"срок указан для МЧД {raw!r}, которой нет в цепочке права")
+        if not isinstance(day, str):
+            raise ValueError("дата окончания МЧД должна быть строкой ГГГГ-ММ-ДД")
+        try:
+            out.append((number, date.fromisoformat(day)))
+        except ValueError as exc:
+            raise ValueError(f"дата окончания МЧД не разобрана: {day!r}") from exc
+    return tuple(sorted(out, key=lambda pair: numbers.index(pair[0])))
+
+
+def parse_as_of(payload: dict[str, Any], warnings: list[str] | None = None) -> datetime | None:
+    """Момент проверки сроков — поле ``as_of`` пачки. Нет поля — None: вызывающий берёт текущее время."""
+    value = payload.get("as_of") if isinstance(payload, dict) else None
+    return None if value is None else _event_time(value, warnings)
+
+
 def parse_events(payload: dict[str, Any], warnings: list[str] | None = None) -> tuple[list[GrantedRight], list[Event]]:
     """Права и события. Номера МЧД и ИНН приводятся к одному виду, отмена без номера МЧД — ошибка."""
     rights = []
     for row in _rows(payload, "rights"):
         if not isinstance(row, dict):
             raise ValueError("право должно быть объектом")
+        numbers = _numbers(row.get("poa_numbers"))
         rights.append(
             GrantedRight(
                 right_id=str(row["right_id"]),
                 org_inn=normalize_inn(row["org_inn"]) or "",
                 representative_inn=normalize_inn(row["representative_inn"]) or "",
                 operation=str(row["operation"]),
-                poa_numbers=_numbers(row.get("poa_numbers")),
+                poa_numbers=numbers,
                 eio_inn=normalize_inn(row.get("eio_inn")),
+                poa_valid_until=_valid_until(row.get("poa_valid_until"), numbers),
             )
         )
     events = []
@@ -164,7 +203,85 @@ def parse_events(payload: dict[str, Any], warnings: list[str] | None = None) -> 
     return rights, events
 
 
-def evaluate(rights: list[GrantedRight], events: list[Event], *, window_hours: int = 72) -> list[Alert]:
+def _days(n: int) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return f"{n} день"
+    return f"{n} {'дня' if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else 'дней'}"
+
+
+def _expiry_alerts(rights: list[GrantedRight], events: list[Event], as_of: datetime, notice_days: int) -> list[Alert]:
+    """Сроки МЧД из самих прав: предупреждение до конца срока и отзыв после, если реестр об этом промолчал."""
+    today = as_of.astimezone(MOSCOW).date()
+    closed = {(e.org_inn, e.payload.get("number")) for e in events if e.kind in {"POA_REVOKED", "POA_EXPIRED"}}
+    soon: dict[tuple[str, str, date], list[GrantedRight]] = {}
+    gone: dict[tuple[str, str, date], list[GrantedRight]] = {}
+    for right in rights:
+        # Право, которое событие этой пачки уже обрывает, второй тревоги по сроку не получает.
+        if not right.poa_valid_until or any((right.org_inn, n) in closed for n in right.poa_numbers):
+            continue
+        # Право живёт до самого раннего срока цепочки: передоверие не дольше основной МЧД (п. 4 ст. 187 ГК РФ).
+        number, last = min(right.poa_valid_until, key=lambda pair: pair[1])
+        left = (last - today).days
+        if left < 0:
+            gone.setdefault((right.org_inn, number, last), []).append(right)
+        elif 0 <= left <= notice_days:
+            soon.setdefault((right.org_inn, number, last), []).append(right)
+    alerts = []
+    for (org, number, last), hit in sorted(soon.items(), key=lambda item: (item[0][2], item[0][0], item[0][1])):
+        left = (last - today).days
+        reasons = [
+            f"МЧД {number} действует по {last:%d.%m.%Y} включительно: "
+            + ("последний день — сегодня" if left == 0 else f"до конца срока {_days(left)}")
+        ]
+        if any(r.poa_numbers[-1] != number for r in hit):
+            reasons.append("передоверие не действует дольше основной МЧД (п. 4 ст. 187 ГК РФ)")
+        alerts.append(
+            Alert(
+                "poa_expiring",
+                "low",
+                org,
+                tuple(r.right_id for r in hit),
+                (
+                    f"напомнить клиенту перевыпустить МЧД до {last:%d.%m.%Y}",
+                    "предупредить ДБО: после этой даты операции по праву не пройдут",
+                ),
+                tuple(reasons),
+                (),
+                poa_number=number,
+            )
+        )
+    for (org, number, last), hit in sorted(gone.items(), key=lambda item: (item[0][2], item[0][0], item[0][1])):
+        reasons = [
+            f"МЧД {number} действовала по {last:%d.%m.%Y}: срок истёк (подп. 1 п. 1 ст. 188 ГК РФ), "
+            "события реестра не было"
+        ]
+        if any(r.poa_numbers[-1] != number for r in hit):
+            reasons.append("вместе с ней теряет силу передоверие (п. 3 ст. 188 ГК РФ)")
+        alerts.append(
+            Alert(
+                "poa_invalidated",
+                "medium",
+                org,
+                tuple(r.right_id for r in hit),
+                ("приостановить права, основанные на этой МЧД и её передоверии", "запросить новую МЧД"),
+                tuple(reasons),
+                (),
+                attestation_action="revocation",
+                poa_number=number,
+            )
+        )
+    return alerts
+
+
+def evaluate(
+    rights: list[GrantedRight],
+    events: list[Event],
+    *,
+    window_hours: int = 72,
+    as_of: datetime | None = None,
+    notice_days: int = NOTICE_DAYS,
+) -> list[Alert]:
+    """Тревоги по событиям, а с моментом ``as_of`` — ещё и по срокам МЧД из самих прав."""
     alerts: list[Alert] = []
     by_org: dict[str, list[Event]] = {}
     for ev in sorted(events, key=lambda e: e.at):
@@ -271,4 +388,6 @@ def evaluate(rights: list[GrantedRight], events: list[Event], *, window_hours: i
                             chain_kind="eio_direct",
                         )
                     )
+    if as_of is not None:
+        alerts.extend(_expiry_alerts(rights, events, as_of, notice_days))
     return alerts

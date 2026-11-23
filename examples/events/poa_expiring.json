@@ -1,0 +1,35 @@
+{
+  "title": "Сроки МЧД: передоверие кончается через 10 дней, основная МЧД другого права истекла, а реестр промолчал",
+  "as_of": "2026-11-23T09:00:00+03:00",
+  "rights": [
+    {
+      "right_id": "R-021",
+      "org_inn": "7729985006",
+      "representative_inn": "777588807322",
+      "operation": "PAYMENT_SIGN",
+      "poa_numbers": [
+        "ee2afcb0-9003-7ff0-ef03-8dad405558ea",
+        "f3c69a25-a0a0-3e35-723f-2ad0f5e063e7"
+      ],
+      "eio_inn": null,
+      "poa_valid_until": {
+        "ee2afcb0-9003-7ff0-ef03-8dad405558ea": "2027-06-30",
+        "f3c69a25-a0a0-3e35-723f-2ad0f5e063e7": "2026-12-03"
+      }
+    },
+    {
+      "right_id": "R-022",
+      "org_inn": "7729985006",
+      "representative_inn": "779341418422",
+      "operation": "STATEMENT_VIEW",
+      "poa_numbers": [
+        "71ad2f2e-9941-cb17-2164-f172376af807"
+      ],
+      "eio_inn": null,
+      "poa_valid_until": {
+        "71ad2f2e-9941-cb17-2164-f172376af807": "2026-11-20"
+      }
+    }
+  ],
+  "events": []
+}

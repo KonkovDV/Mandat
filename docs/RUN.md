@@ -19,6 +19,7 @@ mandat verify examples/cases/10_old_director_poa --html var/10.html
 mandat attest-verify var/demo/attestations/01_ok.json --public-key-file var/demo/public_key.txt --status-dir var/demo/status
 mandat monitor examples/events/poa_revoked.json --status-dir var/demo/status
 mandat monitor examples/events/takeover.json --status-dir var/demo/status
+mandat monitor examples/events/poa_expiring.json   # сроки МЧД: за 30 дней — предупреждение, после срока — отзыв
 mandat attest-verify var/demo/attestations/01_ok.json --public-key-file var/demo/public_key.txt --status-dir var/demo/status
 mandat journal-proof var/demo/journal.jsonl --seq 3
 python -m pytest
@@ -72,7 +73,7 @@ Docker поднимает API только на localhost: `docker compose up --
 | `GET /v1/cases/{id}/review` | то же и `reviewer` | состояние разбора и версия для `expected_version` |
 | `POST /v1/cases/{id}/review/{action}` | `operator`, `reviewer` | действие разбора: `appeal`, `open`, `accept`, `reject`, `request_docs`, `close`, `require` ([разбор](REVIEW.md)) |
 | `GET /v1/review/queue` | любая роль; `operator` видит свои кейсы | кейсы, ждущие человека, по сроку |
-| `POST /v1/events` | `operator`, `reviewer`, `admin` | оценка событий мониторинга; статусы удостоверений не меняет, их пишет `mandat monitor` |
+| `POST /v1/events` | `operator`, `reviewer`, `admin` | оценка событий мониторинга и сроков МЧД: момент — `as_of` в теле или время сервера, `notice_days` — за сколько дней предупреждать (по умолчанию 30); статусы удостоверений не меняет, их пишет `mandat monitor` |
 | `POST /v1/operations/authorize` | `dbo` для своих `audiences`; на стенде также `operator`, `reviewer`, `admin` | допуск одной операции по удостоверению ([ниже](#допуск-операции-для-дбо)) |
 
 Манифест сверяется с [контрактом](api/case-manifest.schema.json). В `pilot`, `prod` и любом защищённом режиме поле вне контракта — 422: опечатка в имени поля не превращается в «источник недоступен». На стенде такой кейс проверяется, а отчёт называет непрочитанное поле в предупреждениях.

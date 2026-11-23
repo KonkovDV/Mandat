@@ -55,7 +55,7 @@ from mandat.review.state_machine import (
 )
 from mandat.services import admission
 from mandat.services.env_policy import PROFILES, ProfileNotAllowed, protected, resolve_profile
-from mandat.services.monitoring import evaluate, parse_events
+from mandat.services.monitoring import MOSCOW, NOTICE_DAYS, evaluate, parse_as_of, parse_events
 from mandat.services.next_steps import check_sla
 from mandat.services.verify import verify_case
 from mandat.strictjson import MAX_JSON_DEPTH, strict_loads
@@ -849,19 +849,26 @@ def create_app(
         return {"items": items, "states": sorted(open_states), "auto_decided": ReviewState.AUTO_DECIDED.value}
 
     @app.post("/v1/events", dependencies=[Depends(writer), Depends(strict_json_object)])
-    def post_events(payload: dict[str, Any], window_hours: int = 72) -> dict[str, Any]:
-        """Только оценка событий. Статусы удостоверений этот метод не меняет: их пишет CLI monitor."""
+    def post_events(payload: dict[str, Any], window_hours: int = 72, notice_days: int = NOTICE_DAYS) -> dict[str, Any]:
+        """Только оценка событий и сроков МЧД. Статусы удостоверений этот метод не меняет: их пишет CLI monitor.
+
+        Сроки считаются на ``as_of`` из тела, а без него — на время сервера; момент возвращается в ответе.
+        """
         if not isinstance(payload, dict):
             raise HTTPException(422, "тело должно быть объектом")
         if window_hours < 1 or window_hours > 24 * 30:
             raise HTTPException(422, "window_hours от 1 до 720")
+        if notice_days < 0 or notice_days > 366:
+            raise HTTPException(422, "notice_days от 0 до 366")
         try:
             warnings: list[str] = []
             rights, events = parse_events(payload, warnings)
+            as_of = parse_as_of(payload, warnings) or datetime.now(UTC)
         except (KeyError, ValueError, TypeError) as exc:
             raise ApiProblem(422, "события не разобраны", f"{type(exc).__name__}: {exc}") from exc
-        alerts = [a.as_dict() for a in evaluate(rights, events, window_hours=window_hours)]
-        return {"alerts": alerts, "warnings": warnings}
+        found = evaluate(rights, events, window_hours=window_hours, as_of=as_of, notice_days=notice_days)
+        moment = as_of.astimezone(MOSCOW).isoformat()
+        return {"alerts": [a.as_dict() for a in found], "warnings": warnings, "as_of": moment}
 
     @app.post("/v1/operations/authorize", dependencies=[Depends(strict_json_object)])
     def authorize_operation(body: AdmissionBody, principal: Principal = Depends(admitter)) -> dict[str, Any]:

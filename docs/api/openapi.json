@@ -634,7 +634,7 @@
     },
     "/v1/events": {
       "post": {
-        "description": "Только оценка событий. Статусы удостоверений этот метод не меняет: их пишет CLI monitor.",
+        "description": "Только оценка событий и сроков МЧД. Статусы удостоверений этот метод не меняет: их пишет CLI monitor.\n\nСроки считаются на ``as_of`` из тела, а без него — на время сервера; момент возвращается в ответе.",
         "operationId": "post_events_v1_events_post",
         "parameters": [
           {
@@ -644,6 +644,16 @@
             "schema": {
               "default": 72,
               "title": "Window Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "notice_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Notice Days",
               "type": "integer"
             }
           },

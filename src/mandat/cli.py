@@ -30,7 +30,7 @@ from mandat.audit.status_list import StatusRegistry, check_status
 from mandat.intake.case_loader import CaseError, load_case_dir
 from mandat.report.html import render
 from mandat.rules.pack import default_pack
-from mandat.services.monitoring import evaluate, parse_events
+from mandat.services.monitoring import MOSCOW, NOTICE_DAYS, evaluate, parse_as_of, parse_events
 from mandat.services.verify import verify_case
 from mandat.services.webhooks import delivery
 from mandat.strictjson import strict_loads
@@ -150,8 +150,12 @@ def cmd_demo(args: argparse.Namespace) -> int:
 def cmd_monitor(args: argparse.Namespace) -> int:
     payload = strict_loads(Path(args.events).read_text(encoding="utf-8"))
     rights, events = parse_events(payload)
-    alerts = evaluate(rights, events, window_hours=args.window_hours)
+    # Сроки МЧД считаются на момент --as-of, иначе на as_of из пачки, иначе на текущее время.
+    as_of = parse_as_of({"as_of": args.as_of} if args.as_of else payload) or datetime.now(UTC)
+    alerts = evaluate(rights, events, window_hours=args.window_hours, as_of=as_of, notice_days=args.notice_days)
     result: dict[str, Any] = {"alerts": [a.as_dict() for a in alerts]}
+    if any(r.poa_valid_until for r in rights):
+        result["as_of"] = as_of.astimezone(MOSCOW).isoformat()
     if args.status_dir:
         status_dir = Path(args.status_dir)
         from mandat.audit.signing import SignerError, signer_from_env
@@ -672,6 +676,8 @@ def build_parser() -> argparse.ArgumentParser:
     m = sub.add_parser("monitor", help="оценить события по выданным правам")
     m.add_argument("events")
     m.add_argument("--window-hours", type=int, default=72)
+    m.add_argument("--as-of", help="момент проверки сроков МЧД, ISO 8601; без пояса — Москва")
+    m.add_argument("--notice-days", type=int, default=NOTICE_DAYS, help="за сколько дней предупреждать о конце срока")
     m.add_argument("--status-dir", help="каталог списков статусов: отозвать или приостановить удостоверения")
     m.add_argument("--key", help="ключ подписи списков (по умолчанию ../keys/attestation_ed25519.pem)")
     m.add_argument("--journal", help="записать изменения статусов в журнал")
