@@ -104,3 +104,18 @@ node submission/deck/device_art.js _site
 4. `make deck` — колода, PDF, проверка вёрстки `qa_deck.py`, слайды для сайта. Затем
    `python scripts/build_site.py --out _site`, `(cd scripts && npm ci)` и `node scripts/check_site_devices.js _site`: девять устройств,
    светлая и тёмная тема, разрывы слов, WCAG 2.2 AA.
+
+## Следующие кадры для сайта: стиль Apple
+
+План на сессию с подключённой Figma. Язык — как у страниц продуктов Apple: один предмет крупно, стекло и свет, много воздуха, ни одной надписи на картинке; текст и числа набирает страница. Каждый кадр — в двух вариантах фона, для светлой и тёмной темы. Модель — gpt-image-2.5-sunburst, размер — в таблице.
+
+| Кадр | Где на сайте | Размер | Промт |
+|---|---|---|---|
+| `card-hero` | первый экран главной, справа от вопроса | 1536×1024 | A single premium credential card made of frosted glass floats at a slight angle above a reflective surface; a soft cobalt-to-sky-blue (#004CBC to #00AAFF) glow inside the glass, a small embossed check mark seal in one corner, crisp beveled edges catching a white rim light. Seamless {light #F3F6FB / deep navy #0B1426} studio background, soft shadow, Apple product keynote photography style, photorealistic 3D render, generous empty space. No text, numbers, logos or UI. |
+| `bento-zero` | плитка «0 из 288» в сетке доказательств | 1024×1024 | A precise grid of 288 tiny glass spheres on a matte surface, all glowing soft green, one row slightly in focus, shallow depth of field; calm, exact, scientific mood. Seamless {light / navy} background, Apple product photography, no text. |
+| `bento-date` | плитка «на дату операции» | 1024×1024 | A minimalist frosted glass calendar disc with a single illuminated ring segment marking one day, cobalt glow, soft shadow, Apple product render, seamless {light / navy} background, no numbers or text. |
+| `bento-perimeter` | плитка «данные остаются в банке» | 1024×1024 | A compact brushed-aluminium server block inside a transparent glass cube, a faint blue light inside, the cube closed on all sides, studio lighting, Apple product render, seamless {light / navy} background, no text or logos. |
+| `bento-pilot` | плитка «шесть недель пилота» | 1024×1024 | Six thin frosted glass panes standing in a row with a soft light passing through them, the last one slightly brighter, Apple product render, seamless {light / navy} background, no text or numbers. |
+
+Порядок: сгенерировать в Figma, скачать PNG, положить в папку и прогнать `python submission/deck/import_visuals.py ПАПКА` после того, как в нём появятся имена этих кадров; затем сборка сайта и проверка на девяти устройствах.
+
