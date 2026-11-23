@@ -6,7 +6,7 @@
 
 - карточки сотрудника — страницы `var/demo/*.html`, которые строит `mandat demo`;
 - терминал — дословный вывод команд из `out/outputs.json`: `mandat demo`, `attest-verify`, `monitor`, `journal-verify`, `journal-proof`, `mandat showcase` и запрос `curl` к поднятому `mandat serve`. Пропуски обозначены «…», длинные хеши укорочены с «…», набор команды показан анимацией;
-- числа качества — из `evidence.json` и `tests/test_redteam_fuzz.py`, как в колоде; данные Банка России — строки M-07 и M-15 [реестра утверждений](../../CLAIMS_REGISTRY.md).
+- числа качества — из `evidence.json` и `tests/test_redteam_fuzz.py`, как в колоде; данные Банка России — строки M-07, M-15 и M-52 [реестра утверждений](../../CLAIMS_REGISTRY.md).
 
 ## Сборка
 
