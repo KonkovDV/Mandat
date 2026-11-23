@@ -11,6 +11,17 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+
+def random_key(tag: str) -> str:
+    """Ключ для тестов защищённого режима: 32 байта в hex, как из генератора, у каждой метки свой.
+
+    В pilot и prod ключ-пароль вида ``"k" * 32`` не принимается (``mandat.audit.keymaterial``).
+    """
+    import hashlib
+
+    return hashlib.sha256(f"mandat-test-key:{tag}".encode()).hexdigest()
+
+
 from mandat.api.storage import RedisStore  # noqa: E402
 from mandat.eval.synth import Scenario, build  # noqa: E402
 from mandat.intake.case_loader import load_case_inline  # noqa: E402

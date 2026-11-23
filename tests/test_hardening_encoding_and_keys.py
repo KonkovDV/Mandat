@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 import pytest
+from conftest import random_key
 from fastapi.testclient import TestClient
 
 from mandat.api.app import create_app
@@ -57,7 +58,7 @@ def test_pii_refuses_the_public_dev_key_in_protected_mode(monkeypatch: pytest.Mo
     monkeypatch.setenv("MANDAT_ENV", "pilot")
     with pytest.raises(pii.PiiKeyMissing):
         pii.pseudonymize("ИНН 7707083893")
-    monkeypatch.setenv("MANDAT_PII_KEY", "k" * 32)
+    monkeypatch.setenv("MANDAT_PII_KEY", random_key("pii"))
     assert "7707083893" not in pii.pseudonymize("ИНН 7707083893")
 
 

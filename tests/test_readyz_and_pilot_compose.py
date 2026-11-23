@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import re
 
+from conftest import random_key
 from fastapi.testclient import TestClient
 
 from mandat.api.app import create_app
 from mandat.api.storage import MemoryStore, SQLiteStore
 
-KEY = "k" * 40
+KEY = random_key("k")
 
 
-def _pilot(monkeypatch, *, journal_key=KEY, pii_key=KEY, store_key="s" * 40):
+def _pilot(monkeypatch, *, journal_key=KEY, pii_key=KEY, store_key=random_key("s")):
     monkeypatch.setenv("MANDAT_ENV", "pilot")
     keys = (("MANDAT_JOURNAL_KEY", journal_key), ("MANDAT_PII_KEY", pii_key), ("MANDAT_STORE_KEY", store_key))
     for name, value in keys:

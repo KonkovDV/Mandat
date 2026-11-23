@@ -13,8 +13,11 @@
 её даёт сертифицированное средство с ГОСТ Р 34.12-2015. Замена — другой ``Sealer`` с теми же методами.
 
 Ключ — ``MANDAT_STORE_KEY``, не короче 32 байт, отдельный от ключей журнала и псевдонимизации. В pilot и
-prod без него ``mandat serve`` не стартует. Для смены ключа прежний кладут в ``MANDAT_STORE_KEY_PREVIOUS``
-(несколько — через запятую): им записи только читаются, а при следующей записи шифруются новым ключом.
+prod без него ``mandat serve`` не стартует, а ключ должен быть случайным — 32 байта и больше в hex или base64
+(``mandat.audit.keymaterial``): HKDF выводит ключ AES из случайного материала, но пароль не растягивает.
+Для смены ключа прежний кладут в ``MANDAT_STORE_KEY_PREVIOUS`` (несколько — через запятую): им записи только
+читаются, а при следующей записи шифруются новым ключом. Прежний ключ может быть и паролем: так уходят
+с пароля на случайный ключ.
 """
 
 from __future__ import annotations
@@ -126,6 +129,13 @@ def load_sealer() -> Sealer | None:
     for other in ("MANDAT_JOURNAL_KEY", "MANDAT_PII_KEY"):
         if current == os.environ.get(other, "").strip():
             raise StoreKeyMissing(f"MANDAT_STORE_KEY совпадает с {other}: у каждого назначения свой ключ")
+    if protected() and len(current.encode("utf-8")) >= MIN_KEY_BYTES:
+        from mandat.audit.keymaterial import weak_key
+
+        # HKDF не растягивает пароль: в pilot и prod ключ хранилища — только случайный. Прежние ключи
+        # (MANDAT_STORE_KEY_PREVIOUS) не проверяются: ими лишь читают, чтобы уйти с пароля на ключ.
+        if problem := weak_key("MANDAT_STORE_KEY", current):
+            raise StoreKeyMissing(f"MANDAT_ENV={mode()}: {problem}")
     return Sealer(current, previous)
 
 

@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 
 import pytest
+from conftest import random_key
 
 from mandat.api.principals import access_problem
 from mandat.intake import egrul
 from mandat.privacy import pii
 
-STRONG = "k" * 32
+STRONG = random_key("strong")
 
 
 @pytest.mark.parametrize("env", ["pilot", "prod"])

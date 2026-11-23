@@ -289,4 +289,10 @@ def access_problem() -> str | None:
     if not users and protected() and len(token.encode("utf-8")) < MIN_LEGACY_TOKEN_BYTES:
         # Общий токен даёт роль admin: в pilot и prod короткий токен перебирается.
         return f"MANDAT_API_TOKEN короче {MIN_LEGACY_TOKEN_BYTES} байт: в защищённом режиме нужен длинный токен"
+    if not users and protected():
+        from mandat.audit.keymaterial import weak_key
+
+        # Общий токен даёт роль admin: пароль вместо случайного токена подбирается по словарю.
+        if problem := weak_key("MANDAT_API_TOKEN", token):
+            return problem
     return None

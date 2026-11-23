@@ -20,8 +20,9 @@ import hashlib
 import hmac
 import os
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from typing import Protocol
 
 from mandat.domain.identifiers import inn_valid, snils_valid
 
@@ -30,10 +31,58 @@ DEV_KEY = "mandat-dev-key-not-for-production"
 TOKEN_HEX = 16
 
 
+class Pattern(Protocol):
+    def finditer(self, string: str) -> Iterator[re.Match[str]]: ...
+
+    def sub(self, repl: Callable[[re.Match[str]], str], string: str) -> str: ...
+
+
+# Адрес почты в прежней записи: совпадения и маска остаются ровно такими же.
+_EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
+_EMAIL_CHAR = re.compile(r"[\w.+-]")
+_WORD = re.compile(r"\w")
+
+
+class LinearEmail:
+    """Те же совпадения, что ``_EMAIL.finditer``, но за линейное время.
+
+    ``re`` пробовал каждую границу слова внутри «a.a.a…» и каждый раз сканировал хвост до конца: 100 000
+    знаков без «@» разбирались 30 секунд, и пачка устава с таким текстом держала процесс. Здесь поиск идёт
+    от каждого «@» влево до начала имени, но не раньше конца прошлого совпадения. Первая граница слова на
+    этом отрезке — самое левое возможное начало: доменная часть от начала не зависит, поэтому если
+    совпадения нет от неё, его нет и от более поздних. Совпадение проверяет прежнее выражение, поэтому
+    объекты ``re.Match`` настоящие.
+    """
+
+    def finditer(self, string: str) -> Iterator[re.Match[str]]:
+        pos = 0
+        at = string.find("@")
+        while at != -1:
+            start = at
+            while start > pos and _EMAIL_CHAR.match(string, start - 1):
+                start -= 1
+            for begin in range(start, at):
+                # Граница слова: соседи по разные стороны \w (начало строки считается не словом).
+                if bool(_WORD.match(string, begin)) != (begin > 0 and bool(_WORD.match(string, begin - 1))):
+                    found = _EMAIL.match(string, begin)
+                    if found:
+                        yield found
+                        pos = found.end()
+                    break
+            at = string.find("@", max(at + 1, pos))
+
+    def sub(self, repl: Callable[[re.Match[str]], str], string: str) -> str:
+        parts, last = [], 0
+        for found in self.finditer(string):
+            parts += [string[last : found.start()], repl(found)]
+            last = found.end()
+        return "".join(parts) + string[last:]
+
+
 @dataclass(frozen=True)
 class Detector:
     kind: str
-    pattern: re.Pattern[str]
+    pattern: Pattern
     check: Callable[[str], bool] | None = None
 
 
@@ -71,7 +120,7 @@ DETECTORS = (
     Detector("ТЕЛЕФОН", re.compile(r"(?:\+7|8)[\s().\-]*\d{3}[\s().\-]*\d{3}[\s.\-]*\d{2}[\s.\-]*\d{2}\b")),
     # «8.903.123.45.67» и «+7.903.123.45.67». «8.100.000 рублей» короче: двух пар в конце нет.
     Detector("ТЕЛЕФОН", re.compile(r"(?<!\d)(?:\+7|8)(?:\.\d{3}){2}(?:\.\d{2}){2}(?!\d)")),
-    Detector("EMAIL", re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")),
+    Detector("EMAIL", LinearEmail()),
 )
 
 
@@ -162,6 +211,12 @@ def _key() -> bytes:
         if protected() and len(value.encode("utf-8")) < MIN_KEY_BYTES:
             # Короткий ключ HMAC (RFC 2104, разд. 3) делает токен ИНН подбираемым вместе с ключом.
             raise PiiKeyMissing(f"MANDAT_PII_KEY короче {MIN_KEY_BYTES} байт")
+        if protected():
+            from mandat.audit.keymaterial import weak_key
+
+            # Пароль вместо ключа: перебор ключа по словарю вместе с ИНН восстанавливает ИНН по токену.
+            if problem := weak_key("MANDAT_PII_KEY", value):
+                raise PiiKeyMissing(problem)
         return value.encode("utf-8")
 
     if protected():

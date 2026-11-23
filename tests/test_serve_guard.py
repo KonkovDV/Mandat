@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from conftest import random_key
 
 from mandat import cli
 from mandat.api.principals import access_problem, hash_token
@@ -41,7 +42,7 @@ def test_compose_does_not_demand_only_the_token(root):
     assert "MANDAT_API_USERS" in compose
 
 
-STRONG = "k" * 32
+STRONG = random_key("strong")
 
 
 def _access(monkeypatch):
@@ -78,7 +79,7 @@ def test_key_check_passes_with_keys(monkeypatch, env):
     monkeypatch.setenv("MANDAT_ENV", env)
     monkeypatch.setenv("MANDAT_JOURNAL_KEY", STRONG)
     monkeypatch.setenv("MANDAT_PII_KEY", STRONG)
-    monkeypatch.setenv("MANDAT_STORE_KEY", "s" * 40)
+    monkeypatch.setenv("MANDAT_STORE_KEY", random_key("store"))
     assert key_problem() is None
 
 

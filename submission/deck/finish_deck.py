@@ -108,6 +108,9 @@ def scrub_pdf(path: Path) -> list[str]:
         return b"/" + key + b"<" + _pdf_hex(APPLICATION, len(body)) + b">"
 
     data = re.sub(rb"/(Creator|Producer)<([0-9A-Fa-f\s]*)>", info, data)
+    # Язык документа: LibreOffice пишет язык своей локали, а текст колоды русский. Экранный диктор читает
+    # по /Lang каталога; строка той же длины, смещения таблицы xref не сдвигаются.
+    data = data.replace(b"/Lang(en-US)", b"/Lang(ru-RU)")
     data = re.sub(
         rb"/(Creator|Producer)\(([^)]*)\)", lambda m: b"/" + m.group(1) + b"(" + b" " * len(m.group(2)) + b")", data
     )

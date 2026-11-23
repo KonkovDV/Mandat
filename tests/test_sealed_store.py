@@ -13,6 +13,7 @@ import json
 import sqlite3
 
 import pytest
+from conftest import random_key
 from fastapi.testclient import TestClient
 
 from mandat.api import app as api
@@ -112,21 +113,26 @@ def test_key_policy(monkeypatch):
     monkeypatch.setenv("MANDAT_ENV", "demo")
     assert load_sealer() is None
     monkeypatch.setenv("MANDAT_ENV", "pilot")
-    monkeypatch.setenv("MANDAT_JOURNAL_KEY", "j" * 40)
-    monkeypatch.setenv("MANDAT_PII_KEY", "p" * 40)
+    monkeypatch.setenv("MANDAT_JOURNAL_KEY", random_key("journal"))
+    monkeypatch.setenv("MANDAT_PII_KEY", random_key("pii"))
     with pytest.raises(StoreKeyMissing, match="MANDAT_STORE_KEY"):
         load_sealer()
     assert "MANDAT_STORE_KEY" in (key_problem() or "")
     monkeypatch.setenv("MANDAT_STORE_KEY", "short")
     with pytest.raises(StoreKeyMissing, match="короче"):
         load_sealer()
-    monkeypatch.setenv("MANDAT_STORE_KEY", "j" * 40)
+    monkeypatch.setenv("MANDAT_STORE_KEY", random_key("journal"))
     with pytest.raises(StoreKeyMissing, match="MANDAT_JOURNAL_KEY"):
         load_sealer()
+    # HKDF не растягивает пароль: в pilot ключ хранилища — только случайный.
     monkeypatch.setenv("MANDAT_STORE_KEY", KEY)
+    with pytest.raises(StoreKeyMissing, match="случайный ключ"):
+        load_sealer()
+    monkeypatch.setenv("MANDAT_STORE_KEY", random_key("store"))
     monkeypatch.setenv("MANDAT_STORE_KEY_PREVIOUS", "short")
     with pytest.raises(StoreKeyMissing, match="PREVIOUS"):
         load_sealer()
+    # Прежний ключ может быть паролем: им только читают, чтобы уйти с пароля на случайный ключ.
     monkeypatch.setenv("MANDAT_STORE_KEY_PREVIOUS", OTHER)
     assert isinstance(load_sealer(), Sealer)
     assert key_problem() is None

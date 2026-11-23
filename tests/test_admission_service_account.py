@@ -16,6 +16,7 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from conftest import random_key
 from fastapi.testclient import TestClient
 from test_api_operation_admission import AUDIENCE, Issuer, _body
 
@@ -42,8 +43,8 @@ def issuer(tmp_path) -> Issuer:
 @pytest.fixture
 def pilot(monkeypatch):
     monkeypatch.setenv("MANDAT_ENV", "pilot")
-    monkeypatch.setenv("MANDAT_JOURNAL_KEY", "j" * 40)
-    monkeypatch.setenv("MANDAT_PII_KEY", "p" * 40)
+    monkeypatch.setenv("MANDAT_JOURNAL_KEY", random_key("journal"))
+    monkeypatch.setenv("MANDAT_PII_KEY", random_key("pii"))
 
 
 def _client(issuer: Issuer, tmp_path, users: list[dict]) -> TestClient:

@@ -91,6 +91,11 @@ def _key(key: str | None) -> str | None:
     if value is not None and mode() not in KEYLESS_MODES and len(value.encode("utf-8")) < MIN_KEY_BYTES:
         # RFC 2104, разд. 3: ключ HMAC короче длины выхода хеша (32 байта для SHA-256) не рекомендуется.
         raise JournalKeyMissing(f"MANDAT_ENV={mode()}: MANDAT_JOURNAL_KEY короче {MIN_KEY_BYTES} байт")
+    if value is not None and mode() not in KEYLESS_MODES:
+        from mandat.audit.keymaterial import weak_key
+
+        if problem := weak_key("MANDAT_JOURNAL_KEY", value):
+            raise JournalKeyMissing(f"MANDAT_ENV={mode()}: {problem}")
     return value
 
 
