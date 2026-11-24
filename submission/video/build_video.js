@@ -31,6 +31,13 @@ const ev = JSON.parse(fs.readFileSync(path.join(ROOT, "evidence.json"), "utf8"))
 
 // ---------- Числа: evidence.json и тест фазза — как в колоде (build_deck.js) ----------
 const comma = (x, d = 1) => x.toFixed(d).replace(".", ",");
+// Форма слова по числу, как в колоде: 2143 автотеста, 5 пунктов.
+const plural = (n, one, few, many) => {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+};
 const N = (() => {
   const sc = ev.synthetic_corpus;
   const expected = { confirmed: 0, refuted: 0, needs_review: 0, insufficient_data: 0 };
@@ -239,7 +246,7 @@ function scenes(cardInfo) {
       tiles: [
         { v: `${READY.ok} из ${READY.all}`, cls: "green", t: "пунктов матрицы готовности проверены тестами", s: "docs/PILOT_CHECKLIST.md" },
         { v: "24 и 72 ч", t: "отчёт об инциденте с ПДн: оба срока от выявления", s: "mandat incident-report" },
-        { v: String(READY.bank), t: "пунктов — за банком: у каждого владелец и условие", s: "ИБ, эксплуатация и юрист банка" },
+        { v: String(READY.bank), t: `${plural(READY.bank, "пункт", "пункта", "пунктов")} — за банком: у каждого владелец и условие`, s: "ИБ, эксплуатация и юрист банка" },
         { v: "152-ФЗ", t: "удалённый кейс не возвращается из резервной копии", s: "mandat restore-check" },
         { v: "90 дней", t: "ревизия доступа: без срока, без владельца, дольше 90 дней", s: "mandat access-review" },
         { v: "HMAC", t: "основание решения в журнале — только отпечатком", s: "tests/test_journal_minimisation.py" },
@@ -251,7 +258,7 @@ function scenes(cardInfo) {
         { v: `${N.agree} / ${N.cases}`, t: `совпадение с ожидаемым вердиктом, ${N.kinds} видов ситуаций`, s: "mandat eval --per-defect 6" },
         { v: N.fuzz, t: "мутаций сценариев: ни одного ложного «да» и ни одного падения", s: "tests/test_redteam_fuzz.py" },
         { v: String(N.chains), t: "цепочки передоверия: Cedar даёт те же решения", s: "tests/test_cedar.py" },
-        { v: String(N.tests), t: `автотестов проходят; покрытие кода ${N.coverage}`, s: "python -m pytest" },
+        { v: String(N.tests), t: `${plural(N.tests, "автотест", "автотеста", "автотестов")} ${N.tests % 10 === 1 && N.tests % 100 !== 11 ? "проходит" : "проходят"}; покрытие кода ${N.coverage}`, s: "python -m pytest" },
         { v: N.median, t: "медиана проверки кейса с разбором документов, без сети", s: "scripts/bench.py" },
       ],
       caption: "Однозначное решается само, спорное — человеком; <b>теневой пилот переносит эти метрики на данные ВТБ</b>" },
