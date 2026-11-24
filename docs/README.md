@@ -8,7 +8,7 @@
 |---|---|---|
 | Жюри | [для жюри](JURY.md) | [реестр утверждений](../CLAIMS_REGISTRY.md), [конкуренты](COMPETITORS.md), [оценка](EVALUATION.md) |
 | Юрист банка | [пакет для юриста](legal/README.md), [вопросы юристу](LEGAL_REVIEW.md) | [нормы](REGULATORY.md), [нормы о защите данных](DATA_PROTECTION_LAW.md), [правила](RULES.md), [трассировка норм](legal/TRACEABILITY.md) |
-| Информационная безопасность банка | [модель угроз](THREAT_MODEL.md), [SECURITY](../SECURITY.md) | [границы доверия](TRUST_BOUNDARIES.md), [защита данных](DATA_PROTECTION.md), [риски модели](AI_RISKS.md), [ключи](KEYS.md) |
+| Информационная безопасность банка | [модель угроз](THREAT_MODEL.md), [SECURITY](../SECURITY.md), [чек-лист перед пилотом](PILOT_CHECKLIST.md) | [границы доверия](TRUST_BOUNDARIES.md), [защита данных](DATA_PROTECTION.md), [риски модели](AI_RISKS.md), [ключи](KEYS.md) |
 | Владелец процесса | [пилот](PILOT.md) | [экономика](ECONOMICS.md), [готовность](READINESS.md), [дорожная карта](ROADMAP.md) |
 | Инженер | [запуск и API](RUN.md) | [архитектура](ARCHITECTURE.md), [каркас MVP](MVP.md), [предметная модель](DOMAIN.md), [ключи](KEYS.md) |
 | Участник проекта | [как вносить изменения](../CONTRIBUTING.md) | [кодекс поведения](../CODE_OF_CONDUCT.md), [история изменений](../CHANGELOG.md) |
@@ -19,7 +19,7 @@
 |---|---|
 | Какую цифру можно сказать вслух | [реестр утверждений](../CLAIMS_REGISTRY.md) |
 | Чего продукт пока не делает | [границы](../LIMITS.md) |
-| Насколько проект готов к пилоту | [готовность по ступеням](READINESS.md) |
+| Насколько проект готов к пилоту | [готовность по ступеням](READINESS.md), [чек-лист перед пилотом](PILOT_CHECKLIST.md): данные, основание, маршруты, права, завершение, проверка |
 | Какая норма стоит за каким правилом | [правила](RULES.md), [трассировка норм](legal/TRACEABILITY.md) |
 | Как юрист банка утверждает правило | [ADR-009](adr/ADR-009-rule-approval-records.md), [вопросы юристу](LEGAL_REVIEW.md#как-утвердить-правило) |
 | Почему смена руководителя не гасит доверенность | [ADR-002](adr/ADR-002-director-change.md) |
