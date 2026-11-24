@@ -28,7 +28,7 @@ python scripts/check_links.py
 python scripts/build_evidence.py --verify-source
 ```
 
-- Правка в `src`, `tests`, `scripts` или `examples` меняет хеш исходников в `evidence.json`. Руками его не правят: пересборка — `make evidence` на Linux (Docker или WSL), иначе поедут версия Python и замеры скорости. `build_evidence.py --verify-source` сверяет хеш исходников и число собранных тестов.
+- Правка в `src`, `tests`, `scripts` или `examples` меняет хеш исходников в `evidence.json`. Руками его не правят: пересборка — `make evidence` на Linux (Docker или WSL), иначе поедут версия Python и замеры скорости. `build_evidence.py --verify-source` сверяет хеш исходников и число собранных тестов. Новый файл в этих каталогах сначала `git add`, потом `make evidence`: хеш видит только файлы git, и сборка с файлами вне git останавливается. `make hooks` один раз включает хук перед push (`scripts/hooks/pre-push`): он сверяет `evidence.json` и числа в текстах, на чём CI останавливал main 22 и 23 ноября.
 - На Windows без WSL и Docker гоняйте затронутые тесты, полный прогон делает CI (задача `windows`).
 - CI сверх этого проверяет, что ни один тест не пропущен (`scripts/check_no_skips.py`), ищет известные уязвимости в зависимостях (`pip-audit`) и в образе (Trivy), проверяет рабочие процессы `actionlint`. Пороги и что блокирует влитие — в [SECURITY.md](SECURITY.md#зависимости-и-сканеры). Если `pip-audit` красный, пакет поднимают `uv pip compile --upgrade-package` и обновляют lock; проверку не отключают.
 - Числа в документах сверяются с [реестром утверждений](CLAIMS_REGISTRY.md). Формулировки из [BANNED_CLAIMS.txt](BANNED_CLAIMS.txt) не используются даже с отрицанием: `lint_claims.py` ищет подстроку.

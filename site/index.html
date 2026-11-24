@@ -52,6 +52,7 @@ $header
         <a class="btn" href="showcase.html">Захват по шагам</a>
         <a class="btn" href="pitch.html">Слайды</a>
       </p>
+      $route_pills
     </div>
     <figure class="hero-art">
       <picture class="anna">
@@ -100,6 +101,7 @@ $header
 
 <section id="date" class="sec">
   <div class="wrap">
+    <img class="sec-art" src="img/obj-dial-640.webp" width="628" height="640" alt="" loading="lazy" decoding="async">
     <p class="kicker">Одна доверенность — шесть ответов</p>
     <h2 class="reveal">Сдвиньте дату операции, и ответ изменится</h2>
     <p class="sub reveal">Кейс 14: тот же представитель, та же МЧД, та же выписка. Меняется только день, когда представитель хочет подписать платёж на $scrub_amount&nbsp;₽. Ответ на каждый день посчитало ядро «Мандата» при сборке этой страницы.</p>
@@ -142,7 +144,7 @@ $stages
       <li class="reveal"><span class="pts">0–22</span><b>Техническая реализация и масштабирование</b><span>$rules&nbsp;$rules_word, четыре вердикта, CLI и HTTP API с ролями. ДБО спрашивает допуск к платежу, в том числе по открытому стандарту OpenID AuthZEN 1.0; nonce одноразовый, общее хранилище Redis для нескольких машин. МЧД нескольких подписантов сверяется с ЕГРЮЛ по каждому. Медиана проверки — $median_ms&nbsp;мс.</span><a href="cases.html">Кейсы</a></li>
       <li class="reveal"><span class="pts">0–22</span><b>Оценка ценности: unit-экономика, эффект и ROI</b><span>Вручную проверка полномочий стоит около $unit_manual&nbsp;₽, с «Мандатом» — около $unit_mandat&nbsp;₽. Разовые затраты ВТБ окупаются за $payback.</span><a href="economics.html">Калькулятор</a></li>
       <li class="reveal"><span class="pts">0–16</span><b>Зрелость решения и прогресс</b><span>За спринт: подпись юриста под правилом, нормы по первоисточнику, допуск ДБО и по OpenID AuthZEN, захват до платежа одной командой, чек-лист воркшопа о данных в коде, полный прогон тестов на Linux и Windows, атака на собственные механизмы до сдачи и напоминание о конце срока МЧД за 30 дней.</span><a href="$repo/blob/main/submission/FORM_SPRINT2.md">Результаты спринта</a></li>
-      <li class="reveal"><span class="pts">0–12</span><b>Подтверждённость проблемы и рынка</b><span>$incidents_9m операций без согласия у юрлиц за девять месяцев 2026 года на $loss_9m_bln&nbsp;млрд&nbsp;₽ по данным Банка России. Рынок посчитан двумя способами. Банкам уже продают API МЧД, но не ответ на операцию; ближайшие аналоги работают в Нидерландах и Швеции. В открытом коде 1С проверка полномочий оставлена приложению.</span><a href="#pain">Проблема</a></li>
+      <li class="reveal"><span class="pts">0–12</span><b>Подтверждённость проблемы и рынка</b><span>$incidents_9m операций без согласия у юрлиц за девять месяцев 2026 года на $loss_9m_bln&nbsp;млрд&nbsp;₽ по данным Банка России. Рынок посчитан двумя способами. Банкам уже продают API МЧД, но не ответ на операцию; ближайшие аналоги работают в Нидерландах и Швеции. В открытом коде 1С проверка полномочий оставлена приложению. Пять интервью с банками под NDA подтвердили боль и интерес к пилоту.</span><a href="#pain">Проблема</a></li>
       <li class="reveal"><span class="pts">0–10</span><b>Реалистичность пилота</b><span>Шесть недель в тени на праве подписи платёжных документов. Пилот останавливается при первом ложном «подтверждено». Пакет для юриста, календарь норм до 2028 года и матрица готовности: $ready_bank&nbsp;$ready_bank_word за банком, у каждого владелец и условие.</span><a href="pilot.html">Пилот</a></li>
     </ol>
     <a class="more" href="criteria.html">Все критерии: спринт 1, спринт 2, спринт 3 и условия трека</a>
@@ -161,6 +163,17 @@ $stages
       <p>Перед операцией проверяет, что полномочие держится именно в этот день. Доверенность есть в реестре и не отменена. Подписал её тот, кто был директором на дату выдачи. Передоверие разрешено и не шире исходной доверенности. Устав не ограничивает сделку, компания не банкротится.</p>
       <p>Сотрудник видит ответ и норму. ДБО получает допуск ровно на одну операцию.</p>
       <p>После выдачи прав «Мандат» следит за ЕГРЮЛ, реестром и сроками МЧД. За 30 дней до конца срока он предупреждает банк, а при признаках захвата приостанавливает удостоверения до платежа.</p>
+    </div>
+  </div>
+</section>
+
+<section id="routes" class="sec">
+  <div class="wrap">
+    <p class="kicker">С чего начать</p>
+    <h2 class="reveal">Пять маршрутов по сайту: у каждой роли свой</h2>
+    <p class="sub">Маршрут ведёт по страницам в нужном порядке и на каждой подсказывает, что смотреть. Внизу страницы — «Дальше», внизу экрана — ход маршрута; закрыть его можно в любой момент.</p>
+    <div class="routes">
+      $routes
     </div>
   </div>
 </section>
@@ -184,15 +197,23 @@ $stages
 
 <section id="screens" class="sec">
   <div class="wrap">
-    <p class="kicker">Четыре экрана</p>
-    <h2 class="reveal">Один сайт на мониторе, ноутбуке, планшете и телефоне</h2>
+    <p class="kicker">Шесть экранов</p>
+    <h2 class="reveal">От iPhone и Android до большого экрана</h2>
     <figure class="devices reveal">
       <picture>
         <source type="image/avif" srcset="img/devices-1200.avif 1200w, img/devices-2400.avif 2400w" sizes="(max-width: 1240px) calc(100vw - 32px), 1200px">
-        <img src="img/devices-1200.webp" srcset="img/devices-1200.webp 1200w, img/devices-2400.webp 2400w" sizes="(max-width: 1240px) calc(100vw - 32px), 1200px" width="1200" height="723" loading="lazy" decoding="async" alt="Сайт «Мандата» на четырёх устройствах: главная страница на мониторе, разбор кейса в тёмной теме на ноутбуке, проверка подписи с печатью на планшете, ось дат операции на телефоне">
+        <img src="img/devices-1200.webp" srcset="img/devices-1200.webp 1200w, img/devices-2400.webp 2400w" sizes="(max-width: 1240px) calc(100vw - 32px), 1200px" width="1200" height="647" loading="lazy" decoding="async" alt="Сайт «Мандата» на шести устройствах: захват компании по шагам на большом экране, главная на мониторе компьютера, разбор кейса в тёмной теме на ноутбуке, проверка подписи с печатью на планшете, ось дат операции на iPhone и план пилота на Android">
       </picture>
-      <figcaption>Снимки настоящих страниц этой сборки. Перед публикацией каждая страница проходит проверку на девяти экранах, от сложенного Galaxy Z Fold до монитора 2560&nbsp;px, в светлой и тёмной теме.</figcaption>
+      <figcaption>Снимки настоящих страниц этой сборки, не макеты. Перед публикацией каждая страница проходит проверку на девяти экранах, от сложенного Galaxy Z Fold до монитора 2560&nbsp;px, в светлой и тёмной теме.</figcaption>
     </figure>
+    <ul class="device-list reveal" aria-label="Что открыто на каждом экране">
+        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M7 21h10"/></svg><b>Большой экран</b><span>2560&nbsp;px, захват по шагам</span></li>
+        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg><b>Компьютер</b><span>1920&nbsp;px, главная</span></li>
+        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/></svg><b>Ноутбук</b><span>1512&nbsp;px, разбор кейса в тёмной теме</span></li>
+        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M12 18h.01"/></svg><b>Планшет</b><span>834&nbsp;px, проверка подписи</span></li>
+        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg><b>iPhone</b><span>393&nbsp;px, ось дат в тёмной теме</span></li>
+        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg><b>Android</b><span>412&nbsp;px, план пилота</span></li>
+    </ul>
   </div>
 </section>
 
@@ -243,6 +264,7 @@ $stages
 
 <section id="proof" class="sec">
   <div class="wrap">
+    <img class="sec-art wide" src="img/obj-zero-640.webp" width="640" height="315" alt="" loading="lazy" decoding="async">
     <h2 class="reveal">Каждое число можно повторить</h2>
     <p>Движок $engine, пакет правил $pack_version. Команды из таблицы дают те же числа на вашей машине.</p>
     <div class="table-wrap reveal">
@@ -263,7 +285,9 @@ $stages
 
 <section id="data" class="sec alt">
   <div class="wrap">
+    <img class="sec-art" src="img/obj-perimeter-640.webp" width="640" height="599" alt="" loading="lazy" decoding="async">
     <h2 class="reveal">Данные клиента не покидают банк</h2>
+    <p>Ядро проверяет без внешней сети. Если банк включит модель, она получит только строки устава о&nbsp;полномочиях, где ФИО, паспорт, СНИЛС и&nbsp;ИНН уже заменены метками.</p>
     <figure class="perimeter reveal">
       <figcaption class="perimeter-cap">Контур банка · без внешней сети</figcaption>
       <ol class="flow">
@@ -314,6 +338,7 @@ $stages
 
 <section id="pilot" class="sec">
   <div class="wrap">
+    <img class="sec-art wide" src="img/obj-weeks-640.webp" width="640" height="368" alt="" loading="lazy" decoding="async">
     <h2 class="reveal">Пилот: шесть недель в тени</h2>
     <p class="reveal">«Мандат» проверяет те же пакеты, что и сотрудники банка, но на выдачу прав не влияет. Операция одна: право подписи платёжных документов в интернет-банке для представителя по МЧД.</p>
     <figure class="ptrack reveal">

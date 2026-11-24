@@ -3,13 +3,18 @@
     python submission/deck/import_visuals.py ПАПКА
 
 В ПАПКЕ лежат файлы, выгруженные из Figma: ``anna-hero.png``,
-``anna-final.png``, ``anna-vision.png``, ``anna-office.png``, ``bg-lux.png`` (фон тёмных слайдов) и ``icons-3d.png`` —
-лист 3×3 с прозрачным фоном.
+``anna-final.png``, ``anna-vision.png``, ``anna-office.png``, ``bg-lux.png`` (фон тёмных слайдов), ``icons-3d.png`` —
+лист 3×3 с прозрачным фоном — и предметы разделов сайта ``obj-card.png``, ``obj-dial.png``, ``obj-perimeter.png``,
+``obj-weeks.png``, ``obj-zero.png``, тоже с прозрачным фоном.
 Промты, правила и где что используется — docs/VISUALS.md. Скрипт пишет:
 
 * ``submission/deck/assets/visuals/`` — JPEG для колоды и PNG значков с прозрачностью;
-* ``site/img/`` — WebP двух ширин для ``srcset`` и значки страниц;
+* ``site/img/`` — WebP двух ширин для ``srcset``, значки страниц и предметы разделов;
 * ``site/og.jpg`` — картинку 1200×630 для превью ссылки.
+
+    python submission/deck/import_visuals.py --objects ПАПКА
+
+переводит только предметы разделов: для них нужны одни ``obj-*.png``.
 
 Нужен ImageMagick 6 (``convert``) с WebP и FreeType; шрифт — Golos Text из ``submission/deck/fonts``.
 """
@@ -38,6 +43,8 @@ PHOTOS = {
 }
 # Значки листа icons-3d.png по строкам слева направо — и страница сайта, которой каждый отдан.
 ICONS = ("cases", "showcase", "verify", "economics", "pilot", "law", "criteria", "search", "secure")
+# Предметы у заголовков разделов сайта и их наибольшая сторона: не меньше двойного места на странице, для Retina.
+OBJECTS = {"obj-card": 960, "obj-dial": 640, "obj-perimeter": 640, "obj-weeks": 640, "obj-zero": 640}
 
 
 def _im(*args: str) -> str:
@@ -128,6 +135,30 @@ def icons(src: Path) -> None:
             "-define",
             "webp:method=6",
             str(SITE / f"icon-{name}-160.webp"),
+        )
+
+
+def objects(src: Path) -> None:
+    for name, side in OBJECTS.items():
+        # Как у значков: почти прозрачную дымку срезаем, кадр обрезаем по предмету — отступы задаёт страница.
+        _im(
+            str(src / f"{name}.png"),
+            "-channel",
+            "A",
+            "-level",
+            "6%,100%",
+            "+channel",
+            "-trim",
+            "+repage",
+            "-resize",
+            f"{side}x{side}",
+            "-quality",
+            "86",
+            "-define",
+            "webp:alpha-quality=90",
+            "-define",
+            "webp:method=6",
+            str(SITE / f"{name}-{side}.webp"),
         )
 
 
@@ -284,14 +315,23 @@ def og(src: Path) -> None:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 1 or not Path(argv[0]).is_dir():
+    only_objects = argv[:1] == ["--objects"]
+    args = argv[1:] if only_objects else argv
+    if len(args) != 1 or not Path(args[0]).is_dir():
         print(__doc__)
         return 2
-    src = Path(argv[0])
+    src = Path(args[0])
     DECK.mkdir(parents=True, exist_ok=True)
     SITE.mkdir(parents=True, exist_ok=True)
+    if only_objects:
+        objects(src)
+        for name, side in OBJECTS.items():
+            out = SITE / f"{name}-{side}.webp"
+            print(f"{out.relative_to(ROOT)}: {_im(str(out), '-format', '%w×%h', 'info:')}, {out.stat().st_size // 1024} КБ")
+        return 0
     photos(src)
     icons(src)
+    objects(src)
     og(src)
     for path in sorted([*DECK.iterdir(), *SITE.iterdir(), OG]):
         print(f"{path.relative_to(ROOT)}: {path.stat().st_size // 1024} КБ")

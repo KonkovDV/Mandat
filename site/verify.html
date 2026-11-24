@@ -26,10 +26,12 @@ $header
 <main id="main">
 <section class="hero slim">
   <div class="wrap">
-    <img class="page-art" src="img/icon-verify.webp" width="341" height="341" alt="">
+    <img class="page-art wide" src="img/obj-card-960.webp" width="960" height="739" alt="">
     <p class="kicker">Доверие без доступа к базе</p>
     <h1>Ваш браузер сам проверит удостоверение</h1>
     <p class="lead">После проверки «Мандат» выдаёт подписанное удостоверение. ДБО, антифрод или аудитор проверяют его своими средствами: подпись, статус и запись в журнале. Ниже это делает браузер, без сервера и библиотек, только WebCrypto. Поменяйте поле — подпись перестанет сходиться.</p>
+    $audience
+    <!--toc-->
   </div>
 </section>
 
@@ -37,7 +39,7 @@ $header
   <div class="wrap verify-grid">
     <div class="card sealed">
       <div class="seal" id="seal" aria-hidden="true" hidden><span class="seal-mark"></span><span class="seal-text"></span></div>
-      <h2>1. Подпись</h2>
+      <h2 id="sig" data-toc="Подпись">1. Подпись</h2>
       <p class="note">Удостоверение кейса 14 этой сборки: W3C VC 2.0, доказательство <code>eddsa-jcs-2022</code>, ключ Ed25519 стенда.</p>
       <dl class="fields" id="att-fields"></dl>
       <div class="toggles" id="tamper" role="group" aria-label="Подменить поле удостоверения" hidden>
@@ -50,7 +52,7 @@ $header
       <div class="result wait" id="sig-result" aria-live="polite">Для проверки нужен JavaScript. Без него: <code>mandat attest-verify var/demo/attestations/14_old_director_charter_cleared.json --public-key-file var/demo/public_key.txt --status-dir var/demo/status</code></div>
     </div>
     <div class="card">
-      <h2>2. Статус</h2>
+      <h2 id="status" data-toc="Статус">2. Статус</h2>
       <p class="note">Список статусов — тоже подписанное удостоверение. В нём по биту на каждое выданное удостоверение: отозвано и приостановлено. Проверяющему не нужен доступ к базе «Мандата», он читает свой бит.</p>
       <div class="seg" id="moment" role="group" aria-label="Момент проверки" hidden>
         <button type="button" aria-pressed="true" data-moment="before">До события</button>
@@ -66,7 +68,7 @@ $header
 <section class="sec alt">
   <div class="wrap verify-grid">
     <div>
-      <h2>3. Запись в журнале</h2>
+      <h2 id="journal" data-toc="Журнал">3. Запись в журнале</h2>
       <p>Журнал решений — хеш-цепочка и дерево Меркла по RFC 9162. Аудитор получает одну запись из $verify_size и путь из нескольких хешей до корня, а не журнал целиком. Корень этой сборки:</p>
       <p class="hash"><code>$verify_root</code></p>
       <div class="toggles" id="journal-tamper" hidden>
@@ -84,7 +86,7 @@ $header
 <section class="sec">
   <div class="wrap two">
     <div>
-      <h2>Что это доказывает</h2>
+      <h2 id="proves" data-toc="Что доказывает">Что это доказывает</h2>
       <ul class="ticks">
         <li>Удостоверение выпустил держатель ключа, и после подписи в нём не поменялось ни одно поле: сумма, день, организация, представитель.</li>
         <li>Статус проверяется по подписанному списку. Откат на старый список ловит номер версии: проверяющий помнит наибольший виденный.</li>
@@ -92,7 +94,7 @@ $header
       </ul>
     </div>
     <div>
-      <h2>Чего это не доказывает</h2>
+      <h2 id="not-proves" data-toc="Чего не доказывает">Чего это не доказывает</h2>
       <ul class="ticks">
         <li>Ключ здесь — ключ стенда, он создаётся при каждой сборке. В банке ключ живёт в HSM, Vault или KMS, а подпись по ГОСТ встаёт через СКЗИ банка.</li>
         <li>Издатель <code>did:web:mandat.example</code> — заглушка. Какому ключу доверять, банк задаёт связкой ключей.</li>
