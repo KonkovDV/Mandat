@@ -13,7 +13,7 @@
 | Подразделение | Сопровождение юрлиц |
 | Параметры банка (подписью не покрываются) | `fresh_change_days = 30` |
 | Реализация | `src/mandat/rules/checks.py::eio_changed` |
-| Тесты | `test_r_eio_002_fresh_change_needs_review`, `test_r_eio_002_old_change_is_signal_and_confirms` |
+| Тесты | `test_r_eio_002_fresh_change_needs_review`, `test_r_eio_002_old_change_is_signal_and_confirms`, `test_r_eio_002_head_who_signed_is_still_in_office` |
 
 ## Норма
 

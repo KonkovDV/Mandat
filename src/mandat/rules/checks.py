@@ -23,7 +23,7 @@ from mandat.domain.identifiers import (
     ogrn_valid,
     snils_valid,
 )
-from mandat.domain.model import Case, EvidenceRef, Finding, PowerOfAttorney, Subdelegation
+from mandat.domain.model import Case, EvidenceRef, ExecutiveRecord, Finding, PowerOfAttorney, Subdelegation
 from mandat.domain.verdict import LegalEffect
 from mandat.intake.charter import CandidateFact, extract_charter_facts
 from mandat.ports import BankruptcyStatus, Ports, RegistryObservation, RegistryStatus, SignatureStatus
@@ -204,7 +204,7 @@ def fmt_parsed(ctx: RuleContext) -> list[Finding]:
             [poa.ref("document")],
         )
         for poa in ctx.case.poas
-        if "signer.position" in poa.format_questions
+        if any(q == "signer.position" or re.fullmatch(r"signer\.\d+\.position", q) for q in poa.format_questions)
     ]
     if out:
         return out + questions
@@ -300,6 +300,8 @@ def fmt_requisites(ctx: RuleContext) -> list[Finding]:
             missing.append("КПП доверителя")
         if not poa.signer.snils:
             missing.append("СНИЛС руководителя доверителя")
+        # СНИЛС нужен каждому лицу, действующему без доверенности, а не только первому.
+        missing += [f"СНИЛС лица без доверенности {p.label()}" for p in poa.co_signers if not p.snils]
         edition = "Приказа № 857"
         if poa.issue_date >= names_from:
             edition = "Приказа № 857 в ред. № 1001"
@@ -393,6 +395,9 @@ def id_checksums(ctx: RuleContext) -> list[Finding]:
         check(poa.principal.kpp, kpp_valid, f"КПП доверителя в МЧД {poa.number}", poa.ref("principal.kpp"))
         check(poa.signer.inn, inn_valid, f"ИНН подписанта МЧД {poa.number}", poa.ref("signer.inn"))
         check(poa.signer.snils, snils_valid, f"СНИЛС подписанта МЧД {poa.number}", poa.ref("signer.snils"))
+        for index, person in enumerate(poa.co_signers, start=2):
+            check(person.inn, inn_valid, f"ИНН подписанта {index} МЧД {poa.number}", poa.signer_ref(index))
+            check(person.snils, snils_valid, f"СНИЛС подписанта {index} МЧД {poa.number}", poa.signer_ref(index))
         for index, rep in enumerate(poa.representatives, start=1):
             ref = poa.ref(f"representative.{index}")
             check(rep.inn, inn_valid, f"ИНН представителя в МЧД {poa.number}", ref)
@@ -765,33 +770,61 @@ def eio_signed_root(ctx: RuleContext) -> list[Finding]:
                 [_egrul_ref(ctx, "$.executives")],
             )
         ]
-    comparable = False
-    for rec in records:
-        same = rec.person.same_as(root.signer)
-        if same:
-            refs = [root.ref("signer.inn"), rec.ref or _egrul_ref(ctx)]
-            return [
-                ctx.emit(
-                    "R-EIO-001",
-                    E.SUPPORTS,
-                    f"МЧД {root.number} подписал руководитель {rec.person.label()} (ГРН {rec.grn})",
-                    refs,
-                )
-            ]
-        comparable = comparable or same is not None
-    names = ", ".join(r.person.label() for r in records)
-    refs = [root.ref("signer.inn"), *(r.ref for r in records if r.ref)]
-    if not comparable:
-        return [ctx.emit("R-EIO-001", E.NEEDS_REVIEW, "Подписанта нельзя сверить с ЕГРЮЛ по ИНН или СНИЛС", refs)]
-    return [
+    matched: list[tuple[int, ExecutiveRecord]] = []
+    strangers: list[int] = []  # сверены с ЕГРЮЛ и не совпали ни с одним руководителем
+    unknown: list[int] = []  # сверить нечем
+    for index, person in enumerate(root.signers, start=1):
+        sames = [rec.person.same_as(person) for rec in records]
+        rec = next((r for r, same in zip(records, sames, strict=True) if same), None)
+        if rec is not None:
+            matched.append((index, rec))
+        elif any(same is False for same in sames):
+            strangers.append(index)
+        else:
+            unknown.append(index)
+    on = f"{root.issue_date:%d.%m.%Y}"
+    if not matched:
+        names = ", ".join(r.person.label() for r in records)
+        refs = [root.signer_ref(i) for i in range(1, len(root.signers) + 1)] + [r.ref for r in records if r.ref]
+        if not strangers:
+            return [ctx.emit("R-EIO-001", E.NEEDS_REVIEW, "Подписанта нельзя сверить с ЕГРЮЛ по ИНН или СНИЛС", refs)]
+        who = ", ".join(root.signers[i - 1].label() for i in strangers)
+        return [
+            ctx.emit(
+                "R-EIO-001",
+                E.REFUTES,
+                f"МЧД {root.number} подписал {who}, а руководителем на {on} был {names}",
+                refs,
+            )
+        ]
+    heads = ", ".join(f"{rec.person.label()} (ГРН {rec.grn})" for _, rec in matched)
+    word = "руководитель" if len(matched) == 1 else "руководители"
+    out = [
         ctx.emit(
             "R-EIO-001",
-            E.REFUTES,
-            f"МЧД {root.number} подписал {root.signer.label()}, а руководителем на "
-            f"{root.issue_date:%d.%m.%Y} был {names}",
-            refs,
+            E.SUPPORTS,
+            f"МЧД {root.number} {'подписал' if len(matched) == 1 else 'подписали'} {word} {heads}",
+            [ref for i, rec in matched for ref in (root.signer_ref(i), rec.ref or _egrul_ref(ctx))],
         )
     ]
+    for index in [*strangers, *unknown]:
+        person = root.signers[index - 1]
+        why = "руководителем по ЕГРЮЛ не значится" if index in strangers else "сверить с ЕГРЮЛ по ИНН или СНИЛС нельзя"
+        text = f"МЧД {root.number}: {person.label()} указан как лицо, действующее без доверенности, но на {on} {why}"
+        refs = [root.signer_ref(index), _egrul_ref(ctx, "$.executives")]
+        out.append(ctx.emit("R-EIO-001", E.NEEDS_REVIEW, text, refs))
+    signed = {id(rec) for _, rec in matched}
+    others = [rec for rec in records if id(rec) not in signed and not any(rec.person.same_as(p) for p in root.signers)]
+    if others:
+        # П. 3 ст. 53 ГК РФ: несколько лиц действуют совместно или независимо — как именно, решает устав, а не выписка.
+        names = ", ".join(rec.person.label() for rec in others)
+        text = (
+            f"На {on} в ЕГРЮЛ есть и другие руководители ({names}), МЧД {root.number} они не подписывали: "
+            "действуют ли руководители совместно или независимо, выписка не показывает (п. 3 ст. 53 ГК РФ)"
+        )
+        refs = [root.signer_ref(matched[0][0]), *(rec.ref or _egrul_ref(ctx, "$.executives") for rec in others)]
+        out.append(ctx.emit("R-EIO-001", E.NEEDS_REVIEW, text, refs))
+    return out
 
 
 @rule("R-EIO-002")
@@ -820,13 +853,13 @@ def eio_changed(ctx: RuleContext) -> list[Finding]:
         effect = E.NOT_VERIFIED if unknown else E.NEEDS_REVIEW
         return [ctx.emit("R-EIO-002", effect, text, [_egrul_ref(ctx, "$.executives")])]
     fresh_days = int(ctx.pack.get("R-EIO-002").param("fresh_change_days"))
-    if any(rec.person.same_as(root.signer) for rec in current):
+    if any(rec.person.same_as(signer) for rec in current for signer in root.signers):
         # Подписант ещё числится руководителем, но рядом свежая запись другого руководителя:
         # старую запись могли не закрыть. Это та же свежая смена, что и при закрытой записи.
         newcomers = [
             rec
             for rec in current
-            if rec.person.same_as(root.signer) is not True
+            if not any(rec.person.same_as(signer) is True for signer in root.signers)
             and (since := rec.valid_from or rec.record_date) is not None
             and 0 <= (on - since).days <= fresh_days
             # Дата выдачи МЧД не снимает сигнал: подпись прежнего руководителя после назначения нового — худший вариант.
@@ -1640,6 +1673,13 @@ def sub_edge(ctx: RuleContext) -> list[Finding]:
     out = []
     root_number = ctx.chain.root.number if ctx.chain.root else None
     for _, parent, child in _pairs(ctx.chain):
+        if child.co_signers:
+            # Ребро сверяется по одному подписанту. Если лиц без доверенности несколько, сверить каждого
+            # с представителями родительской МЧД должен сотрудник: автоматического подтверждения ребра нет.
+            names = ", ".join(p.label() for p in child.signers)
+            text = f"МЧД {child.number} подписали несколько лиц без доверенности ({names}): ребро сверяет сотрудник"
+            refs = [child.signer_ref(i) for i in range(1, len(child.signers) + 1)]
+            out.append(ctx.emit("R-SUB-009", E.NEEDS_REVIEW, text, refs))
         if child.issue_date is None:
             out.append(
                 ctx.emit(

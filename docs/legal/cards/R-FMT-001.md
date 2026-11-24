@@ -13,7 +13,7 @@
 | Подразделение | Операционный блок МСБ |
 | Параметры банка (подписью не покрываются) | — |
 | Реализация | `src/mandat/rules/checks.py::fmt_parsed` |
-| Тесты | `test_r_fmt_001_bad_xml_is_insufficient`, `test_r_fmt_001_xml_bomb_rejected`, `test_values_outside_the_schema_lists_are_format_gaps`, `test_document_in_a_foreign_namespace_is_rejected` |
+| Тесты | `test_r_fmt_001_bad_xml_is_insufficient`, `test_r_fmt_001_xml_bomb_rejected`, `test_values_outside_the_schema_lists_are_format_gaps`, `test_document_in_a_foreign_namespace_is_rejected`, `test_document_signed_by_two_persons_without_poa_is_parsed`, `test_r_fmt_001_second_signer_without_position_is_a_gap` |
 
 ## Норма
 

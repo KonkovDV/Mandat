@@ -54,7 +54,8 @@ class AuthorityChain:
         rows = []
         for poa in self.links:
             reps = ", ".join(p.label() for p in poa.representatives) or "—"
-            rows.append(f"МЧД {poa.number}: {poa.signer.label()} → {reps}")
+            signers = ", ".join(p.label() for p in poa.signers)
+            rows.append(f"МЧД {poa.number}: {signers} → {reps}")
         for number in self.missing_parents:
             rows.append(f"Родительская МЧД {number} не предоставлена")
         return rows

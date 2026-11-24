@@ -104,8 +104,8 @@ def known_people(case: Case) -> list[KnownPerson]:
     out += [KnownPerson(DIRECTOR, name) for name in sorted(directors)]
     for poa in case.poas:
         out += [KnownPerson(REPRESENTATIVE, p.full_name) for p in poa.representatives if p.full_name]
-        if poa.signer.full_name and poa.signer.full_name not in directors:
-            out.append(KnownPerson(SIGNER, poa.signer.full_name))
+        # Все лица, подписавшие МЧД без доверенности: второе и следующие тоже не уходят в модель по имени.
+        out += [KnownPerson(SIGNER, p.full_name) for p in poa.signers if p.full_name and p.full_name not in directors]
     if case.requester.full_name:
         out.append(KnownPerson(REPRESENTATIVE, case.requester.full_name))
     seen: set[str] = set()

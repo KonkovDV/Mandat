@@ -163,6 +163,20 @@ class PowerOfAttorney:
     notarized: bool = False  # в МЧД есть сведения о нотариальном удостоверении (СвНотУд)
     policy_gaps: tuple[str, ...] = ()  # по схеме поле необязательно, но без него проверку не провести
     subdelegator_kind: str | None = None  # вид передоверителя по самой МЧД (ветвь Передов), иначе None
+    # Ещё лица, действующие без доверенности (ЛицоБезДов повторяется, XSD: maxOccurs=unbounded): МЧД подписывает
+    # каждое из них. Первое лицо — ``signer``, ссылки на узлы всех лиц — ``signer.1``, ``signer.2``…
+    co_signers: tuple[Person, ...] = ()
+
+    @property
+    def signers(self) -> tuple[Person, ...]:
+        """Все лица, подписавшие МЧД от имени доверителя без доверенности, в порядке документа."""
+        return (self.signer, *self.co_signers)
+
+    def signer_ref(self, index: int) -> EvidenceRef:
+        """Ссылка на лицо ``index`` (с 1). У МЧД с одним лицом это ссылка на его ИНН, как и раньше."""
+        if not self.co_signers:
+            return self.ref("signer.inn")
+        return self.ref(f"signer.{index}")
 
     def ref(self, key: str) -> EvidenceRef:
         return self.refs.get(key) or EvidenceRef(self.doc_id, self.sha256, "document")

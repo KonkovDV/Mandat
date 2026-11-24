@@ -220,7 +220,7 @@ def render(report: dict[str, Any]) -> str:
         f'<td data-label="Выдана">{_e(_date(d.get("issue_date")))}</td>'
         f'<td data-label="Действует до">{_e(_date(d.get("effective_until")))}'
         f"{' (по закону)' if d.get('term_by_law') else ''}</td>"
-        f'<td data-label="Выдал">{_e(d.get("signer"))}</td>'
+        f'<td data-label="Выдал">{_e(", ".join(n for n in [d.get("signer"), *(d.get("co_signers") or [])] if n))}</td>'
         f'<td data-label="Представитель">{_e(", ".join(d.get("representatives") or []))}</td></tr>'
         for d in (report.get("chain") or {}).get("documents") or []
     )

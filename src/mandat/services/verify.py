@@ -114,8 +114,10 @@ def _iso(value: date | None) -> str | None:
 
 def _document(poa: PowerOfAttorney) -> dict[str, Any]:
     """Сведения о документе, на котором основаны полномочия представителя (115-ФЗ, ст. 7, п. 1, пп. 1):
-    номер, дата выдачи, срок действия, кто выдал и кому. Срок «по закону» — год со дня выдачи (ст. 186 ГК РФ)."""
-    return {
+    номер, дата выдачи, срок действия, кто выдал и кому. Срок «по закону» — год со дня выдачи (ст. 186 ГК РФ).
+    Если МЧД подписали несколько лиц без доверенности, остальные перечислены в ``co_signers``; у МЧД с одним
+    подписантом этого поля нет, и хеш отчёта у неё прежний."""
+    document = {
         "number": poa.number,
         "issue_date": _iso(poa.issue_date),
         "valid_until": _iso(poa.valid_until),
@@ -126,6 +128,9 @@ def _document(poa: PowerOfAttorney) -> dict[str, Any]:
         "representatives": [r.full_name for r in poa.representatives],
         "parent_number": poa.parent_number,
     }
+    if poa.co_signers:
+        document["co_signers"] = [p.full_name for p in poa.co_signers]
+    return document
 
 
 def _stand(profile: str, notes: list[str]) -> list[str]:
