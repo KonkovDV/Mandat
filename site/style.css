@@ -248,6 +248,10 @@ figure.page-art { margin: 0 0 8px 24px; width: clamp(120px, 17vw, 200px); }
 
 /* ---------- Разделы и сетки ---------- */
 .sec { padding: clamp(40px, 6vw, 68px) 0; }
+/* Видео-демо на главной: обложка вместо чёрного кадра, файл грузится по нажатию */
+.demo-video { margin: 22px 0 0; }
+.demo-video video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: var(--radius); background: #061a4a; box-shadow: var(--glow); }
+.demo-video figcaption { margin-top: 10px; font-size: 14px; color: var(--muted); }
 .alt { background: var(--bg-alt); }
 .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: clamp(22px, 4vw, 44px); }
 .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; }

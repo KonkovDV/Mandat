@@ -20,6 +20,10 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Мандат: цепочка полномочий компании и вердикт проверки">
+<meta property="og:video" content="${site_url}materials/Mandat_demo.mp4">
+<meta property="og:video:type" content="video/mp4">
+<meta property="og:video:width" content="1920">
+<meta property="og:video:height" content="1080">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="canonical" href="$site_url">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -44,6 +48,7 @@ $header
       <p class="lead">Представитель приносит в банк машиночитаемую доверенность. «Мандат» сводит её с выпиской ЕГРЮЛ и уставом в одну цепочку полномочий на дату операции и отвечает с доказательством: поле документа, запись реестра, статья закона. Если данных не хватает, «да» не будет.</p>
       <p class="cta">
         <a class="btn primary" href="cases.html">Разобрать кейс</a>
+        <a class="btn" href="#video">Видео-демо</a>
         <a class="btn" href="showcase.html">Захват по шагам</a>
         <a class="btn" href="pitch.html">Слайды</a>
       </p>
@@ -77,6 +82,19 @@ $header
       <li><b>$tests</b><span>$tests_word на Linux и Windows, покрытие $coverage&nbsp;%</span></li>
     </ul>
     <p class="fine">Числа собраны кодом в <a href="$repo/blob/main/evidence.json">evidence.json</a> <time datetime="$as_of">$as_of_ru</time>. Корпус синтетический: он проверяет логику правил, а точность на документах банка покажет пилот.</p>
+  </div>
+</section>
+
+<section id="video" class="sec alt" aria-labelledby="video-h">
+  <div class="wrap">
+    <h2 class="reveal" id="video-h">Видео-демо: две с половиной минуты работы продукта</h2>
+    <p class="reveal">Ролик собран из настоящего вывода команд, без монтажа экрана: демо-кейсы и карточка сотрудника, мониторинг захвата и сроков МЧД, захват до платежа, журнал, HTTP API, допуск платежа по OpenID AuthZEN 1.0 и готовность к пилоту. Данные кейсов вымышлены.</p>
+    <figure class="demo-video reveal">
+      <video controls playsinline preload="none" width="1920" height="1080" poster="img/video-poster.webp" src="materials/Mandat_demo.mp4" aria-labelledby="video-h">
+        <a href="materials/Mandat_demo.mp4">Видео-демо, MP4</a>
+      </video>
+      <figcaption>MP4, 1920×1080, субтитры на русском, без закадрового голоса · <a href="materials/Mandat_demo.mp4" download>скачать</a> · <a href="showcase.html">захват по шагам</a></figcaption>
+    </figure>
   </div>
 </section>
 
