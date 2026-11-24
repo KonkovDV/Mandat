@@ -37,6 +37,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from mandat import ENGINE, __version__
+from mandat.api import authzen
 from mandat.api import review as review_api
 from mandat.api.principals import Directory, Principal, load_users
 from mandat.api.sealing import SealError, sealed
@@ -103,18 +104,38 @@ def scrub(text: str, limit: int = 300) -> str:
     return _EMAIL.sub("<email>", _DIGITS.sub("<num>", head))[:limit]
 
 
+# Идентификатор запроса от вызывающей системы (AuthZEN 1.0, раздел 10.1.3: PDP возвращает тот же X-Request-ID).
+# Принимается только из безопасного алфавита: UUID, ULID, base64url, W3C traceparent. Иначе — свой случайный.
+CLIENT_REQUEST_ID = re.compile(r"[A-Za-z0-9._~:+/=-]{1,128}")
+
+
 def request_id(scope: MutableMapping[str, Any]) -> str:
     state = scope.setdefault("state", {})
     if "request_id" not in state:
-        state["request_id"] = secrets.token_hex(8)
+        offered = next(
+            (v.decode("latin-1").strip() for k, v in scope.get("headers", []) if k.lower() == REQUEST_ID_HEADER),
+            "",
+        )
+        if CLIENT_REQUEST_ID.fullmatch(offered):
+            state["request_id"], state["request_id_from_client"] = offered, True
+        else:
+            state["request_id"] = secrets.token_hex(8)
     return str(state["request_id"])
+
+
+def logged_request_id(scope: MutableMapping[str, Any]) -> str:
+    """Для журнала сервера: присланный идентификатор проходит ту же маску номеров, что путь и причина."""
+    rid = request_id(scope)
+    return scrub(rid, 128) if (scope.get("state") or {}).get("request_id_from_client") else rid
 
 
 def problem(request: Request, status: int, detail: str, cause: str) -> JSONResponse:
     rid = request_id(request.scope)
     # Путь задаёт клиент: кейс, названный по ИНН, иначе оставлял бы номер в журнале сервера.
     path = scrub(request.url.path)
-    log.warning("request_id=%s status=%s path=%s cause=%s", rid, status, path, scrub(cause))
+    log.warning(
+        "request_id=%s status=%s path=%s cause=%s", logged_request_id(request.scope), status, path, scrub(cause)
+    )
     headers = {k.decode(): v.decode() for k, v in [*SECURITY_HEADERS, DEFAULT_CSP]}
     headers[REQUEST_ID_HEADER.decode()] = rid
     return JSONResponse({"detail": detail, "request_id": rid}, status_code=status, headers=headers)
@@ -193,6 +214,19 @@ async def strict_json_object(request: Request) -> None:
         raise ApiProblem(422, "запрос не соответствует схеме", "тело должно быть объектом")
 
 
+async def strict_json_authzen(request: Request) -> None:
+    """Тело запроса AuthZEN — объект I-JSON (раздел 11.5). Нарушение — 400, а не 422 (раздел 10.1.2)."""
+    try:
+        await strict_json_object(request)
+    except ApiProblem as exc:
+        raise ApiProblem(400, authzen.BAD_REQUEST, exc.cause) from exc
+
+
+def bearer_challenge(token_sent: bool) -> str:
+    """``WWW-Authenticate`` для 401 по RFC 6750, разд. 3: без токена — только схема, с неверным — invalid_token."""
+    return 'Bearer realm="mandat", error="invalid_token"' if token_sent else 'Bearer realm="mandat"'
+
+
 class Guard:
     """Чистое ASGI-звено перед приложением: лимит частоты, токен, размер тела — именно в этом порядке.
 
@@ -240,7 +274,7 @@ class Guard:
                 return
             scheme, _, value = headers.get("authorization", "").partition(" ")
             if scheme.lower() != "bearer" or not value.strip() or self.directory.find(value.strip()) is None:
-                await reply(401, "нужен токен доступа")
+                await reply(401, "нужен токен доступа", {"WWW-Authenticate": bearer_challenge(bool(value.strip()))})
                 return
         length = headers.get("content-length")
         if length is not None:
@@ -328,6 +362,7 @@ def create_app(
     store: Store | None = None,
     journal_path: Path | None = None,
     admission_config: admission.AdmissionConfig | None = None,
+    authzen_pdp: str | None = None,
 ) -> FastAPI:
     expected = token if token is not None else os.environ.get("MANDAT_API_TOKEN", "")
     raw_users = (users if users is not None else os.environ.get("MANDAT_API_USERS", "")).strip()
@@ -349,6 +384,8 @@ def create_app(
     audit_log = journal_path if journal_path is not None else (Path(env_journal) if env_journal else None)
     # Допуск операции включается связкой ключей издателя; настроенный не полностью — ошибка старта, а не 500.
     admit = admission_config or admission.AdmissionConfig.from_env(protected=protected())
+    raw_pdp = (authzen_pdp if authzen_pdp is not None else os.environ.get(authzen.PDP_ENV, "")).strip()
+    pdp_identifier = authzen.check_pdp_identifier(raw_pdp) if raw_pdp else None
 
     app.add_middleware(Guard, directory=directory, limit=limit, store=shared)
 
@@ -356,6 +393,9 @@ def create_app(
     async def schema_error(request: Request, exc: RequestValidationError) -> JSONResponse:
         # Только место и тип ошибки: поле «input» может содержать ПДн.
         where = "; ".join(f"{'.'.join(map(str, e.get('loc', ())))}:{e.get('type', '')}" for e in exc.errors())
+        if request.url.path.startswith(authzen.PREFIX):
+            # AuthZEN 1.0, раздел 10.1.1: без обязательного атрибута — Bad Request.
+            return problem(request, 400, authzen.BAD_REQUEST, where)
         return problem(request, 422, "запрос не соответствует схеме", where)
 
     @app.exception_handler(ApiProblem)
@@ -380,7 +420,8 @@ def create_app(
         scheme, _, value = authorization.partition(" ")
         principal = directory.find(value.strip()) if scheme.lower() == "bearer" and value.strip() else None
         if principal is None:
-            raise HTTPException(401, "нужен токен доступа")
+            challenge = bearer_challenge(bool(value.strip()))
+            raise HTTPException(401, "нужен токен доступа", headers={"WWW-Authenticate": challenge})
         return principal
 
     def writer(principal: Principal = Depends(auth)) -> Principal:
@@ -878,6 +919,14 @@ def create_app(
         moment = as_of.astimezone(MOSCOW).isoformat()
         return {"alerts": [a.as_dict() for a in found], "warnings": warnings, "as_of": moment}
 
+    def admission_ready() -> admission.AdmissionConfig:
+        """Допуск настроен и в защищённом режиме у него есть общее хранилище nonce и журнал; иначе 503."""
+        if admit is None:
+            raise HTTPException(503, "допуск не настроен: задайте MANDAT_ATTESTATION_KEYRING и MANDAT_STATUS_DIR")
+        if protected() and (shared.name == "memory" or audit_log is None):
+            raise HTTPException(503, "в защищённом режиме допуск требует общего хранилища и журнала аудита")
+        return admit
+
     @app.post("/v1/operations/authorize", dependencies=[Depends(strict_json_object)])
     def authorize_operation(body: AdmissionBody, principal: Principal = Depends(admitter)) -> dict[str, Any]:
         """Допуск одной операции по удостоверению: подлинность, статус, вердикт confirmed и привязка к запросу.
@@ -887,11 +936,18 @@ def create_app(
         второго допуска нет, операцию по первому допуску ДБО проводит один раз.
         503 — допуск не настроен или в защищённом режиме нет общего хранилища nonce и журнала.
         """
-        if admit is None:
-            raise HTTPException(503, "допуск не настроен: задайте MANDAT_ATTESTATION_KEYRING и MANDAT_STATUS_DIR")
-        if protected() and (shared.name == "memory" or audit_log is None):
-            raise HTTPException(503, "в защищённом режиме допуск требует общего хранилища и журнала аудита")
-        fields = body.request
+        return admit_operation(body.credential, body.request, body.operation_risk, principal, via="api")
+
+    def admit_operation(
+        credential: dict[str, Any],
+        fields: AdmissionOperation,
+        operation_risk: str | None,
+        principal: Principal,
+        *,
+        via: str,
+    ) -> dict[str, Any]:
+        """Решение о допуске и запись в журнал. Общая часть ``/v1/operations/authorize`` и AuthZEN."""
+        config = admission_ready()
         if principal.audiences and fields.audience not in principal.audiences:
             # Учётная запись одного канала не расходует удостоверения другого; nonce не тронут.
             raise ApiProblem(
@@ -914,8 +970,8 @@ def create_app(
         moment = datetime.now(UTC)
         try:
             decision = admission.decide_detailed(
-                admission.AdmissionRequest(body.credential, operation, body.operation_risk),
-                admit,
+                admission.AdmissionRequest(credential, operation, operation_risk),
+                config,
                 shared,
                 now=moment,
                 protected=protected(),
@@ -924,7 +980,7 @@ def create_app(
             raise ApiProblem(503, "хранилище недоступно, допуск не выдан", f"store: {type(exc).__name__}") from exc
         problems = decision.problems
         allowed = not problems
-        subject = body.credential.get("credentialSubject")
+        subject = credential.get("credentialSubject")
         report_sha = subject.get("reportSha256") if isinstance(subject, dict) else None
         if audit_log is not None:
             try:
@@ -937,7 +993,7 @@ def create_app(
                     payload_hash=hashlib.sha256(
                         json.dumps(
                             {
-                                "credential": body.credential,
+                                "credential": credential,
                                 "request": fields.model_dump(exclude={"representative_inn"}),
                             },
                             sort_keys=True,
@@ -950,7 +1006,7 @@ def create_app(
                         "audience": fields.audience,
                         "problems": len(problems),
                         "already_admitted": decision.already_admitted,
-                        "via": "api",
+                        "via": via,
                     },
                 )
             except (ValueError, OSError, journal.JournalKeyMissing) as exc:
@@ -972,5 +1028,69 @@ def create_app(
             "audience": fields.audience,
             "checked_at": moment.isoformat(timespec="seconds"),
         }
+
+    # --- OpenID AuthZEN Authorization API 1.0: тот же допуск в стандартном конверте (api/authzen.py) ---------
+
+    def authzen_admission(evaluation: authzen.EvaluationRequest, principal: Principal) -> dict[str, Any]:
+        """Одна оценка AuthZEN: профиль «Мандата» → общий допуск → решение. Ошибка оценки — ``AuthzenError``."""
+        request = authzen.admission_of(evaluation)
+        try:
+            fields = AdmissionOperation(
+                organization_inn=request.organization_inn,
+                operation=request.operation,
+                operation_date=request.operation_date,
+                amount_rub=request.amount_rub,
+                representative_inn=request.representative_inn,
+                audience=request.audience,
+                nonce=request.nonce,
+            )
+        except ValueError as exc:
+            raise authzen.AuthzenError(400, authzen.BAD_REQUEST, f"AdmissionOperation: {type(exc).__name__}") from exc
+        try:
+            result = admit_operation(request.credential, fields, request.operation_risk, principal, via="authzen")
+        except ApiProblem as exc:
+            status = 400 if exc.status == 422 else exc.status
+            raise authzen.AuthzenError(status, exc.detail, exc.cause) from exc
+        except HTTPException as exc:
+            raise authzen.AuthzenError(exc.status_code, str(exc.detail), f"http {exc.status_code}") from exc
+        return authzen.decision(result)
+
+    @app.get(authzen.METADATA_PATH)
+    def authzen_configuration(request: Request, principal: Principal = Depends(auth)) -> dict[str, Any]:
+        """Метаданные PDP (AuthZEN 1.0, раздел 9). Как и весь API, только с токеном: открыты лишь /health и /readyz.
+
+        Идентификатор PDP — ``MANDAT_AUTHZEN_PDP``; на стенде без него берётся адрес запроса, в pilot и prod — 503.
+        """
+        admission_ready()
+        if pdp_identifier is None and protected():
+            raise ApiProblem(503, "идентификатор PDP не настроен", f"authzen: {authzen.PDP_ENV} not set")
+        return authzen.metadata(pdp_identifier or str(request.base_url).rstrip("/"))
+
+    @app.post(authzen.EVALUATION_PATH, dependencies=[Depends(strict_json_authzen)])
+    def access_evaluation(body: authzen.EvaluationRequest, principal: Principal = Depends(admitter)) -> dict[str, Any]:
+        """Одна оценка (раздел 6). Отказ — 200 и ``decision: false``; ошибка запроса — 400 по разделу 10.1.2."""
+        admission_ready()
+        try:
+            return authzen_admission(body, principal)
+        except authzen.AuthzenError as exc:
+            raise ApiProblem(exc.status, exc.message, f"authzen: {exc.cause}") from exc
+
+    @app.post(authzen.EVALUATIONS_PATH, dependencies=[Depends(strict_json_authzen)])
+    def access_evaluations(
+        body: authzen.EvaluationsRequest, principal: Principal = Depends(admitter)
+    ) -> dict[str, Any]:
+        """Пакет оценок (раздел 7). Без ``evaluations`` — одна оценка с прежним ответом, как требует раздел 7.1."""
+        admission_ready()
+        try:
+            evaluations, semantic = authzen.expand(body)
+        except authzen.AuthzenError as exc:
+            raise ApiProblem(exc.status, exc.message, f"authzen: {exc.cause}") from exc
+        if not body.evaluations:
+            try:
+                return authzen_admission(evaluations[0], principal)
+            except authzen.AuthzenError as exc:
+                raise ApiProblem(exc.status, exc.message, f"authzen: {exc.cause}") from exc
+        results = authzen.run_batch(evaluations, semantic, lambda one: authzen_admission(one, principal))
+        return {"evaluations": results}
 
     return app

@@ -1,6 +1,33 @@
 {
   "components": {
     "schemas": {
+      "Action": {
+        "properties": {
+          "name": {
+            "description": "код операции из каталога операций",
+            "title": "Name",
+            "type": "string"
+          },
+          "properties": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "operation_date — день операции по Москве (ГГГГ-ММ-ДД), amount_rub — целые рубли",
+            "title": "Properties"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Action",
+        "type": "object"
+      },
       "AdmissionBody": {
         "additionalProperties": false,
         "description": "Тело POST /v1/operations/authorize: удостоверение «Мандата» и запрос операции.",
@@ -121,6 +148,114 @@
         "title": "EraseBody",
         "type": "object"
       },
+      "EvaluationRequest": {
+        "description": "Раздел 6.1. ``context``: credential, nonce, audience и необязательный operation_risk.",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/Action"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/Resource"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/Subject"
+          }
+        },
+        "required": [
+          "subject",
+          "action",
+          "resource"
+        ],
+        "title": "EvaluationRequest",
+        "type": "object"
+      },
+      "EvaluationsRequest": {
+        "description": "Раздел 7.1: верхние ``subject``, ``action``, ``resource`` и ``context`` — значения по умолчанию для оценок.",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Action"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "evaluations": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PartialEvaluation"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluations"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "resource": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Resource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Subject"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "EvaluationsRequest",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -132,6 +267,86 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "PartialEvaluation": {
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Action"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "resource": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Resource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Subject"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "PartialEvaluation",
+        "type": "object"
+      },
+      "Resource": {
+        "properties": {
+          "id": {
+            "description": "ИНН организации: 10 или 12 цифр",
+            "title": "Id",
+            "type": "string"
+          },
+          "properties": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Properties"
+          },
+          "type": {
+            "description": "organization",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "title": "Resource",
         "type": "object"
       },
       "ReviewAction": {
@@ -165,6 +380,38 @@
           "expected_version"
         ],
         "title": "ReviewAction",
+        "type": "object"
+      },
+      "Subject": {
+        "properties": {
+          "id": {
+            "description": "ИНН представителя: 10 или 12 цифр",
+            "title": "Id",
+            "type": "string"
+          },
+          "properties": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Properties"
+          },
+          "type": {
+            "description": "representative",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "title": "Subject",
         "type": "object"
       },
       "ValidationError": {
@@ -214,6 +461,155 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/.well-known/authzen-configuration": {
+      "get": {
+        "description": "Метаданные PDP (AuthZEN 1.0, раздел 9). Как и весь API, только с токеном: открыты лишь /health и /readyz.\n\nИдентификатор PDP — ``MANDAT_AUTHZEN_PDP``; на стенде без него берётся адрес запроса, в pilot и prod — 503.",
+        "operationId": "authzen_configuration__well_known_authzen_configuration_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Authzen Configuration  Well Known Authzen Configuration Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Authzen Configuration"
+      }
+    },
+    "/access/v1/evaluation": {
+      "post": {
+        "description": "Одна оценка (раздел 6). Отказ — 200 и ``decision: false``; ошибка запроса — 400 по разделу 10.1.2.",
+        "operationId": "access_evaluation_access_v1_evaluation_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Access Evaluation Access V1 Evaluation Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Access Evaluation"
+      }
+    },
+    "/access/v1/evaluations": {
+      "post": {
+        "description": "Пакет оценок (раздел 7). Без ``evaluations`` — одна оценка с прежним ответом, как требует раздел 7.1.",
+        "operationId": "access_evaluations_access_v1_evaluations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Access Evaluations Access V1 Evaluations Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Access Evaluations"
+      }
+    },
     "/health": {
       "get": {
         "operationId": "health_health_get",
