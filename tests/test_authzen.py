@@ -206,7 +206,8 @@ def test_decision_and_reasons_match_the_native_admission(issuer, tmp_path):
 
 def test_every_evaluation_is_written_to_the_journal_without_the_representative(issuer, tmp_path):
     nonce = _nonce("journal")
-    _client(issuer, tmp_path).post(authzen.EVALUATION_PATH, json=_evaluation(issuer.issue(nonce), nonce), headers=HEADERS)
+    body = _evaluation(issuer.issue(nonce), nonce)
+    _client(issuer, tmp_path).post(authzen.EVALUATION_PATH, json=body, headers=HEADERS)
     records = [r for r in journal.read_journal(tmp_path / "journal.jsonl") if r["action"] == "authorize_operation"]
     assert len(records) == 1
     assert records[0]["details"]["via"] == "authzen" and records[0]["details"]["allowed"] is True
@@ -360,9 +361,9 @@ def test_deny_on_first_deny_stops_and_keeps_the_rest_unspent(issuer, tmp_path):
     third = issuer.issue(c)
     items = [_evaluation(issuer.issue(a), a), _evaluation(issuer.issue(b, "refuted"), b), _evaluation(third, c)]
     client = _client(issuer, tmp_path)
-    decisions = client.post(
-        authzen.EVALUATIONS_PATH, json=_batch(items, "deny_on_first_deny"), headers=HEADERS
-    ).json()["evaluations"]
+    decisions = client.post(authzen.EVALUATIONS_PATH, json=_batch(items, "deny_on_first_deny"), headers=HEADERS).json()[
+        "evaluations"
+    ]
     assert [d["decision"] for d in decisions] == [True, False]
     later = client.post(authzen.EVALUATION_PATH, json=_evaluation(third, c), headers=HEADERS)
     assert later.json()["decision"] is True, "невыполненная оценка не расходует nonce"

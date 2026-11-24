@@ -74,7 +74,7 @@ def test_second_person_without_name_or_position_is_reported():
 
 
 def test_second_person_in_another_form_is_parsed_without_identifiers():
-    """Управляющая компания или ИП в роли лица без доверенности не разбираются: сверять не с чем, пробела формата нет."""
+    """Управляющая компания или ИП в роли лица без доверенности не разбираются: сверять не с чем, пробела нет."""
     company = '<ЛицоБезДов ПолнЮЛ="2"><СВЮЛ/></ЛицоБезДов>'
     poa = parse_emchd(_text("direct.xml").replace("</ЛицоБезДов>", "</ЛицоБезДов>" + company, 1), doc_id="d")
     assert poa.co_signers == (Person(),)
@@ -114,9 +114,7 @@ def test_transfer_signed_by_two_persons_of_a_company_is_parsed():
 
 def test_persons_listed_and_signer_in_another_form_are_rejected():
     text = _transfer_from_company(FIRST + SECOND)
-    individual = (
-        '<ФЛПерПолн ИННФЛ="770000000220"><СведФЛ><ФИО Фамилия="Пробный" Имя="Иван"/></СведФЛ></ФЛПерПолн>'
-    )
+    individual = '<ФЛПерПолн ИННФЛ="770000000220"><СведФЛ><ФИО Фамилия="Пробный" Имя="Иван"/></СведФЛ></ФЛПерПолн>'
     with pytest.raises(EmchdError):
         parse_emchd(text.replace("</РосОргПерПолн>", "</РосОргПерПолн>" + individual), doc_id="t")
 
