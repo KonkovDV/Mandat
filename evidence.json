@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-11-23T12:14:57+00:00",
+  "generated_at": "2026-11-24T06:32:31+00:00",
   "engine": "mandat/0.4.0",
   "source": {
-    "base_commit": "4ac8181862f43134f8561fddb801419ad4006c22",
+    "base_commit": "dc660a678a4bd1789301bab731e3da5561eb62f5",
     "sources": [
       "src",
       "tests",
       "scripts",
       "examples"
     ],
-    "sha256": "affd70323ad8882b5b6dd2629aed1b74688158f5808414da0f41ddaa2b285fea",
+    "sha256": "8c3e0e9f0acf81c6190aa3a7e5541b20bddb72f1f3125549ad5b96fa55af1637",
     "check": "python scripts/build_evidence.py --verify-source"
   },
   "python": "3.13.18",
@@ -17,7 +17,7 @@
     "pack_id": "mandat-rules-ru",
     "version": "2026.10.2",
     "status": "draft",
-    "sha256": "e28b7438304c0458dbf6b5c7fc84dc4d4ce4223b9f9b80e7f2864f22f54cd646",
+    "sha256": "f8791d6977446115948b3eed1cfd6049bbf934ad4ddc3225e90f7dc0ccd18b2e",
     "rules": 39
   },
   "operations_catalog": {
@@ -30,59 +30,59 @@
     "results": {
       "01_ok": {
         "verdict": "needs_review",
-        "reproducibility_hash": "a120ec05424ece573365e9e90ee26fdf06e214ce5c10dfe04d124775b8be1d71"
+        "reproducibility_hash": "225280ca7fdbb0ffe099b7adfe4b8b06f1ddbbde8f1329bdfb7cc2d9b7656d1f"
       },
       "02_director_without_poa": {
         "verdict": "needs_review",
-        "reproducibility_hash": "8e487a01b829525f9fc7f602c8d8eac257161854da5903dbd48c44f601c6ca31"
+        "reproducibility_hash": "7ac297157b73fc2866615c1304cd03e4d9a0a6fbaa5c83fd027acab6dd742398"
       },
       "03_subdelegation_ok": {
         "verdict": "needs_review",
-        "reproducibility_hash": "04a37753f476beef3792b40ea987b152e6c52bde14272cf71a1668869202690d"
+        "reproducibility_hash": "a7a0127f0ec8c95660bb3794736ab407948dc2cb8cbc9aedf1e1c20b00855fe8"
       },
       "04_subdelegation_forbidden": {
         "verdict": "refuted",
-        "reproducibility_hash": "d8dc659834b52bed118f164837d3237bc996076a3af8d4c47f156cd2d308d6d6"
+        "reproducibility_hash": "e935d158b1eb31a93f725349019084ca79a4a0826fee5c07b784ab8eb16ef899"
       },
       "05_director_changed": {
         "verdict": "needs_review",
-        "reproducibility_hash": "5067b833e7c8f72c664f8d114d630ded0376cb1841d7d477c464ed16bf9102a2"
+        "reproducibility_hash": "61d8b6ed2ed109d509755c200efd0cb6295c8363072d51296caf7429f52614e3"
       },
       "06_text_authority": {
         "verdict": "needs_review",
-        "reproducibility_hash": "545165ae38c370d90e641e445e75cfb78f9688cb3809be7574c8ecc20daa6c17"
+        "reproducibility_hash": "7563a08004d27f7c8ffdf1d414587a1563080d90500067780b8f1ee62f109d8d"
       },
       "07_revoked": {
         "verdict": "refuted",
-        "reproducibility_hash": "3729692a908dd8a97ed196cb96a892a0d415d7f155ba31f39adcfcfd4504011e"
+        "reproducibility_hash": "9d02db976b55c42fb159b664f172c4e8baaf202fc399a3eec815074e4c3c7b59"
       },
       "08_registry_unavailable": {
         "verdict": "insufficient_data",
-        "reproducibility_hash": "3a298184c2a77ffe9a80981bdc31d89da5ade90c05980267593fc15f398b22d9"
+        "reproducibility_hash": "0f4f73053d69b7e57d5b80f2a8decd137f1e2f696fd4d693973373af2b159c3c"
       },
       "09_charter_limit": {
         "verdict": "needs_review",
-        "reproducibility_hash": "ec1319e9efb341168510d949519707060d995d605ed510b9eb63a612fce90a2c"
+        "reproducibility_hash": "a814e32515de01926df661bd9eaa2f4b5e92aba90d0353a8b7cf9729134ba9e9"
       },
       "10_old_director_poa": {
         "verdict": "needs_review",
-        "reproducibility_hash": "d370f962b346491e0a2b6adc4711742c26543ee81f5fcc6914f5ccc3788af8b5"
+        "reproducibility_hash": "d145cf2d6a37eaabac4f593200003c652e95c975342a94a3253420c088d8e158"
       },
       "11_parent_revoked": {
         "verdict": "refuted",
-        "reproducibility_hash": "64c5549e45e35e331d7560e1d750a973f6e0fba753343d6597816c5f19f142ae"
+        "reproducibility_hash": "1eabca004fd0b35756f1f60908a86854efa2154942214cf744e038b7d53803b5"
       },
       "12_no_term": {
         "verdict": "needs_review",
-        "reproducibility_hash": "c177abab39a453bcc7df8887c9d68ff97a641e3922f420d93745c0de12201f1b"
+        "reproducibility_hash": "59f7a45c421f8fdb7ccdc21e06eb64da49f748d3f986cb7391044906cb99d7bf"
       },
       "13_bankruptcy": {
         "verdict": "refuted",
-        "reproducibility_hash": "34c780ae986d30290296bb6331c3d518fded90ce6a902ac71d3cd8cd0dabde7b"
+        "reproducibility_hash": "4d47a8d568e4f780e954cfdf504b04f5d286dff4b1e585265a87c91285c65161"
       },
       "14_old_director_charter_cleared": {
         "verdict": "confirmed",
-        "reproducibility_hash": "2e40eae70a0209f5d1e664e58fd9d6631d8c17fec9e4473482a46d37a9f0bed3"
+        "reproducibility_hash": "98f59b89d3312dad3aacf9409d26f6aed1bb3958f8ceac8932f1c078d360fe19"
       }
     }
   },
@@ -157,17 +157,98 @@
   "latency": {
     "command": "python scripts/bench.py --rounds 20",
     "cases": 280,
-    "median_ms": 1.95,
-    "p95_ms": 3.29,
+    "median_ms": 2.63,
+    "p95_ms": 4.83,
     "machine": "x86_64, Python 3.13.18",
     "scope": "разбор XML и JSON, 39 правил, свёртка, отчёт; без сети и без модели"
   },
   "tests": {
     "command": "python -m pytest -q",
     "returncode": 0,
-    "summary": "2041 passed in 138.16s (0:02:18)",
-    "passed": 2041,
-    "collected": 2041,
-    "coverage_percent": 95.9
+    "summary": "2143 passed in 185.10s (0:03:05)",
+    "passed": 2143,
+    "collected": 2143,
+    "coverage_percent": 95.8
+  },
+  "pilot_readiness": {
+    "command": "python -m pytest -rA tests/test_access_matrix.py tests/test_api_errors.py tests/test_attestation_request_binding.py tests/test_attestation_validation.py tests/test_erase_case.py tests/test_incident_and_access_review.py::test_access_review_names_what_to_remove_or_assign tests/test_incident_and_access_review.py::test_both_deadlines_run_from_detection_not_one_after_another tests/test_incident_and_access_review.py::test_report_lists_who_touched_which_cases_before_detection tests/test_journal_minimisation.py tests/test_keymaterial.py tests/test_llm_chokepoint.py tests/test_pii_minimisation.py tests/test_pilot_checklist.py::test_every_network_module_is_a_declared_route tests/test_pilot_checklist.py::test_every_personal_field_has_a_purpose tests/test_pilot_checklist.py::test_fields_without_a_purpose_do_not_reach_the_report tests/test_readyz_and_pilot_compose.py tests/test_restore_check.py tests/test_server_log_scrub.py tests/test_token_lifecycle.py",
+    "checks": {
+      "isolation": {
+        "status": "проверено",
+        "tests": 6,
+        "failed": 0
+      },
+      "share": {
+        "status": "проверено",
+        "tests": 65,
+        "failed": 0
+      },
+      "access-end": {
+        "status": "проверено",
+        "tests": 46,
+        "failed": 0
+      },
+      "logs": {
+        "status": "проверено",
+        "tests": 29,
+        "failed": 0
+      },
+      "restore": {
+        "status": "проверено",
+        "tests": 6,
+        "failed": 0
+      },
+      "erase": {
+        "status": "проверено",
+        "tests": 18,
+        "failed": 0
+      },
+      "model": {
+        "status": "проверено",
+        "tests": 92,
+        "failed": 0
+      },
+      "routes": {
+        "status": "проверено",
+        "tests": 3,
+        "failed": 0
+      },
+      "incident": {
+        "status": "проверено",
+        "tests": 2,
+        "failed": 0
+      },
+      "stand": {
+        "status": "проверено",
+        "tests": 31,
+        "failed": 0
+      },
+      "mfa": {
+        "status": "не проверено",
+        "tests": 0,
+        "failed": 0
+      },
+      "bank-restore": {
+        "status": "не проверено",
+        "tests": 0,
+        "failed": 0
+      },
+      "basis": {
+        "status": "не проверено",
+        "tests": 0,
+        "failed": 0
+      },
+      "siem": {
+        "status": "не проверено",
+        "tests": 0,
+        "failed": 0
+      },
+      "threat-model": {
+        "status": "не проверено",
+        "tests": 0,
+        "failed": 0
+      }
+    },
+    "source": "Воркшоп «Данные, безопасность и комплаенс: что учесть до первого пилота», Академия Финтеха, 20.11.2026: чек-лист «данные, основание, маршруты, права, завершение, проверка», матрица применимости и матрица готовности к пилоту"
   }
 }

@@ -103,6 +103,23 @@ def _sign(record_hash: str, key: str) -> str:
     return hmac.new(key.encode("utf-8"), record_hash.encode("ascii"), hashlib.sha256).hexdigest()
 
 
+def text_digest(text: str, key: str | None = None) -> str:
+    """Отпечаток свободного текста для журнала: HMAC-SHA256 на ключе журнала, без ключа — SHA-256.
+
+    Журнал только дописывается и по 152-ФЗ не стирается, поэтому свободный текст сотрудника (основание решения
+    разбора, где бывает фамилия клиента) хранится в нём отпечатком. Сам текст лежит в истории разбора в
+    хранилище и удаляется вместе с кейсом; отпечаток связывает запись журнала с этим текстом, пока он есть.
+    Ключ мешает подобрать короткий текст перебором. Пустой текст — пустая строка.
+    """
+    if not text:
+        return ""
+    signing = _key(key)
+    data = text.encode("utf-8", "surrogatepass")
+    if signing:
+        return "hmac-sha256:" + hmac.new(signing.encode("utf-8"), data, hashlib.sha256).hexdigest()
+    return "sha256:" + hashlib.sha256(data).hexdigest()
+
+
 def _same_mac(offered: str, expected: str) -> bool:
     """HMAC из файла сверяется с постоянным временем и тогда, когда в нём чужие символы.
 

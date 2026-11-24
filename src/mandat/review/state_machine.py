@@ -269,9 +269,14 @@ class ReviewCase:
         specialization: str | None = None,
         required_specialization: str | None = None,
     ) -> None:
-        """Проверка «по версии ещё нет решения» и запись делаются под одной блокировкой журнала."""
+        """Проверка «по версии ещё нет решения» и запись делаются под одной блокировкой журнала.
+
+        Основание — свободный текст сотрудника — уходит в журнал отпечатком (``journal.text_digest``): журнал не
+        стирается, а в тексте бывает фамилия клиента. Текст остаётся в истории разбора и удаляется с кейсом.
+        """
         version = self.version
         report_hash = self.report_hash
+        reason_digest = journal.text_digest(reason)
 
         def no_other_decision(records: list[dict[str, Any]]) -> dict[str, Any] | None:
             existing = _decision_for(records, self.case_id, version)
@@ -279,7 +284,8 @@ class ReviewCase:
                 return None
             if existing.get("action") != JOURNAL_ACTION[action]:
                 raise ReviewConflict(f"конфликт: версия {version} уже записана с решением {existing.get('action')}")
-            if existing.get("payload_hash") != report_hash or existing.get("reason") != reason:
+            # Записи до перехода на отпечаток хранили текст: тот же текст — то же решение.
+            if existing.get("payload_hash") != report_hash or existing.get("reason") not in (reason_digest, reason):
                 raise ReviewConflict("конфликт: эта версия уже записана с другим решением")
             if (existing.get("details") or {}).get("actor") not in {None, actor}:
                 raise ReviewConflict("конфликт: эту версию записал другой сотрудник")
@@ -293,7 +299,7 @@ class ReviewCase:
                 role=role,
                 case_id=self.case_id,
                 payload_hash=report_hash,
-                reason=reason,
+                reason=reason_digest,
                 details=_details(target, version, actor, action, specialization, required_specialization),
                 precondition=no_other_decision,
             )

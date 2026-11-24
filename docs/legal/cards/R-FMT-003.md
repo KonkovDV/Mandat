@@ -13,7 +13,7 @@
 | Подразделение | Операционный блок МСБ |
 | Параметры банка (подписью не покрываются) | `kpp_snils_from = "2022-03-01"`, `power_name_from = "2026-02-01"` |
 | Реализация | `src/mandat/rules/checks.py::fmt_requisites` |
-| Тесты | `test_r_fmt_003_requisites_by_issue_date` |
+| Тесты | `test_r_fmt_003_requisites_by_issue_date`, `test_r_fmt_003_snils_is_required_from_every_signer` |
 
 ## Норма
 

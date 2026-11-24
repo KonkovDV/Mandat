@@ -605,6 +605,67 @@ def server_options() -> dict[str, Any]:
     }
 
 
+def cmd_restore_check(args: argparse.Namespace) -> int:
+    """После восстановления из копии: удалённое не воскресло, отзывы не откатились, журнал цел (services/recovery)."""
+    from mandat.api.sealing import sealed
+    from mandat.api.storage import open_store
+    from mandat.services.recovery import check_restore
+
+    store = sealed(open_store(args.store))
+    if store.name == "memory":
+        print("укажите восстановленное хранилище: --store sqlite:///… или redis://…", file=sys.stderr)
+        return 2
+    status_dir = Path(args.status_dir) if args.status_dir else None
+    signer = None
+    if args.repair and status_dir is not None:
+        from mandat.audit.signing import SignerError, signer_from_env
+
+        key_path = Path(args.key) if args.key else status_dir.parent / "keys" / "attestation_ed25519.pem"
+        try:
+            signer = signer_from_env(key_path, create=False)
+        except SignerError as exc:
+            print(f"ошибка: {exc}", file=sys.stderr)
+            return 2
+    report = check_restore(Path(args.journal), store, status_dir=status_dir, repair=args.repair, signer=signer)
+    print(json.dumps(report.as_dict(), ensure_ascii=False, indent=2))
+    return 0 if report.ok else 1
+
+
+def cmd_incident_report(args: argparse.Namespace) -> int:
+    """Сроки 24 и 72 часа от выявления и факты из журнала для расследования (services/incident)."""
+    from mandat.services.incident import incident_report, parse_moment
+
+    warnings: list[str] = []
+    detected = parse_moment(args.detected_at, warnings, "--detected-at")
+    since = parse_moment(args.since, warnings, "--since") if args.since else None
+    until = parse_moment(args.until, warnings, "--until") if args.until else None
+    report = incident_report(
+        Path(args.journal), detected_at=detected, since=since, until=until, actor=args.actor, warnings=warnings
+    )
+    print(json.dumps(report.as_dict(), ensure_ascii=False, indent=2))
+    return 0 if report.journal_ok else 1
+
+
+def cmd_access_review(args: argparse.Namespace) -> int:
+    """Ревизия учётных записей API без изменения списка; ``--strict`` — код 1, если есть что снять или назначить."""
+    from datetime import UTC, datetime
+
+    from mandat.api.principals import parse_users, review_access
+    from mandat.strictjson import strict_loads
+
+    text = (args.users if args.users is not None else os.environ.get("MANDAT_API_USERS", "")).strip()
+    if not text:
+        print("нет списка пользователей: --users или MANDAT_API_USERS", file=sys.stderr)
+        return 2
+    if not text.startswith("["):
+        text = Path(text).read_text(encoding="utf-8")
+    # Ревизия читает и список, который в pilot/prod не загрузился бы: её задача — найти такие записи.
+    entries = parse_users(strict_loads(text), require_expiry=False)
+    result = review_access(entries, now=datetime.now(UTC), warn_days=args.warn_days, long_days=args.long_days)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 1 if args.strict and result["needs_action"] else 0
+
+
 def cmd_webhook_secret(args: argparse.Namespace) -> int:
     from mandat.services.webhooks import new_secret, new_signing_key
 
@@ -637,6 +698,8 @@ def cmd_api_user(args: argparse.Namespace) -> int:
     entry: dict[str, Any] = {"name": args.name, "role": args.role, "token_sha256": hash_token(token)}
     if audiences:
         entry["audiences"] = audiences
+    if args.owner:
+        entry["owner"] = args.owner
     if args.expires_in_days is not None:
         import math
 
@@ -760,7 +823,31 @@ def build_parser() -> argparse.ArgumentParser:
     u.add_argument(
         "--audience", action="append", help="получатель удостоверений для роли dbo; можно несколько, в pilot/prod нужен"
     )
+    u.add_argument("--owner", default=None, help="кто отзовёт доступ, когда работа закончится (для access-review)")
     u.set_defaults(func=cmd_api_user)
+
+    ar = sub.add_parser("access-review", help="ревизия учётных записей API: сроки, отзыв, владелец отзыва")
+    ar.add_argument("--users", default=None, help="JSON-массив или путь к файлу; по умолчанию MANDAT_API_USERS")
+    ar.add_argument("--warn-days", type=int, default=14, help="предупредить за столько дней до конца срока")
+    ar.add_argument("--long-days", type=int, default=90, help="срок длиннее этого — пересмотреть")
+    ar.add_argument("--strict", action="store_true", help="код 1, если у действующей записи нет срока или владельца")
+    ar.set_defaults(func=cmd_access_review)
+
+    rc = sub.add_parser("restore-check", help="после восстановления из копии: удаления, отзывы и журнал сверены")
+    rc.add_argument("--journal", required=True, help="журнал аудита, который ведётся дальше (не из копии)")
+    rc.add_argument("--store", default=None, help="восстановленное хранилище; по умолчанию MANDAT_API_STORE")
+    rc.add_argument("--status-dir", default=None, help="восстановленный каталог списков статусов")
+    rc.add_argument("--repair", action="store_true", help="повторить удаления и отзывы, записать это в журнал")
+    rc.add_argument("--key", default=None, help="ключ подписи списков статусов для --repair (иначе MANDAT_SIGNER)")
+    rc.set_defaults(func=cmd_restore_check)
+
+    ir = sub.add_parser("incident-report", help="инцидент с ПДн: сроки 24 и 72 ч от выявления и факты журнала")
+    ir.add_argument("--journal", required=True)
+    ir.add_argument("--detected-at", required=True, help="момент выявления, ISO 8601; без пояса — московское время")
+    ir.add_argument("--since", default=None, help="начало окна расследования")
+    ir.add_argument("--until", default=None, help="конец окна; по умолчанию момент выявления")
+    ir.add_argument("--actor", default=None, help="только действия этой учётной записи")
+    ir.set_defaults(func=cmd_incident_report)
 
     s = sub.add_parser("serve", help="запустить HTTP API")
     s.add_argument("--host", default="127.0.0.1")

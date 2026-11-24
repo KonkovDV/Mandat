@@ -112,6 +112,14 @@ def parse_emchd(data: bytes | str, *, doc_id: str) -> PowerOfAttorney:
         raise EmchdError(f"корневой элемент {root.tag!r}, ожидался {root_tag!r} в пространстве имён {namespace}")
 
     paths, list_paths, transfer = _layout(root, spec)
+    signers_path = list_paths["signers"]
+    signer_nodes = root.findall(signers_path)
+    if len(signer_nodes) > 1:
+        # Несколько лиц без доверенности — законная форма (XSD: maxOccurs=unbounded), а не повтор поля. Поля
+        # подписанта читаются из списка; та же МЧД с подписантом ещё и в другой форме (ФЛПерПолн) — неоднозначна.
+        if _signer_in_other_form(root, paths, signers_path):
+            raise EmchdError("лица без доверенности указаны и списком, и в другой форме")
+        paths = {key: value for key, value in paths.items() if not key.startswith("signer.")}
     values: dict[str, str | None] = {}
     refs: dict[str, EvidenceRef] = {}
     for key, field_paths in paths.items():
@@ -122,6 +130,11 @@ def parse_emchd(data: bytes | str, *, doc_id: str) -> PowerOfAttorney:
         values[key] = value
         if value is not None and used is not None:
             refs[key] = EvidenceRef(doc_id, sha, xpath.locator(root_tag, used), quote=value)
+    co_signers: list[Person] = []
+    signer_gaps: list[str] = []
+    if len(signer_nodes) > 1:
+        signer_spec = spec["lists"]["signers"]["fields"]
+        co_signers, signer_gaps = _read_signers(signer_nodes, signer_spec, signers_path, values, refs, doc_id, sha)
     if transfer and not values.get("parent_number"):
         # Передоверие первичной доверенности: номер родителя совпадает с номером первоначальной.
         values["parent_number"] = values.get("original_number")
@@ -132,7 +145,7 @@ def parse_emchd(data: bytes | str, *, doc_id: str) -> PowerOfAttorney:
     if missing:
         raise EmchdError("нет обязательных полей: " + ", ".join(missing))
 
-    gaps = [key for key in FORMAT_REQUIRED if not values.get(key)]
+    gaps = [key for key in FORMAT_REQUIRED if not values.get(key)] + signer_gaps
     for key, allowed in spec["enums"].items():
         if values.get(key) is not None and values[key] not in allowed:
             gaps.append(f"{key}.value")
@@ -170,14 +183,12 @@ def parse_emchd(data: bytes | str, *, doc_id: str) -> PowerOfAttorney:
             gaps.append("notarization.details")
     policy = [key for key in POLICY_REQUIRED if not values.get(key)]
     questions: list[str] = []
-    if not values.get("signer.position"):
-        # По XSD должность подписанта необязательна в обеих ветвях. При передоверии подписывает представитель:
-        # нужна ли тогда должность, решает юрист, до ответа МЧД уходит на разбор. В первичной МЧД без должности
-        # не проверить, что подписал руководитель, поэтому подтверждения нет.
-        if values.get("parent_number"):
-            questions.append("signer.position")
-        else:
-            policy.append("signer.position")
+    # По XSD должность подписанта необязательна в обеих ветвях. При передоверии подписывает представитель:
+    # нужна ли тогда должность, решает юрист, до ответа МЧД уходит на разбор. В первичной МЧД без должности
+    # не проверить, что подписал руководитель, поэтому подтверждения нет. То же для каждого из нескольких лиц.
+    unplaced = ["signer.position"] if not values.get("signer.position") else []
+    unplaced += [f"signer.{index}.position" for index, person in enumerate(co_signers, start=2) if not person.position]
+    (questions if values.get("parent_number") else policy).extend(unplaced)
     reps: list[Person] = []
     kinds: list[str] = []
     rep_spec = spec["lists"]["representatives"]
@@ -261,7 +272,64 @@ def parse_emchd(data: bytes | str, *, doc_id: str) -> PowerOfAttorney:
         notarized=notarized,
         policy_gaps=tuple(policy),
         subdelegator_kind=subdelegator_kind,
+        co_signers=tuple(co_signers),
     )
+
+
+def _signer_in_other_form(root: Element, paths: dict[str, Any], signers_path: str) -> bool:
+    """Подписант указан не только списком ``ЛицоБезДов``, но и по другому пути (в ветви Передов — ``ФЛПерПолн``)."""
+    for key, field_paths in paths.items():
+        if not key.startswith("signer."):
+            continue
+        for path in [field_paths] if isinstance(field_paths, str) else field_paths:
+            if path.startswith(signers_path + "/"):
+                continue
+            try:
+                if xpath.read(root, path) is not None:
+                    return True
+            except xpath.AmbiguousField:
+                return True
+    return False
+
+
+def _read_signers(
+    nodes: list[Element],
+    fields_spec: dict[str, str],
+    list_path: str,
+    values: dict[str, str | None],
+    refs: dict[str, EvidenceRef],
+    doc_id: str,
+    sha: str,
+) -> tuple[list[Person], list[str]]:
+    """Лица без доверенности по узлам ``ЛицоБезДов``: первое — в поля ``signer.*``, остальные — списком.
+
+    Ссылки: ``signer.N`` — узел N-го лица, ``signer.inn`` и другие поля — атрибуты первого лица, как у МЧД с одним
+    подписантом. Повтор поля внутри одного узла — ошибка разбора, как и в остальном документе. Пробел формата —
+    фамилия или имя не указаны у лица в форме ``СвФЛ``. Лицо в другой форме (управляющая компания ``СВЮЛ``,
+    предприниматель ``СвИП``) не разбирается: у него нет ИНН и СНИЛС для сверки, и R-EIO-001 отдаёт МЧД на разбор.
+    """
+    root_tag = mapping()["root"]
+    rest: list[Person] = []
+    gaps: list[str] = []
+    for index, node in enumerate(nodes, start=1):
+        base = xpath.locator(root_tag, list_path, index)
+        try:
+            found = {name: xpath.read(node, sub) for name, sub in fields_spec.items()}
+        except xpath.AmbiguousField as exc:
+            raise EmchdError(f"лицо без доверенности {index}: {exc}") from exc
+        refs[f"signer.{index}"] = EvidenceRef(doc_id, sha, base, quote=_fio(found))
+        if index == 1:
+            for name, value in found.items():
+                values[f"signer.{name}"] = value
+                if value is not None:
+                    locator = xpath.locator(root_tag, fields_spec[name], base=base)
+                    refs[f"signer.{name}"] = EvidenceRef(doc_id, sha, locator, quote=value)
+            continue
+        if node.find("СвФЛ") is not None and not (found.get("last_name") and found.get("first_name")):
+            gaps.append(f"signer.{index}.fio")
+        inn, snils, position = found.get("inn"), found.get("snils"), found.get("position")
+        rest.append(Person(full_name=_fio(found), inn=inn, snils=snils, position=position))
+    return rest, gaps
 
 
 def _representative_kind(node: Element, kinds: dict[str, str]) -> str:

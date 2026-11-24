@@ -83,6 +83,9 @@ class UserEntry:
     token_sha256: str
     expires_at: datetime | None = None
     revoked: bool = False
+    # Кто отвечает за отзыв этого доступа, когда работа закончится (воркшоп 20.11.2026: «назначить владельца
+    # отзыва прав»). На проверку токена не влияет: его читает ``mandat access-review``.
+    owner: str | None = None
 
     def usable(self, now: datetime) -> bool:
         """Токен действует: не отозван и срок не вышел (граница ``expires_at`` уже не действует)."""
@@ -152,9 +155,78 @@ def parse_users(raw: Any, *, require_expiry: bool | None = None, now: datetime |
             if require_expiry:
                 raise ValueError(f"MANDAT_API_USERS: {message} (потолок срока в pilot/prod)")
             log.warning("MANDAT_API_USERS: %s", message)
+        owner = item.get("owner")
+        if owner is not None and (not isinstance(owner, str) or not owner.strip() or len(owner) > MAX_OWNER_CHARS):
+            raise ValueError(f"MANDAT_API_USERS: у {name} owner — непустая строка до {MAX_OWNER_CHARS} знаков")
         seen.add(name)
-        users.append(UserEntry(Principal(name, role, specialization, audiences), digest.lower(), expires, revoked))
+        principal = Principal(name, role, specialization, audiences)
+        users.append(UserEntry(principal, digest.lower(), expires, revoked, owner.strip() if owner else None))
     return tuple(users)
+
+
+MAX_OWNER_CHARS = 200
+# Ревизия доступа: сколько дней до конца срока предупреждать и какой срок считать долгим для пересмотра.
+# NIST SP 800-53 rev. 5, AC-2: временные учётные записи снимаются по сроку, права пересматриваются регулярно.
+REVIEW_WARN_DAYS = 14
+REVIEW_LONG_DAYS = 90
+
+
+def review_access(
+    entries: tuple[UserEntry, ...] | list[UserEntry],
+    *,
+    now: datetime,
+    warn_days: int = REVIEW_WARN_DAYS,
+    long_days: int = REVIEW_LONG_DAYS,
+) -> dict[str, Any]:
+    """Ревизия учётных записей API: что действует, что пора снять и чему не назначен владелец отзыва.
+
+    Кейс 3 воркшопа 20.11.2026: подрядчик закончил работу, а учётная запись осталась. Ревизия не меняет список:
+    она называет записи без срока, с долгим сроком, с близким концом срока и без владельца отзыва.
+    Токены и их хеши в ответ не попадают.
+    """
+    rows: list[dict[str, Any]] = []
+    for entry in entries:
+        if entry.revoked:
+            status = "revoked"
+        elif entry.expires_at is not None and now >= entry.expires_at:
+            status = "expired"
+        else:
+            status = "active"
+        days_left = (entry.expires_at - now).days if entry.expires_at is not None and status == "active" else None
+        flags: list[str] = []
+        if status == "active":
+            if entry.expires_at is None:
+                flags.append("нет срока действия")
+            elif days_left is not None and days_left > long_days:
+                flags.append(f"срок дольше {long_days} дн.: пересмотреть")
+            elif days_left is not None and days_left <= warn_days:
+                flags.append(f"срок кончается через {days_left} дн.")
+            if not entry.owner:
+                flags.append("не назначен владелец отзыва")
+            if entry.principal.role == "admin":
+                flags.append("права администратора")
+        rows.append(
+            {
+                "name": entry.principal.name,
+                "role": entry.principal.role,
+                "audiences": list(entry.principal.audiences),
+                "owner": entry.owner,
+                "status": status,
+                "expires_at": entry.expires_at.isoformat(timespec="seconds") if entry.expires_at else None,
+                "days_left": days_left,
+                "flags": flags,
+            }
+        )
+    active = [row for row in rows if row["status"] == "active"]
+    blocking = {"нет срока действия", "не назначен владелец отзыва"}
+    return {
+        "checked_at": now.isoformat(timespec="seconds"),
+        "accounts": len(rows),
+        "active": len(active),
+        "inactive": len(rows) - len(active),
+        "needs_action": sum(1 for row in active if blocking & set(row["flags"])),
+        "rows": rows,
+    }
 
 
 def _parse_audiences(name: str, role: str, raw: Any, *, required: bool) -> tuple[str, ...]:

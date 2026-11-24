@@ -13,7 +13,7 @@
 | Подразделение | Операционный блок МСБ |
 | Параметры банка (подписью не покрываются) | — |
 | Реализация | `src/mandat/rules/checks.py::sub_edge` |
-| Тесты | `test_r_sub_009_child_signer_must_match_parent_representative`, `test_same_day_sibling_transfers_need_review` |
+| Тесты | `test_r_sub_009_child_signer_must_match_parent_representative`, `test_same_day_sibling_transfers_need_review`, `test_r_sub_009_edge_signed_by_several_persons_goes_to_review` |
 
 ## Норма
 
