@@ -18,7 +18,7 @@
 
 Мы делаем его для трека ВТБ «Финтех без границ», задача «Онбординг и проверка полномочий». Сейчас полуфинал, второй спринт.
 
-[Презентация](submission/slides/Mandat_VTB.pdf) · [видео на две минуты](submission/video/out/Mandat_demo.mp4) · [страница проекта](https://konkovdv.github.io/Mandat/) · [материалы спринта 2](submission/README.md) · [все документы](docs/README.md)
+[Презентация](submission/slides/Mandat_VTB.pdf) · [видео на две с половиной минуты](submission/video/out/Mandat_demo.mp4) · [страница проекта](https://konkovdv.github.io/Mandat/) · [материалы спринта 2](submission/README.md) · [все документы](docs/README.md)
 
 ## Зачем
 

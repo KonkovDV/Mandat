@@ -187,6 +187,22 @@ $header
     <p class="note">Подробно — <a href="$repo/blob/main/docs/PILOT.md">план пилота</a>, <a href="materials/Mandat_analytics_all.pdf">план внедрения в пакете аналитики</a> и <a href="$repo/blob/main/docs/audit/READINESS_GATES.md">ступени готовности</a>. Таблицы — план, а не проведённое исследование: подписанного протокола пока нет.</p>
   </div>
 </section>
+
+<section class="sec alt">
+  <div class="wrap">
+    <h2 id="ready-h">Готовность к пилоту: чек-лист воркшопа о данных</h2>
+    <p>Чек-лист воркшопа Академии Финтеха 20.11.2026 «Данные, безопасность и комплаенс: что учесть до первого пилота» разложен на «Мандат». Статус пункта ставит прогон его тестов при сборке <code>evidence.json</code>: $ready_ok из $ready_all пунктов проверены, остальные за банком — у каждого владелец и условие допуска.</p>
+    <div class="table-wrap">
+      <table aria-labelledby="ready-h">
+        <thead><tr><th scope="col">Блок</th><th scope="col">Проверка и критерий</th><th scope="col">Кто отвечает</th><th scope="col">Статус</th></tr></thead>
+        <tbody>
+$ready_rows
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Матрица целиком, с тестами каждого пункта, картой полей, маршрутов и копий, — <a href="$repo/blob/main/docs/PILOT_CHECKLIST.md">docs/PILOT_CHECKLIST.md</a>. Это проверки стенда на синтетике; контур банка его ИБ и юристы проверяют отдельно.</p>
+  </div>
+</section>
 </main>
 
 $footer

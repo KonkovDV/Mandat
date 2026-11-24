@@ -915,6 +915,42 @@ def _stages(today: date) -> str:
     return "\n".join(items)
 
 
+def _readiness(evidence: dict) -> dict[str, str]:
+    """Матрица готовности к пилоту (docs/PILOT_CHECKLIST.md): сколько пунктов проверено тестами и сколько за банком."""
+    checks = list((evidence.get("pilot_readiness") or {}).get("checks", {}).values())
+    if not checks:
+        return {"ready_ok": "—", "ready_all": "—", "ready_bank": "—", "ready_bank_word": "пунктов"}
+    ok = sum(1 for c in checks if c["status"] == "проверено" and c["tests"] > 0 and c["failed"] == 0)
+    bank = sum(1 for c in checks if c["tests"] == 0)
+    return {
+        "ready_ok": str(ok),
+        "ready_all": str(len(checks)),
+        "ready_bank": str(bank),
+        "ready_bank_word": _plural(bank, "пункт", "пункта", "пунктов"),
+    }
+
+
+def _readiness_rows(evidence: dict) -> str:
+    """Строки матрицы готовности для страницы пилота: пункт, владелец и статус из прогона тестов evidence.json."""
+    data = json.loads((ROOT / "src" / "mandat" / "data" / "pilot_checklist.json").read_text(encoding="utf-8"))
+    checks = (evidence.get("pilot_readiness") or {}).get("checks", {})
+    rows = []
+    for item in data["readiness"]:
+        got = checks.get(item["id"], {})
+        if got.get("tests"):
+            ok = got.get("status") == "проверено" and not got.get("failed")
+            word = _plural(got["tests"], "тест", "теста", "тестов")
+            label = f"{_esc(got.get('status', '—'))} · {got['tests']} {word}"
+            status = f'<span class="badge {"ok" if ok else "no"}">{label}</span>'
+        else:
+            status = f'<span class="badge info">за банком</span> {_esc(item["condition"])}'
+        rows.append(
+            f"<tr><td>{_esc(item['block'])}</td><td><b>{_esc(item['check'])}</b><br>{_esc(item['criterion'])}</td>"
+            f"<td>{_esc(item['owner'])}</td><td>{status}</td></tr>"
+        )
+    return "\n".join(rows)
+
+
 def values(evidence: dict) -> dict[str, str]:
     corpus = evidence["synthetic_corpus"]
     confirmed = corpus["confusion"].get("confirmed->confirmed", 0)
@@ -955,6 +991,8 @@ def values(evidence: dict) -> dict[str, str]:
         "stages": _stages(date.fromisoformat(as_of)),
         "law_rows": _law_rows(),
         **economics(),
+        **_readiness(evidence),
+        "ready_rows": _readiness_rows(evidence),
     }
 
 

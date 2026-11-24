@@ -2,7 +2,7 @@
   "demo": {
     "cmd": "mandat demo",
     "code": 0,
-    "out": "кейс                             ожидалось            получено\n01_ok                            needs_review         НА РАЗБОР\n02_director_without_poa          needs_review         НА РАЗБОР\n03_subdelegation_ok              needs_review         НА РАЗБОР\n04_subdelegation_forbidden       refuted              ОПРОВЕРГНУТО\n05_director_changed              needs_review         НА РАЗБОР\n06_text_authority                needs_review         НА РАЗБОР\n07_revoked                       refuted              ОПРОВЕРГНУТО\n08_registry_unavailable          insufficient_data    НЕДОСТАТОЧНО ДАННЫХ\n09_charter_limit                 needs_review         НА РАЗБОР\n10_old_director_poa              needs_review         НА РАЗБОР\n11_parent_revoked                refuted              ОПРОВЕРГНУТО\n12_no_term                       needs_review         НА РАЗБОР\n13_bankruptcy                    refuted              ОПРОВЕРГНУТО\n14_old_director_charter_cleared  confirmed            ПОДТВЕРЖДЕНО\nжурнал: 14 записей, целостность OK\nкорень дерева Меркла журнала: c6550ca73cb2ba2cc247bf54546cef3ecda71b4853af1d6e18739ae1663acc37\nотчёты: var/demo/*.html, удостоверения: var/demo/attestations/, списки статусов: var/demo/status/"
+    "out": "кейс                             ожидалось            получено\n01_ok                            needs_review         НА РАЗБОР\n02_director_without_poa          needs_review         НА РАЗБОР\n03_subdelegation_ok              needs_review         НА РАЗБОР\n04_subdelegation_forbidden       refuted              ОПРОВЕРГНУТО\n05_director_changed              needs_review         НА РАЗБОР\n06_text_authority                needs_review         НА РАЗБОР\n07_revoked                       refuted              ОПРОВЕРГНУТО\n08_registry_unavailable          insufficient_data    НЕДОСТАТОЧНО ДАННЫХ\n09_charter_limit                 needs_review         НА РАЗБОР\n10_old_director_poa              needs_review         НА РАЗБОР\n11_parent_revoked                refuted              ОПРОВЕРГНУТО\n12_no_term                       needs_review         НА РАЗБОР\n13_bankruptcy                    refuted              ОПРОВЕРГНУТО\n14_old_director_charter_cleared  confirmed            ПОДТВЕРЖДЕНО\nжурнал: 14 записей, целостность OK\nкорень дерева Меркла журнала: b727e265fabac7f4a1564081a31105faee457055499638023135d9725eaa9822\nотчёты: var/demo/*.html, удостоверения: var/demo/attestations/, списки статусов: var/demo/status/"
   },
   "verify_before": {
     "cmd": "mandat attest-verify var/demo/attestations/01_ok.json --public-key-file var/demo/public_key.txt --status-dir var/demo/status",
@@ -12,7 +12,7 @@
   "monitor_revoked": {
     "cmd": "mandat monitor examples/events/poa_revoked.json --status-dir var/demo/status",
     "code": 0,
-    "out": "{\n  \"alerts\": [\n    {\n      \"kind\": \"poa_invalidated\",\n      \"risk\": \"medium\",\n      \"org_inn\": \"7729985006\",\n      \"affected_rights\": [\n        \"R-003\"\n      ],\n      \"actions\": [\n        \"приостановить права, основанные на этой МЧД и её передоверии\",\n        \"запросить новую МЧД\"\n      ],\n      \"reasons\": [\n        \"МЧД ee2afcb0-9003-7ff0-ef03-8dad405558ea отменена\",\n        \"вместе с ней теряет силу передоверие (п. 3 ст. 188 ГК РФ)\"\n      ],\n      \"events\": [\n        \"0636a139f9c044cf\"\n      ],\n      \"attestation_action\": \"revocation\",\n      \"poa_number\": \"ee2afcb0-9003-7ff0-ef03-8dad405558ea\",\n      \"chain_kind\": null\n    }\n  ],\n  \"status_changes\": [\n    {\n      \"attestation\": \"attestations/03_subdelegation_ok.json\",\n      \"status\": \"revocation\"\n    },\n    {\n      \"attestation\": \"attestations/03_subdelegation_ok.json\",\n      \"status\": \"revocation\"\n    },\n    {\n      \"attestation\": \"attestations/03_subdelegation_ok.json\",\n      \"status\": \"revocation\"\n    }\n  ]\n}"
+    "out": "{\n  \"alerts\": [\n    {\n      \"kind\": \"poa_invalidated\",\n      \"risk\": \"medium\",\n      \"org_inn\": \"7729985006\",\n      \"affected_rights\": [\n        \"R-003\"\n      ],\n      \"actions\": [\n        \"приостановить права, основанные на этой МЧД и её передоверии\",\n        \"запросить новую МЧД\"\n      ],\n      \"reasons\": [\n        \"МЧД ee2afcb0-9003-7ff0-ef03-8dad405558ea отменена\",\n        \"вместе с ней теряет силу передоверие (п. 3 ст. 188 ГК РФ)\"\n      ],\n      \"events\": [\n        \"0636a139f9c044cf\"\n      ],\n      \"attestation_action\": \"revocation\",\n      \"poa_number\": \"ee2afcb0-9003-7ff0-ef03-8dad405558ea\",\n      \"chain_kind\": null\n    }\n  ],\n  \"status_changes\": [\n    {\n      \"attestation\": \"attestations/03_subdelegation_ok.json\",\n      \"status\": \"revocation\"\n    }\n  ]\n}"
   },
   "verify_revoked": {
     "cmd": "mandat attest-verify var/demo/attestations/03_subdelegation_ok.json --public-key-file var/demo/public_key.txt --status-dir var/demo/status",
@@ -22,7 +22,7 @@
   "monitor_takeover": {
     "cmd": "mandat monitor examples/events/takeover.json --status-dir var/demo/status",
     "code": 0,
-    "out": "{\n  \"alerts\": [\n    {\n      \"kind\": \"possible_takeover\",\n      \"risk\": \"high\",\n      \"org_inn\": \"7729985006\",\n      \"affected_rights\": [\n        \"R-001\",\n        \"R-002\"\n      ],\n      \"actions\": [\n        \"приостановить автоматическую выдачу прав по организации\",\n        \"передать кейс в антифрод банка\",\n        \"уведомить прежних подписантов по известным каналам\",\n        \"перепроверить все выданные права по новой цепочке\"\n      ],\n      \"reasons\": [\n        \"за 72 ч: смена руководителя, новая МЧД и заявка на смену реквизитов\"\n      ],\n      \"events\": [\n        \"6d59f9cdbe34aca8\",\n        \"d841bfe20637729d\",\n        \"4fe1b39c0d647029\"\n      ],\n      \"attestation_action\": \"suspension\",\n      \"poa_number\": null,\n      \"chain_kind\": null\n    },\n    {\n      \"kind\": \"eio_changed\",\n      \"risk\": \"medium\",\n      \"org_inn\": \"7729985006\",\n      \"affected_rights\": [\n        \"R-001\"\n      ],\n      \"actions\": [\n        \"перепроверить права по новой цепочке\",\n        \"не отзывать автоматически: смена руководителя МЧД не прекращает\"\n      ],\n      \"reasons\": [\n        \"новая запись ЕГРЮЛ: ГРН 2267700999001\"\n      ],\n      \"events\": [\n        \"6d59f9cdbe34aca8\"\n      ],\n      \"attestation_action\": null,\n      \"poa_number\": null,\n      \"chain_kind\": null\n    },\n    {\n      \"kind\": \"eio_authority_ended\",\n      \"risk\": \"medium\",\n      \"org_inn\": \"7729985006\",\n      \"affected_rights\": [\n        \"R-002\"\n      ],\n      \"actions\": [\n        \"приостановить права прежнего руководителя, действовавшего без доверенности\",\n        \"проверить полномочия нового руководителя по свежей выписке ЕГРЮЛ\"\n      ],\n      \"reasons\": [\n        \"новая запись ЕГРЮЛ: ГРН 2267700999001\",\n        \"руководитель действовал без доверенности: с новой записью ЕГРЮЛ его полномочие кончилось (п. 1 ст. 53 ГК РФ)\"\n      ],\n      \"events\": [\n        \"6d59f9cdbe34aca8\"\n      ],\n      \"attestation_action\": \"revocation\",\n      \"poa_number\": null,\n      \"chain_kind\": \"eio_direct\"\n    }\n  ],\n  \"status_changes\": [\n    {\n      \"attestation\": \"attestations/12_no_term.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/08_registry_unavailable.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/03_subdelegation_ok.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/09_charter_limit.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/10_old_director_poa.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/01_ok.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/01_ok.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/09_charter_limit.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/06_text_authority.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/05_director_changed.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/12_no_term.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/06_text_authority.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/03_subdelegation_ok.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/14_old_director_charter_cleared.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/05_director_changed.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/08_registry_unavailable.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/02_director_without_poa.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/08_registry_unavailable.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/14_old_director_charter_cleared.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/03_subdelegation_ok.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/06_text_authority.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/14_old_director_charter_cleared.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/05_director_changed.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/02_director_without_poa.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/10_old_director_poa.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/10_old_director_poa.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/09_charter_limit.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/02_director_without_poa.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/12_no_term.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/01_ok.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/02_director_without_poa.json\",\n      \"status\": \"revocation\"\n    },\n    {\n      \"attestation\": \"attestations/02_director_without_poa.json\",\n      \"status\": \"revocation\"\n    },\n    {\n      \"attestation\": \"attestations/02_director_without_poa.json\",\n      \"status\": \"revocation\"\n    }\n  ]\n}"
+    "out": "{\n  \"alerts\": [\n    {\n      \"kind\": \"possible_takeover\",\n      \"risk\": \"high\",\n      \"org_inn\": \"7729985006\",\n      \"affected_rights\": [\n        \"R-001\",\n        \"R-002\"\n      ],\n      \"actions\": [\n        \"приостановить автоматическую выдачу прав по организации\",\n        \"передать кейс в антифрод банка\",\n        \"уведомить прежних подписантов по известным каналам\",\n        \"перепроверить все выданные права по новой цепочке\"\n      ],\n      \"reasons\": [\n        \"за 72 ч: смена руководителя, новая МЧД и заявка на смену реквизитов\"\n      ],\n      \"events\": [\n        \"6d59f9cdbe34aca8\",\n        \"d841bfe20637729d\",\n        \"4fe1b39c0d647029\"\n      ],\n      \"attestation_action\": \"suspension\",\n      \"poa_number\": null,\n      \"chain_kind\": null\n    },\n    {\n      \"kind\": \"eio_changed\",\n      \"risk\": \"medium\",\n      \"org_inn\": \"7729985006\",\n      \"affected_rights\": [\n        \"R-001\"\n      ],\n      \"actions\": [\n        \"перепроверить права по новой цепочке\",\n        \"не отзывать автоматически: смена руководителя МЧД не прекращает\"\n      ],\n      \"reasons\": [\n        \"новая запись ЕГРЮЛ: ГРН 2267700999001\"\n      ],\n      \"events\": [\n        \"6d59f9cdbe34aca8\"\n      ],\n      \"attestation_action\": null,\n      \"poa_number\": null,\n      \"chain_kind\": null\n    },\n    {\n      \"kind\": \"eio_authority_ended\",\n      \"risk\": \"medium\",\n      \"org_inn\": \"7729985006\",\n      \"affected_rights\": [\n        \"R-002\"\n      ],\n      \"actions\": [\n        \"приостановить права прежнего руководителя, действовавшего без доверенности\",\n        \"проверить полномочия нового руководителя по свежей выписке ЕГРЮЛ\"\n      ],\n      \"reasons\": [\n        \"новая запись ЕГРЮЛ: ГРН 2267700999001\",\n        \"руководитель действовал без доверенности: с новой записью ЕГРЮЛ его полномочие кончилось (п. 1 ст. 53 ГК РФ)\"\n      ],\n      \"events\": [\n        \"6d59f9cdbe34aca8\"\n      ],\n      \"attestation_action\": \"revocation\",\n      \"poa_number\": null,\n      \"chain_kind\": \"eio_direct\"\n    }\n  ],\n  \"status_changes\": [\n    {\n      \"attestation\": \"attestations/01_ok.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/02_director_without_poa.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/05_director_changed.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/14_old_director_charter_cleared.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/06_text_authority.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/08_registry_unavailable.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/10_old_director_poa.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/09_charter_limit.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/12_no_term.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/03_subdelegation_ok.json\",\n      \"status\": \"suspension\"\n    },\n    {\n      \"attestation\": \"attestations/02_director_without_poa.json\",\n      \"status\": \"revocation\"\n    }\n  ]\n}"
   },
   "monitor_expiring": {
     "cmd": "mandat monitor examples/events/poa_expiring.json",
@@ -37,17 +37,17 @@
   "journal_verify": {
     "cmd": "mandat journal-verify var/demo/journal.jsonl",
     "code": 0,
-    "out": "{\"ok\": true, \"records\": 14, \"broken_at\": null, \"reason\": \"\", \"merkle_root\": \"c6550ca73cb2ba2cc247bf54546cef3ecda71b4853af1d6e18739ae1663acc37\"}"
+    "out": "{\"ok\": true, \"records\": 14, \"broken_at\": null, \"reason\": \"\", \"merkle_root\": \"b727e265fabac7f4a1564081a31105faee457055499638023135d9725eaa9822\"}"
   },
   "journal_proof": {
     "cmd": "mandat journal-proof var/demo/journal.jsonl --seq 3",
     "code": 0,
-    "out": "{\n  \"seq\": 3,\n  \"size\": 14,\n  \"record\": {\n    \"action\": \"verify\",\n    \"actor\": \"demo\",\n    \"at\": \"2026-11-23T08:50:16+00:00\",\n    \"case_id\": \"03_subdelegation_ok\",\n    \"details\": {\n      \"verdict\": \"needs_review\"\n    },\n    \"hash\": \"95a8721e809e381a407406c3620ed789b306adb060fa3c3f17f2929d723e39f7\",\n    \"payload_hash\": \"04a37753f476beef3792b40ea987b152e6c52bde14272cf71a1668869202690d\",\n    \"prev\": \"94a5b71d191985fe6207a4126eaa4a01ad54b7428575aea84eb3a9ed5f013ab2\",\n    \"reason\": \"\",\n    \"role\": \"operator\",\n    \"seq\": 3\n  },\n  \"leaf_hash\": \"9157df4e271dec19ffc769aeba299e6ca48038912f33c60f2dab049fb6765636\",\n  \"proof\": [\n    \"d34b9e1ff1dbc160e4bca5f8d085d71bf993761bbd1304054d5a73a9326b3c5c\",\n    \"bf3fdd28ff4880c1089a8cd124704034a1f429757a75ea7d257d419141fb49ea\",\n    \"968e2c7cd707f5974618c5d8aa36d42c0c7296349d9045516674686dee33a565\",\n    \"b00b06298673499d0587d4b3db3fbe0ed8f52d5a97f82d0e4c110adb53594ee5\"\n  ],\n  \"root\": \"c6550ca73cb2ba2cc247bf54546cef3ecda71b4853af1d6e18739ae1663acc37\",\n  \"verified\": true\n}"
+    "out": "{\n  \"seq\": 3,\n  \"size\": 14,\n  \"record\": {\n    \"action\": \"verify\",\n    \"actor\": \"demo\",\n    \"at\": \"2026-11-24T11:53:16+00:00\",\n    \"case_id\": \"03_subdelegation_ok\",\n    \"details\": {\n      \"verdict\": \"needs_review\"\n    },\n    \"hash\": \"39caa0e63dee1552fae295a4e1b2627e08e2ca72484316169a31a2c56321e014\",\n    \"payload_hash\": \"a7a0127f0ec8c95660bb3794736ab407948dc2cb8cbc9aedf1e1c20b00855fe8\",\n    \"prev\": \"e86a06c9fbc9f220dad865a207fbb3da36d5a069c606f366728b72200521bbcb\",\n    \"reason\": \"\",\n    \"role\": \"operator\",\n    \"seq\": 3\n  },\n  \"leaf_hash\": \"b70a163d60a587944e47bd3dfc5bd34dc59a0cb34eddf0999ac17e22f904bb2b\",\n  \"proof\": [\n    \"f66938d7757739c3256bc8c9c945b82268829ff0af7f1ce6c194ff6c305a3b9f\",\n    \"e57decc1ab23d2ed3be6685cca57327518e04d2582e58e4bc856598d2cec409b\",\n    \"81658accbe242a159f8bf689049b37ca258c74fd124c7458b16eb4defe13b14b\",\n    \"4452c316c163fd2060d3590ba7f70e297e6f181b83ce127c88d159f5fda67b48\"\n  ],\n  \"root\": \"b727e265fabac7f4a1564081a31105faee457055499638023135d9725eaa9822\",\n  \"verified\": true\n}"
   },
   "showcase": {
     "cmd": "mandat showcase --out var/showcase",
     "code": 0,
-    "out": "«Мандат»: захват компании останавливается до платежа (стенд: данные вымышлены, профиль demo)\n\n1. Проверка кейса 14_old_director_charter_cleared — ПОДТВЕРЖДЕНО\n   ООО «Ясная поляна», подписание платежа на 480 000 ₽, 20.10.2026\n2. Удостоверение на платёж — ВЫПУЩЕНО\n   действует до 19.11.2026 10:00; привязано к организации, дню, операции, сумме, представителю, получателю bank-dbo-msb и одноразовому nonce\n3. ДБО: платёж 480 000 ₽ — ДОПУЩЕНО\n4. ДБО: повтор того же запроса — ОТКАЗ\n   nonce уже использован: повтор запроса\n5. ДБО: платёж 1 920 000 ₽ по тому же удостоверению — ОТКАЗ\n   сумма 1 920 000 ₽ больше проверенной 480 000 ₽\n6. Событие: смена руководителя, новая МЧД и заявка на смену реквизитов — ПРИЗНАКИ ЗАХВАТА\n   тревога: possible_takeover; приостановлено удостоверений организации: 2\n7. ДБО: следующий платёж по удостоверению, выпущенному до события — ОТКАЗ\n   статус удостоверения: приостановлено\n\nЖурнал: 7 записей, цепочка цела; включение записи об отказе доказано (дерево Меркла, корень 4b68c990bac3a4d8…)\nСценарий занял 0,08 с.\nШаги и решения: var/showcase/showcase.json, журнал: var/showcase/journal.jsonl"
+    "out": "«Мандат»: захват компании останавливается до платежа (стенд: данные вымышлены, профиль demo)\n\n1. Проверка кейса 14_old_director_charter_cleared — ПОДТВЕРЖДЕНО\n   ООО «Ясная поляна», подписание платежа на 480 000 ₽, 20.10.2026\n2. Удостоверение на платёж — ВЫПУЩЕНО\n   действует до 19.11.2026 10:00; привязано к организации, дню, операции, сумме, представителю, получателю bank-dbo-msb и одноразовому nonce\n3. ДБО: платёж 480 000 ₽ — ДОПУЩЕНО\n4. ДБО: повтор того же запроса — ОТКАЗ\n   nonce уже использован: повтор запроса\n5. ДБО: платёж 1 920 000 ₽ по тому же удостоверению — ОТКАЗ\n   сумма 1 920 000 ₽ больше проверенной 480 000 ₽\n6. Событие: смена руководителя, новая МЧД и заявка на смену реквизитов — ПРИЗНАКИ ЗАХВАТА\n   тревога: possible_takeover; приостановлено удостоверений организации: 2\n7. ДБО: следующий платёж по удостоверению, выпущенному до события — ОТКАЗ\n   статус удостоверения: приостановлено\n\nЖурнал: 7 записей, цепочка цела; включение записи об отказе доказано (дерево Меркла, корень 533c7c056edf9acc…)\nСценарий занял 0,07 с.\nШаги и решения: var/showcase/showcase.json, журнал: var/showcase/journal.jsonl"
   },
   "api": {
     "cmd": "curl -s -X POST http://127.0.0.1:8000/v1/cases -H Authorization: Bearer $MANDAT_API_TOKEN -H Content-Type: application/json --data-binary @05_director_changed.json",
@@ -279,7 +279,7 @@
           "check": "eio",
           "effect": "supports",
           "message": "МЧД 914279a9-81bb-e011-fc2e-53f6663176a7 подписал руководитель Петров Пётр Петрович (ГРН 2247700123456)",
-          "norm_ref": "ГК РФ, ст. 53, 185.1",
+          "norm_ref": "ГК РФ, ст. 53 (п. 3: полномочия выступать от имени юрлица могут быть у нескольких лиц, действующих совместно или независимо друг от друга), ст. 185.1 п. 4 (доверенность от имени юрлица — за подписью его руководителя или иного уполномоченного лица)",
           "rule_status": "draft",
           "next_step": null,
           "unit": null,
@@ -580,7 +580,7 @@
         "pack_id": "mandat-rules-ru",
         "version": "2026.10.2",
         "status": "draft",
-        "sha256": "e28b7438304c0458dbf6b5c7fc84dc4d4ce4223b9f9b80e7f2864f22f54cd646"
+        "sha256": "f8791d6977446115948b3eed1cfd6049bbf934ad4ddc3225e90f7dc0ccd18b2e"
       },
       "catalog": {
         "catalog_id": "mandat-operations",
@@ -603,8 +603,54 @@
       ],
       "objection": "R-EIO-002: После выдачи МЧД 914279a9-81bb-e011-fc2e-53f6663176a7 руководитель сменился: сейчас Петров Алексей Иванович (ГРН 2267700654321, с 01.10.2026). Смена руководителя доверенность не прекращает (п. 1 ст. 188 ГК РФ); смена свежая — не более 30 дн.: нужен разбор",
       "signals": [],
-      "generated_at": "2026-11-23T08:50:19+00:00",
-      "reproducibility_hash": "5067b833e7c8f72c664f8d114d630ded0376cb1841d7d477c464ed16bf9102a2"
+      "generated_at": "2026-11-24T11:53:18+00:00",
+      "reproducibility_hash": "61d8b6ed2ed109d509755c200efd0cb6295c8363072d51296caf7429f52614e3"
     }
+  },
+  "authzen": {
+    "cmd": "curl -s -X POST http://127.0.0.1:8000/access/v1/evaluation -H Authorization: Bearer $MANDAT_API_TOKEN -H Content-Type: application/json --data-binary @evaluation.json",
+    "code": 200,
+    "answer": {
+      "decision": true,
+      "context": {
+        "checked_at": "2026-11-24T11:53:19+00:00"
+      }
+    },
+    "replay_code": 200,
+    "replay": {
+      "decision": false,
+      "context": {
+        "checked_at": "2026-11-24T11:53:19+00:00",
+        "already_admitted": true,
+        "admitted_at": "2026-11-24T11:53:19+00:00",
+        "problems": [
+          "nonce уже использован: повтор запроса"
+        ],
+        "reason_admin": {
+          "403": "nonce уже использован: повтор запроса"
+        },
+        "reason_user": {
+          "403": "Операция не допущена: обратитесь в банк"
+        }
+      }
+    },
+    "request": {
+      "subject": {
+        "type": "representative",
+        "id": "777588807322"
+      },
+      "resource": {
+        "type": "organization",
+        "id": "7729985006"
+      },
+      "action": {
+        "name": "PAYMENT_SIGN",
+        "properties": {
+          "operation_date": "2026-11-24",
+          "amount_rub": 480000
+        }
+      }
+    },
+    "shifted_days": 35
   }
 }

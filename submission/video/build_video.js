@@ -52,6 +52,16 @@ const N = (() => {
   };
 })();
 
+// Матрица готовности к пилоту (чек-лист воркшопа 20.11, docs/PILOT_CHECKLIST.md): статусы ставит прогон тестов при
+// сборке evidence.json, пункты без тестов — за банком. Упавший тест останавливает сборку видео, как и колоды.
+const READY = (() => {
+  const checks = Object.values(ev.pilot_readiness.checks);
+  const ok = checks.filter((c) => c.status === "проверено" && c.tests > 0 && c.failed === 0).length;
+  const bank = checks.filter((c) => c.tests === 0).length;
+  if (ok + bank !== checks.length) throw new Error("evidence.json: в матрице готовности есть пункт с упавшим тестом");
+  return { ok, all: checks.length, bank };
+})();
+
 // Банк России, операции без согласия у юрлиц (CLAIMS_REGISTRY.md, M-07, M-15 и M-52) — те же числа, что в колоде.
 // III кв. 2026: 931 операция на 695,1 млн ₽ (cbr.ru, 19.11.2026; данные предварительные); по всем клиентам — 477 401 на 7,25 млрд ₽.
 const CBR = { m9Ops: 818 + 780 + 931, m9LossBln: (573 + 831.4 + 695.1) / 1000, q3AvgMln: 695.1 / 931, q3Ratio: 49, q3RefundAccounts: 11.2 };
@@ -108,6 +118,27 @@ function scenes(cardInfo) {
     `  ${j("next_steps")}: [ …, { ${j("action")}: ${s(step.action)}, … } ],`,
     `  ${j("reproducibility_hash")}: ${s(short(api.reproducibility_hash))}`,
     "  …",
+    "}",
+  ].join("\n");
+  // Допуск по OpenID AuthZEN 1.0: запрос ДБО из evaluation.json и настоящий ответ на повтор того же nonce.
+  const az = run.authzen;
+  const { subject, resource, action } = az.request;
+  const why = az.replay.context;
+  const authzenJson = [
+    `<span class="c">// evaluation.json — запрос ДБО</span>`,
+    "{",
+    `  ${j("subject")}: { ${j("type")}: ${s(subject.type)}, ${j("id")}: ${s(subject.id)} },`,
+    `  ${j("resource")}: { ${j("type")}: ${s(resource.type)}, ${j("id")}: ${s(resource.id)} },`,
+    `  ${j("action")}: { ${j("name")}: ${s(action.name)},`,
+    `    ${j("properties")}: { ${j("operation_date")}: ${s(action.properties.operation_date)}, ${j("amount_rub")}: ${action.properties.amount_rub} } },`,
+    `  ${j("context")}: { ${j("credential")}: { … }, ${j("nonce")}: ${s("dbo-payment-…")}, ${j("audience")}: ${s("bank-dbo-msb")}, … }`,
+    "}",
+    `<span class="c">// ответ на повтор того же nonce — HTTP ${az.replay_code}</span>`,
+    "{",
+    `  ${j("decision")}: ${az.replay.decision},`,
+    `  ${j("context")}: { ${j("already_admitted")}: ${why.already_admitted},`,
+    `    ${j("reason_admin")}: { ${j("403")}: ${s(why.reason_admin["403"])} },`,
+    `    ${j("reason_user")}: { ${j("403")}: ${s(why.reason_user["403"])} }, … }`,
     "}",
   ].join("\n");
   return [
@@ -190,6 +221,30 @@ function scenes(cardInfo) {
         ] },
       ],
       caption: "HTTP API для ДБО и АБС: тот же вердикт в JSON — <b>с нормой, приоритетом, сроком и хешем воспроизводимости</b>" },
+    { kind: "term", step: "13 · допуск по OpenID AuthZEN 1.0", hold: 6.5, narrow: true, termTitle: "ДБО банка → «Мандат» · OpenID AuthZEN 1.0", json: authzenJson,
+      steps: [
+        { cmd: "curl -s -X POST http://127.0.0.1:8000/access/v1/evaluation \\", out: [
+          { type: "out", text: '    -H "Authorization: Bearer $MANDAT_API_TOKEN" \\' },
+          { type: "out", text: '    -H "Content-Type: application/json" \\' },
+          { type: "out", text: "    --data-binary @evaluation.json" },
+          { type: "dim", text: `# HTTP ${az.code} · "decision": ${az.answer.decision} — платёж допущен` },
+        ] },
+        { cmd: "curl … --data-binary @evaluation.json      # тот же запрос", out: [
+          { type: "dim", text: `# HTTP ${az.replay_code} · "decision": ${az.replay.decision} — ${why.reason_admin["403"]}` },
+          { type: "dim", text: `# кейс 14 с датами, сдвинутыми на ${az.shifted_days} дн.: день операции — сегодня` },
+        ] },
+      ],
+      caption: "ДБО спрашивает допуск по открытому стандарту <b>OpenID AuthZEN 1.0</b>: первый запрос — «да», повтор того же nonce — отказ с причиной" },
+    { kind: "tiles", hold: 9, kicker: "Готовность к пилоту", title: "Чек-лист воркшопа о данных — в коде и под тестами", cols: 3, top: 280,
+      tiles: [
+        { v: `${READY.ok} из ${READY.all}`, cls: "green", t: "пунктов матрицы готовности проверены тестами", s: "docs/PILOT_CHECKLIST.md" },
+        { v: "24 и 72 ч", t: "отчёт об инциденте с ПДн: оба срока от выявления", s: "mandat incident-report" },
+        { v: String(READY.bank), t: "пунктов — за банком: у каждого владелец и условие", s: "ИБ, эксплуатация и юрист банка" },
+        { v: "152-ФЗ", t: "удалённый кейс не возвращается из резервной копии", s: "mandat restore-check" },
+        { v: "90 дней", t: "ревизия доступа: без срока, без владельца, дольше 90 дней", s: "mandat access-review" },
+        { v: "HMAC", t: "основание решения в журнале — только отпечатком", s: "tests/test_journal_minimisation.py" },
+      ],
+      caption: "Чек-лист воркшопа Академии Финтеха 20.11 разложен на продукт: <b>что проверяют тесты и что остаётся за банком</b>" },
     { kind: "tiles", hold: 8, kicker: "Качество", title: "Всё воспроизводится командой из репозитория", cols: 3, top: 280,
       tiles: [
         { v: `${N.falseConfirmed} из ${N.negatives}`, cls: "green", t: "ложных «подтверждено» на кейсах-ловушках", s: `верхняя граница 95% — ${N.fcUpper}` },

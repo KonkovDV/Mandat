@@ -103,6 +103,13 @@ def evidence() -> dict:
     expected = {"confirmed": 0, "refuted": 0, "needs_review": 0, "insufficient_data": 0}
     for pair, count in sc["confusion"].items():
         expected[pair.split("->")[0]] += count
+    # Матрица готовности к пилоту (docs/PILOT_CHECKLIST.md): статус пункта ставит прогон его тестов, пункты без
+    # тестов — за банком. Упавший тест останавливает сборку пакета, как и колоды.
+    checks = list(ev["pilot_readiness"]["checks"].values())
+    ready_ok = sum(1 for c in checks if c["status"] == "проверено" and c["tests"] > 0 and c["failed"] == 0)
+    ready_bank = sum(1 for c in checks if c["tests"] == 0)
+    if ready_ok + ready_bank != len(checks):
+        raise SystemExit("evidence.json: в матрице готовности есть пункт с упавшим тестом")
     return {
         "version": ev["engine"].split("/")[1],
         "as_of": ru_date(ev["generated_at"]),
@@ -130,6 +137,9 @@ def evidence() -> dict:
         "median_ms": ev["latency"]["median_ms"],
         "p95_ms": ev["latency"]["p95_ms"],
         "fuzz": lint_claims.fuzz_runs(),
+        "ready_ok": ready_ok,
+        "ready_all": len(checks),
+        "ready_bank": ready_bank,
     }
 
 
@@ -214,9 +224,18 @@ def cp(k: int, stem: str) -> str:
         "мутация": ("мутация", "мутации", "мутаций"),
         "цепочка": ("цепочка", "цепочки", "цепочек"),
         "операция": ("операция", "операции", "операций"),
+        "пункт": ("пункт", "пункта", "пунктов"),
     }[stem]
     num = ch.ru(k, 0) if float(k).is_integer() else ch.ru(k, 1)
     return f"{num} {pl(k, *forms)}"
+
+
+def cg(k: int, stem: str) -> str:
+    """Число с существительным в родительном падеже — после «из», «от», «для»: «из 294 кейсов», «от 21 банка»."""
+    single, many = {"кейс": ("кейса", "кейсов"), "банк": ("банка", "банков")}[stem]
+    k_int = int(k)
+    word = single if k_int % 10 == 1 and k_int % 100 != 11 else many
+    return f"{ch.ru(k, 0)} {word}"
 
 
 def months(x: float | str) -> str:
@@ -949,6 +968,7 @@ def context() -> dict:
         "pct": pct,
         "pl": pl,
         "cp": cp,
+        "cg": cg,
         "months": months,
         "yr": yr,
         "bln": bln,
