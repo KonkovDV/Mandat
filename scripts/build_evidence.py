@@ -204,6 +204,15 @@ def main() -> int:
         "tests": None,
     }
     target = ROOT / "evidence.json"
+    if not args.no_tests:
+        # Матрица готовности к пилоту: «проверено» ставит прогон тестов её пунктов, а не запись в документе.
+        # Документ чек-листа собирается до полного прогона: его сверку проверяет тест в этом же прогоне.
+        import gen_pilot_checklist
+
+        evidence["pilot_readiness"] = gen_pilot_checklist.readiness()
+        gen_pilot_checklist.TARGET.write_text(
+            gen_pilot_checklist.render(gen_pilot_checklist.checklist(), evidence), encoding="utf-8"
+        )
     # Сначала записать свежие числа без тестов, потом прогнать pytest. Иначе тест
     # test_evidence_matches_current_engine сверяется со старым evidence.json, падает, и в файл попадает
     # «N−1 passed, 1 failed» — так возникло расхождение 714 против 715.
