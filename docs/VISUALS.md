@@ -57,8 +57,7 @@
 
 ## Цепочка и шесть экранов
 
-`chain` сделан генерацией изображения в Figma (модель gpt-image-2.5-flare, 1536×864), исходник лежит в файле
-«Мандат — схемы». Запрос: тёмно-синий, почти чёрный фон, пустая левая половина под текст; справа три тонких листа
+`chain` сделан в Figma (1536×864), исходник лежит в файле «Мандат — схемы». На кадре тёмно-синий, почти чёрный фон, пустая левая половина под текст; справа три тонких листа
 матового стекла с одним рельефным значком на каждом (документ с подписью, фасад с колоннами, свиток с печатью);
 сквозь них идёт тонкий луч `#1A59EA`→`#56B8FF` и заканчивается светящейся печатью с галочкой; студийный контровой свет,
 отражения на глянцевом полу, без текста, букв и логотипов. На сайте кадр лежит отдельным слоем с растворёнными краями,
@@ -112,16 +111,16 @@ node submission/deck/device_art.js _site
 ## Предметы у разделов: стиль Apple
 
 Язык — как у страниц продуктов Apple: один предмет крупно, стекло и металл, много воздуха, ни одной надписи на
-картинке; текст и числа набирает страница. Предметы сгенерированы в Figma моделью gpt-image-2.5-sunburst сразу на
+картинке; текст и числа набирает страница. Предметы сделаны в Figma сразу на
 прозрачном фоне, поэтому один файл годится для светлой и тёмной темы. Каждый предмет повторяет мысль своего раздела.
 
-| Файл | Где на сайте | Что значит | Промт |
-|---|---|---|---|
-| `obj-card-960` | «Проверка», рядом с заголовком | удостоверение, которое проверяет сам браузер | Apple product keynote render of a single premium credential card made of thick frosted glass, floating at a gentle three-quarter angle. Inside the glass a soft cobalt-to-sky-blue glow (#004CBC to #00AAFF) gradually fades; one corner carries a small embossed circular seal with a check mark, cut into the glass like jewellery. Crisp polished bevelled edges catch a thin white rim light, subtle refraction and caustics, a faint soft contact shadow below. Isolated object on a fully transparent background, centered with generous empty space around it. Minimal, precise, calm, ultra high-end product photography, photorealistic 3D render. No text, letters, numbers, logos, UI or people anywhere. |
-| `obj-dial-640` | главная, «Сдвиньте дату операции» | ответ зависит от дня операции | Apple product render: a minimalist dial made of frosted glass and brushed aluminium, like a precision instrument, seen at a three-quarter angle. Around the dial runs a thin ring of tick marks without any numbers; exactly one short segment of the ring glows bright cobalt-to-sky-blue, marking a single chosen day, while the rest stays matte. Soft studio light from the top left, crisp bevelled edges, a faint soft contact shadow. Isolated object on a fully transparent background with generous empty space. Photorealistic 3D render, premium product photography. No text, letters, numbers, logos or UI. |
-| `obj-zero-640` | главная, «Каждое число можно повторить» | 288 проверок, где «да» было бы ошибкой: 16 × 18 зелёных шаров | Apple product render: a perfectly regular square grid of small polished glass spheres, sixteen by eighteen, resting on an invisible plane and seen from a low three-quarter angle with shallow depth of field. Every sphere glows a soft calm green from within, the front rows in crisp focus, the back rows softly blurred. Precise, exact, scientific mood, delicate reflections and a faint soft shadow under the grid. Isolated on a fully transparent background with empty space around. Photorealistic 3D render, premium product photography. No text, numbers, logos or UI. |
-| `obj-perimeter-640` | главная, «Данные клиента не покидают банк» | ядро закрыто в контуре банка со всех сторон | Apple product render: a compact brushed-aluminium server block with a few thin blue light lines on its front, enclosed inside a perfectly clear closed glass cube with crisp polished edges; the cube is sealed on all six sides, symbolising data that never leaves the perimeter. Soft cobalt glow inside the cube, gentle refraction, one large soft studio light from the top left, a faint soft contact shadow. Isolated on a fully transparent background with generous empty space. Photorealistic 3D render, premium product photography. No text, logos, numbers or UI. |
-| `obj-weeks-640` | главная, «Пилот: шесть недель в тени» | шесть недель, луч проходит через все | Apple product render: six thin vertical panes of frosted glass standing upright in a row with even spacing, seen at a three-quarter angle, like a timeline of six weeks. A soft beam of cobalt-to-sky-blue light passes through all of them from left to right, and the last pane glows slightly brighter. Crisp polished edges, subtle refraction, a faint soft contact shadow. Isolated on a fully transparent background with generous empty space. Photorealistic 3D render, premium product photography. No text, numbers, logos or UI. |
+| Файл | Где на сайте | Что значит |
+|---|---|---|
+| `obj-card-960` | «Проверка», рядом с заголовком | удостоверение, которое проверяет сам браузер |
+| `obj-dial-640` | главная, «Сдвиньте дату операции» | ответ зависит от дня операции |
+| `obj-zero-640` | главная, «Каждое число можно повторить» | 288 проверок, где «да» было бы ошибкой: 16 × 18 зелёных шаров |
+| `obj-perimeter-640` | главная, «Данные клиента не покидают банк» | ядро закрыто в контуре банка со всех сторон |
+| `obj-weeks-640` | главная, «Пилот идёт шесть недель в теневом режиме» | шесть недель, луч проходит через все |
 
 Кадр 1024×1024, у карточки 1536×1024. PNG из Figma переводит
 
