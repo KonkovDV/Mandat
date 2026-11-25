@@ -1,10 +1,11 @@
 # Образ закреплён по дайджесту: новая версия ставится вручную вместе с прогоном тестов.
 FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928
 
-# Образ от 16.11.2026 несёт zlib1g без исправления CVE-2026-85091, хотя Debian его уже выпустил в
-# trixie-security. Обновляется только этот пакет. Шаг убирается, когда исправление войдёт в образ.
+# Образ от 16.11.2026 несёт zlib1g без исправления CVE-2026-85091 и libzstd1 без исправления CVE-2026-124851,
+# хотя Debian их уже выпустил в trixie-security. Обновляются только эти пакеты. Шаг убирается, когда
+# исправления войдут в образ.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
+    && apt-get install -y --no-install-recommends --only-upgrade zlib1g libzstd1 \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

@@ -975,9 +975,9 @@ html.on-route body { padding-bottom: 80px; }
 .glossary dd { margin: 2px 0 0; color: var(--muted); font-size: 15px; }
 .routes.compact { grid-template-columns: repeat(auto-fit, minmax(min(100%, 212px), 1fr)); gap: 14px; }
 .routes.compact .route, .routes.compact .route.featured { grid-column: auto; padding: 18px; gap: 10px; border-color: var(--line); box-shadow: none; }
-.routes.compact .route-head { align-items: flex-start; gap: 12px; }
+.routes.compact .route-head { flex-direction: column; align-items: flex-start; gap: 10px; }
 .routes.compact .route-head .ic { width: 40px; height: 40px; padding: 10px; border-radius: 12px; }
-.routes.compact .route h3 { font-size: 16px; line-height: 1.25; overflow-wrap: anywhere; }
+.routes.compact .route h3 { font-size: 17px; line-height: 1.25; }
 .routes.compact .route-lead { font-size: 14.5px; }
 .routes.compact .route-steps, .routes.compact .route-docs { display: none; }
 .routes.compact .route-go { min-height: 42px; padding: 8px 14px; font-size: 15px; box-shadow: none; background: var(--card); border-color: var(--line-2); color: var(--accent); }

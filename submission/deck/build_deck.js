@@ -1878,7 +1878,7 @@ const TERMINAL = {
       T(s, head, x + 0.22, TOP + 0.52, cw - 0.44, 0.42, { size: 17, bold: true, color: hl ? C.background1 : C.text2 });
       bullets(s, items, x + 0.24, TOP + 1.08, cw - 0.42, ch - 1.18, { size: 12, psa: 6, color: hl ? C.background1 : C.text1 });
     });
-    band(s, L, TOP + ch + GAP, W, BOTTOM - (TOP + ch + GAP), "Финал 11.12.2026: живое демо, а если банк даст данные, то и результаты на обезличенных кейсах ВТБ", { icon: "Flag", size: 15, bold: true });
+    band(s, L, TOP + ch + GAP, W, BOTTOM - (TOP + ch + GAP), "Финал 11.12.2026: живое демо и протокол пилота, готовый к подписи с владельцем процесса", { icon: "Flag", size: 15, bold: true });
   }
   if (pages() !== INDEX_SLIDE + APPX.length) throw new Error(`слайдов ${pages()}, а ожидалось ${INDEX_SLIDE + APPX.length}`);
 
