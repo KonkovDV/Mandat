@@ -30,10 +30,12 @@ $header
     <p class="kicker">Оценка ценности</p>
     <h1>Сколько стоит проверка и когда окупается «Мандат»</h1>
     <p class="lead">Калькулятор считает по формулам финансовой модели пакета аналитики и при загрузке сверяет себя с её числами. Двигайте допущения — пересчитаются ставки, ущерб, цена одной проверки и срок окупаемости для ВТБ. В базовом сценарии проверка вручную стоит около $unit_manual&nbsp;₽, с «Мандатом» — около $unit_mandat&nbsp;₽, разовые затраты окупаются за $payback.</p>
+    $audience
+    <!--toc-->
   </div>
 </section>
 
-<section class="sec">
+<section class="sec" id="calculator" data-toc="Калькулятор">
   <div class="wrap">
     <div class="seg" id="scenarios" role="group" aria-label="Сценарий модели" hidden></div>
     <div class="calc" id="calc" hidden>
@@ -56,7 +58,7 @@ $header
         <p class="fine" id="check" role="status"></p>
       </div>
     </div>
-    <h2 id="table-h">Три сценария модели</h2>
+    <h2 id="table-h" data-toc="Три сценария">Три сценария модели</h2>
     <p class="note">Модель $econ_as_of. Эта таблица — то же, что калькулятор на допущениях модели.</p>
     <div class="table-wrap">
       <table aria-labelledby="table-h">
@@ -72,7 +74,7 @@ $econ_rows
 <section class="sec alt">
   <div class="wrap two">
     <div>
-      <h2>Откуда цифры</h2>
+      <h2 id="sources" data-toc="Откуда цифры">Откуда цифры</h2>
       <ul class="ticks">
         <li><b>Операции без согласия у юрлиц</b> — обзоры Банка России за I–III кварталы 2026 года: $incidents_9m операций на $loss_9m_bln&nbsp;млрд&nbsp;₽ за девять месяцев (M-07, M-15, M-52; III квартал — данные от 19.11.2026, предварительные).</li>
         <li><b>1,8&nbsp;млн бизнес-клиентов ВТБ</b> — пресс-релиз банка к МСФО за I полугодие 2026 года (M-09).</li>
@@ -81,7 +83,7 @@ $econ_rows
       </ul>
     </div>
     <div>
-      <h2>Формулы</h2>
+      <h2 id="formulas" data-toc="Формулы">Формулы</h2>
       <p class="formula">ставки = клиенты × доля с событием × минуты ÷ 60 ÷ часы ставки<br>
       ущерб = операции за год × доля ВТБ × доля полномочий × средний ущерб<br>
       деньги = ставки × стоимость ставки × доля реализации + ущерб × доля банка в нём<br>

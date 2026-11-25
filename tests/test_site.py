@@ -135,6 +135,31 @@ def test_page_builds_while_evidence_is_being_rebuilt(tmp_path, monkeypatch):
     assert values["tests"] == "—" and values["coverage"] == "—"
 
 
+def test_every_page_leads_on_and_routes_point_to_real_pages(site):
+    """Навигация без тупиков: внизу каждой страницы, кроме главной, «Назад» и «Дальше» к соседям по порядку сайта,
+    в подвале карта сайта; шаги маршрутов по ролям ведут на страницы и разделы, которые есть, а документы
+    маршрутов лежат в репозитории. Страница 404 ведёт на все страницы."""
+    for i, name in enumerate(PAGES):
+        page = _page(site, name)
+        assert 'id="site-routes"' in page and 'class="foot-map"' in page, name
+        if name == "index":
+            assert 'id="routes"' in page and page.count('class="route') >= len(build_site.ROUTES)
+            continue
+        pager = re.search(r'<nav class="pager".*?</nav>', page, re.S)
+        assert pager is not None, name
+        assert f'href="{PAGES[i - 1]}.html" rel="prev"' in pager.group(0), name
+        assert f'href="{PAGES[(i + 1) % len(PAGES)]}.html" rel="next"' in pager.group(0), name
+    for route in build_site.ROUTES:
+        for step, _text in route["steps"]:
+            name, _, anchor = step.partition("#")
+            assert name in PAGES, step
+            assert not anchor or f'id="{anchor}"' in _page(site, name), step
+        for path, _text in route["docs"]:
+            assert (ROOT / path).is_file(), path
+    lost = (site / "404.html").read_text(encoding="utf-8")
+    assert all(f'href="/Mandat/{name}.html"' in lost for name in PAGES)
+
+
 def test_law_calendar_on_the_page_is_the_rule_pack_catalogue(site):
     page = _page(site, "law")
     data = _data(site, "law")

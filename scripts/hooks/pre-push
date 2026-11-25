@@ -1,0 +1,9 @@
+#!/bin/sh
+# Перед push — две быстрые проверки, на которых CI останавливал main чаще всего: evidence.json собран
+# из этих исходников и числа в текстах совпадают с ним. Включить один раз: make hooks.
+set -e
+py=python
+[ -x .venv/bin/python ] && py=.venv/bin/python
+[ -x .venv/Scripts/python.exe ] && py=.venv/Scripts/python.exe
+"$py" scripts/build_evidence.py --verify-source
+"$py" scripts/lint_claims.py
