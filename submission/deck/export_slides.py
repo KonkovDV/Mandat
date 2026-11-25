@@ -110,7 +110,7 @@ def export(pptx: Path, pdf: Path) -> dict:
                 ["convert", str(page), "-strip", "-quality", "82", "-define", "webp:method=6", str(OUT / image)],
                 check=True,
             )
-            # Миниатюра для ленты слайдов и списка: 400 px вместо 1600 — лента из 41 слайда весит в десятки раз меньше.
+            # Миниатюра для ленты слайдов и списка: 400 px вместо 1600 — лента из 42 слайдов весит в десятки раз меньше.
             thumb = f"slide-{i:02d}-400.webp"
             subprocess.run(
                 ["convert", str(page), "-strip", "-resize", f"{THUMB}x", "-quality", "80"]
@@ -179,7 +179,8 @@ def speaker_notes(data: dict) -> list[str]:
         f"Заметки докладчика из `submission/slides/Mandat_VTB.pptx`, слайды 1–{data['pitch']}. Файл пишет "
         "`submission/deck/export_slides.py` после сборки колоды: правьте заметки в `build_deck.js`, а не здесь.",
         "",
-        f"**Хронометраж.** {total_words} слов, речь заканчивается на {minutes}. Темп каждого блока — не выше "
+        f"**Хронометраж.** {total_words} {_plural(total_words, 'слово', 'слова', 'слов')}, речь заканчивается "
+        f"на {minutes}. Темп каждого блока — не выше "
         f"{str(MAX_WORDS_PER_SECOND).replace('.', ',')} слова в секунду.",
         "",
         "| № | Слайд | Время | Слов | Что сказать |",

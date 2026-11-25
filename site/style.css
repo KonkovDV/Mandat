@@ -165,6 +165,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); min-height: 32px
 .hero.slim h1 { font-size: clamp(28px, 4.2vw, 46px); max-width: 24ch; }
 .hero-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: center; }
 @media (max-width: 1023px) { .hero-grid { grid-template-columns: minmax(0, 1fr); } }
+/* В колонке текста первого экрана четыре кнопки в ряд не помещаются ни при какой ширине: ровная сетка 2 × 2
+   вместо трёх кнопок и одной, оставшейся на новой строке. */
+@media (min-width: 1024px) { .hero-copy .cta { display: grid; grid-template-columns: repeat(2, max-content); } }
 
 /* Амбассадор и 3D-значки — изображения из Figma (docs/VISUALS.md). Анна вымышлена, это подписано рядом с фото. */
 .credit { display: block; font-size: 12px; line-height: 1.35; color: var(--faint); }
