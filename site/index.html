@@ -35,12 +35,13 @@
 <link rel="stylesheet" href="style.css">
 <script src="js/theme.js"></script>
 <script type="module" src="js/scrub.js"></script>
+<script type="module" src="js/live.js"></script>
 </head>
 <body>
 $header
 
 <main id="main">
-<section class="hero">
+<section class="hero scene">
   <div class="wrap hero-grid">
     <div class="hero-copy">
       <p class="kicker">Трек ВТБ «Финтех без границ» · полуфинал</p>
@@ -60,19 +61,21 @@ $header
       <picture class="anna">
         <img src="img/anna-hero-480.webp" srcset="img/anna-hero-480.webp 480w, img/anna-hero-960.webp 960w" sizes="(max-width: 600px) min(80vw, 320px), (max-width: 1023px) min(46vw, 320px), 300px" width="480" height="720" data-subject="0.25 0.08 0.95 1" alt="Анна, амбассадор «Мандата», в тёмно-синем костюме" fetchpriority="high">
       </picture>
-      <div class="chain">
-      <svg viewBox="0 0 360 452" role="img" aria-labelledby="chain-caption">
-        <g class="link d1"><path d="M180 82v34"/></g>
-        <g class="link d2"><path d="M180 176v34"/></g>
-        <g class="link d3"><path d="M180 270v34"/></g>
-        <g class="link d4"><path d="M180 364v30"/></g>
-        <g class="node d0"><rect x="22" y="22" width="316" height="60" rx="16"/><text x="44" y="48" class="t1">Компания</text><text x="44" y="68" class="t2">ИНН и сведения ЕГРЮЛ на дату операции</text></g>
-        <g class="node d1"><rect x="22" y="116" width="316" height="60" rx="16"/><text x="44" y="142" class="t1">Руководитель</text><text x="44" y="162" class="t2">по ЕГРЮЛ: действует без доверенности</text></g>
-        <g class="node d2"><rect x="22" y="210" width="316" height="60" rx="16"/><text x="44" y="236" class="t1">Доверенность</text><text x="44" y="256" class="t2">реестр ФНС, срок, полномочие на операцию</text></g>
-        <g class="node d3"><rect x="22" y="304" width="316" height="60" rx="16"/><text x="44" y="330" class="t1">Передоверие</text><text x="44" y="350" class="t2">разрешено и не шире исходной МЧД</text></g>
-        <g class="node verdict d4"><rect x="22" y="394" width="316" height="52" rx="26"/><path class="tick" d="M48 420l8 8 16-17"/><text x="86" y="426" class="t1">Подтверждено на дату</text></g>
-      </svg>
-      <p id="chain-caption" class="sr-only">Цепочка полномочий: компания, руководитель по ЕГРЮЛ, доверенность в реестре ФНС, передоверие. Если каждое звено держится на дату операции, ответ — «подтверждено».</p>
+      <div class="live" id="live">
+        <div class="live-body" aria-hidden="true">
+          <p class="live-top"><span class="live-dot"></span>Проверка на дату</p>
+          <p class="live-q">Тот же человек, та же доверенность. Платёж $scrub_amount&nbsp;₽</p>
+          <p class="live-date"><b id="live-date">20.10.2026</b></p>
+          <ol class="live-chain" id="live-chain">
+            <li data-link="org" class="ok">Компания</li>
+            <li data-link="eio" class="ok">Директор</li>
+            <li data-link="poa" class="ok">Доверенность</li>
+            <li data-link="charter" class="ok">Устав</li>
+          </ol>
+          <p class="live-verdict ok" id="live-verdict"><b>Подтверждено</b><span>все звенья держатся в этот день</span></p>
+        </div>
+        <button type="button" class="live-toggle" id="live-toggle" aria-pressed="false" aria-label="Остановить смену дат"></button>
+        <p id="chain-caption" class="sr-only">Пример проверки: компания, директор по ЕГРЮЛ, доверенность и устав. Доверенность одна и та же, меняется только дата операции, и ответ «Мандата» меняется вместе с ней. Ответы по датам — в разделе «Сдвиньте дату операции» ниже.</p>
       </div>
     </figure>
   </div>
