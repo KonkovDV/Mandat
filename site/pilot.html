@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="$csp">
 <title>Пилот и масштаб — Мандат</title>
-<meta name="description" content="Сценарий пилота и масштабирования «Мандата»: шесть недель в тени на одной операции ВТБ, критерии продолжения, ворота G0–G4, рост от одной операции к банкам второго уровня.">
+<meta name="description" content="Сценарий пилота и масштабирования «Мандата»: шесть недель в теневом режиме на одной операции ВТБ, критерии продолжения, ворота G0–G4, рост от одной операции к банкам второго уровня.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0b1426" media="(prefers-color-scheme: dark)">
@@ -29,7 +29,7 @@ $header
   <div class="wrap">
     <img class="page-art" src="img/icon-pilot.webp" width="341" height="341" alt="">
     <p class="kicker">Спринт 3 · сценарий пилота и масштабирования</p>
-    <h1>От одной операции в тени до второго банка</h1>
+    <h1>От одной операции в теневом режиме до второго банка</h1>
     <p class="lead">Пилот начинается с одной операции ВТБ и шести недель, за которые «Мандат» ни на что не влияет. Каждый следующий шаг открывают ворота с измеримыми критериями. Стоп-критерий на всех этапах один: первое ложное «подтверждено».</p>
     $audience
     <!--toc-->
@@ -42,7 +42,7 @@ $header
       <img src="img/anna-office-768.webp" srcset="img/anna-office-768.webp 768w, img/anna-office-1536.webp 1536w" sizes="(max-width: 1180px) 100vw, 1120px" width="768" height="512" data-subject="0.5 0.02 1 0.8" alt="Анна за столом в банковском офисе проверяет документ на планшете" fetchpriority="high">
       <figcaption><b>Пилот идёт <em class="serif">рядом с сотрудниками</em></b><span>Те же пакеты, те же решения и журнал каждого расхождения. На клиентов и выдачу прав пилот не влияет.</span></figcaption>
     </figure>
-    <h2 id="six-weeks" data-toc="Шесть недель">Шесть недель в тени</h2>
+    <h2 id="six-weeks" data-toc="Шесть недель">Шесть недель в теневом режиме</h2>
     <p class="sub">Операция — право подписи платёжных документов в интернет-банке для представителя по МЧД. «Мандат» проверяет те же пакеты, что и сотрудники, а на выдачу прав не влияет.</p>
     <div class="weeks" id="weeks" role="tablist" aria-label="Недели пилота">
       <button type="button" role="tab" id="w1" aria-controls="week-1" aria-selected="true"><b>Неделя 1</b><span>договориться о правилах игры</span></button>
@@ -119,7 +119,7 @@ $header
 
 <section class="sec">
   <div class="wrap">
-    <h2 id="gates-h" data-toc="Ворота">Ворота: каждый переход — решение по критериям</h2>
+    <h2 id="gates-h" data-toc="Ворота">Каждый переход открывают ворота с критериями</h2>
     <p class="sub">Пять горизонтов от финала соревнования до тиражирования. Нажмите на ворота, чтобы увидеть критерии и запасной путь.</p>
     <ol class="gates" id="gates" role="tablist" aria-label="Ворота перехода">
       <li role="presentation"><button type="button" role="tab" id="G0" aria-controls="gate-G0" aria-selected="true">G0</button><b>Пилот интересен банку</b><span>финал, 11.12.2026</span></li>
@@ -153,7 +153,7 @@ $header
       <article class="card">
         <h3>Нагрузка</h3>
         <p>Проверка кейса — медиана $median_ms&nbsp;мс без сети. Несколько процессов и машин делят одно хранилище Redis: одноразовый nonce расходуется атомарно, повтор не пройдёт и на соседнем сервере. Готовность к трафику показывает <code>/readyz</code>.</p>
-        <p class="fine">Нагрузочного замера на контуре банка пока нет, его даст пилот.</p>
+        <p class="fine">Нагрузку на контуре банка замерим в пилоте.</p>
       </article>
       <article class="card">
         <h3>Операции</h3>
@@ -162,7 +162,7 @@ $header
       <article class="card">
         <h3>Банки</h3>
         <p>Базовый сценарий модели: договор с $scale_banks_first банком в $scale_year_first году и $scale_banks_last к $scale_year_last, годовая подписка ≈$scale_arr_last&nbsp;млн&nbsp;₽. Команда растёт с $scale_team_first до $scale_team_last человек, операционная прибыль — с $scale_ebitda_year года, до неё нужно ≈$scale_funding&nbsp;млн&nbsp;₽.</p>
-        <p class="fine">Это план модели, а не договорённости с банками.</p>
+        <p class="fine">Это план финансовой модели.</p>
       </article>
     </div>
   </div>
@@ -186,13 +186,13 @@ $header
         </tbody>
       </table>
     </div>
-    <p class="note">Подробно — <a href="$repo/blob/main/docs/PILOT.md">план пилота</a>, <a href="materials/Mandat_analytics_all.pdf">план внедрения в пакете аналитики</a> и <a href="$repo/blob/main/docs/audit/READINESS_GATES.md">ступени готовности</a>. Таблицы — план, а не проведённое исследование: подписанного протокола пока нет.</p>
+    <p class="note">Подробно — <a href="$repo/blob/main/docs/PILOT.md">план пилота</a>, <a href="materials/Mandat_analytics_all.pdf">план внедрения в пакете аналитики</a> и <a href="$repo/blob/main/docs/audit/READINESS_GATES.md">ступени готовности</a>. Таблицы — план. Протокол подпишем с владельцем процесса.</p>
   </div>
 </section>
 
 <section class="sec alt">
   <div class="wrap">
-    <h2 id="ready-h">Готовность к пилоту: чек-лист воркшопа о данных</h2>
+    <h2 id="ready-h">Что готово к пилоту по чек-листу воркшопа о данных</h2>
     <p>Чек-лист воркшопа Академии Финтеха 20.11.2026 «Данные, безопасность и комплаенс: что учесть до первого пилота» разложен на «Мандат». Статус пункта ставит прогон его тестов при сборке <code>evidence.json</code>: $ready_ok из $ready_all пунктов проверены, остальные за банком — у каждого владелец и условие допуска.</p>
     <div class="table-wrap">
       <table aria-labelledby="ready-h">
