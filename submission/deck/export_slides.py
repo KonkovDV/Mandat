@@ -110,7 +110,7 @@ def export(pptx: Path, pdf: Path) -> dict:
                 ["convert", str(page), "-strip", "-quality", "82", "-define", "webp:method=6", str(OUT / image)],
                 check=True,
             )
-            # Миниатюра для ленты слайдов и списка: 400 px вместо 1600 — лента из 42 слайдов весит в десятки раз меньше.
+            # Миниатюра для ленты слайдов и списка: 400 px вместо 1600 — лента из 43 слайдов весит в десятки раз меньше.
             thumb = f"slide-{i:02d}-400.webp"
             subprocess.run(
                 ["convert", str(page), "-strip", "-resize", f"{THUMB}x", "-quality", "80"]
