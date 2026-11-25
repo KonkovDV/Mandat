@@ -1041,7 +1041,7 @@ html.on-route body { padding-bottom: 80px; }
 
 .hero-art .live { position: absolute; left: 0; bottom: 6%; width: 56%; padding: 16px 16px 14px; border-radius: 22px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--line-2) 70%, transparent); background: var(--card); color: var(--ink); box-shadow: 0 26px 60px rgb(0 0 0 / 38%); }
 .hero-art .live::after { content: ""; position: absolute; top: -30%; bottom: -30%; left: 0; width: 34%; pointer-events: none; opacity: 0; background: linear-gradient(90deg, transparent, rgb(255 255 255 / 42%), transparent); transform: translateX(-160%) rotate(16deg); }
-.live-top { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; padding-right: 36px; font: 800 11.5px/1.3 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+.live-top { display: flex; align-items: center; gap: 8px; min-height: 26px; margin: 0 0 4px; padding-right: 36px; font: 800 11.5px/1.3 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
 .live-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ok-mark); }
 .live-q { margin: 0; font-size: 13px; line-height: 1.35; color: var(--muted); }
 .live-date { margin: 6px 0 10px; }
@@ -1062,7 +1062,7 @@ html.on-route body { padding-bottom: 80px; }
 .live-verdict.no { background: var(--no-bg); color: var(--no); }
 .live-verdict.review { background: var(--review-bg); color: var(--review); }
 .live-verdict.gap { background: var(--gap-bg); color: var(--gap); }
-.live-toggle { position: absolute; top: 10px; right: 10px; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--card); color: var(--muted); cursor: pointer; }
+.live-toggle { position: absolute; top: 13px; right: 12px; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--card); color: var(--muted); cursor: pointer; }
 .live-toggle::before { content: ""; width: 10px; height: 12px; border-inline: 3px solid currentColor; box-sizing: border-box; }
 .live-toggle[aria-pressed="true"]::before { width: 0; height: 0; border: 0; border-block: 6px solid transparent; border-left: 10px solid currentColor; margin-left: 3px; }
 .live-toggle:hover { color: var(--accent); border-color: var(--accent); }
