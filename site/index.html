@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="$csp">
 <title>Мандат — проверка полномочий представителя компании</title>
-<meta name="description" content="Можно ли этому человеку провести эту операцию компании сегодня. МЧД, выписка ЕГРЮЛ и устав сходятся в одну цепочку; $rules&nbsp;$rules_word показывают норму и поле документа; если данных не хватает, «да» не будет.">
+<meta name="description" content="«Мандат» отвечает банку, можно ли этому человеку провести эту операцию компании сегодня. Доверенность, выписка ЕГРЮЛ и устав сходятся в одну цепочку; к ответу приложены норма закона и поле документа.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0b1426" media="(prefers-color-scheme: dark)">
@@ -14,7 +14,7 @@
 <meta property="og:locale" content="ru_RU">
 <meta property="og:site_name" content="Мандат">
 <meta property="og:title" content="Мандат — можно ли этому человеку провести эту операцию компании сегодня?">
-<meta property="og:description" content="МЧД, выписка ЕГРЮЛ и устав сходятся в одну цепочку полномочий. Ответ с доказательством: норма, поле документа, дата.">
+<meta property="og:description" content="Доверенность, выписка ЕГРЮЛ и устав сходятся в одну цепочку полномочий. Ответ с доказательством: норма закона, поле документа, дата.">
 <meta property="og:url" content="$site_url">
 <meta property="og:image" content="${site_url}og.jpg">
 <meta property="og:image:width" content="1200">
@@ -45,12 +45,14 @@ $header
     <div class="hero-copy">
       <p class="kicker">Трек ВТБ «Финтех без границ» · полуфинал</p>
       <h1>Можно ли этому человеку провести эту операцию компании <em class="serif">сегодня?</em></h1>
-      <p class="lead">Представитель приносит в банк машиночитаемую доверенность. «Мандат» сводит её с выпиской ЕГРЮЛ и уставом в одну цепочку полномочий на дату операции и отвечает с доказательством: поле документа, запись реестра, статья закона. Если данных не хватает, «да» не будет.</p>
+      <p class="lead">Человек приходит в банк с доверенностью от компании. «Мандат» за доли секунды сверяет её с государственным реестром и уставом и отвечает, можно ли провести операцию именно сегодня. К ответу приложено, на чём он держится: поле документа, запись реестра, статья закона.</p>
       <p class="cta">
-        <a class="btn primary" href="cases.html">Разобрать кейс</a>
-        <a class="btn" href="#video">Видео-демо</a>
-        <a class="btn" href="showcase.html">Захват по шагам</a>
-        <a class="btn" href="pitch.html">Слайды</a>
+        <a class="btn primary" href="cases.html">Проверить на примере</a>
+        <a class="btn" href="#video">Видео · 2,5 минуты</a>
+      </p>
+      <p class="hero-links">
+        <a class="more" href="showcase.html">Захват компании по шагам</a>
+        <a class="more" href="pitch.html">Презентация</a>
       </p>
       $route_pills
     </div>
@@ -76,35 +78,48 @@ $header
   </div>
   <div class="wrap">
     <ul class="kpi" aria-label="Цифры сборки">
-      <li><b>$false_confirmed из $negatives</b><span>ложных «подтверждено» на кейсах, где подтверждать нельзя; верхняя граница 95&nbsp;% — $upper95&nbsp;%</span></li>
-      <li><b>$auto_share&nbsp;%</b><span>проверочного корпуса решается без человека, ошибок среди этих решений нет</span></li>
-      <li><b>$cases</b><span>$cases_word $defect_types&nbsp;$defect_word: каждый дал ожидаемый вердикт</span></li>
-      <li><b>$median_ms&nbsp;мс</b><span>медиана проверки кейса без сети; 95&nbsp;% кейсов быстрее $p95_ms&nbsp;мс</span></li>
+      <li><b>$false_confirmed из $negatives</b><span>ложных «да» на кейсах-ловушках, где подтверждать нельзя</span></li>
+      <li><b>$rules</b><span>$rules_word, у каждого норма закона, поле документа и тест</span></li>
+      <li><b>$median_ms&nbsp;мс</b><span>медиана одной проверки: ответ готов до платежа</span></li>
       <li><b>$tests</b><span>$tests_word на Linux и Windows, покрытие $coverage&nbsp;%</span></li>
     </ul>
-    <p class="fine">Числа собраны кодом в <a href="$repo/blob/main/evidence.json">evidence.json</a> <time datetime="$as_of">$as_of_ru</time>. Корпус синтетический и проверяет логику правил. Точность на документах банка измерит пилот.</p>
+    <p class="fine">Числа собирает код: <a href="$repo/blob/main/evidence.json">evidence.json</a>, <time datetime="$as_of">$as_of_ru</time>. Проверочные кейсы созданы генератором и проверяют логику правил; на документах банка те же метрики снимет пилот.</p>
   </div>
 </section>
 
-<section id="video" class="sec alt" aria-labelledby="video-h">
+<section id="sprint" class="strip" aria-labelledby="sprint-h">
   <div class="wrap">
-    <h2 class="reveal" id="video-h">Видео-демо на две с половиной минуты</h2>
-    <p class="reveal">Ролик собран из настоящего вывода команд, без монтажа экрана: демо-кейсы и карточка сотрудника, мониторинг захвата и сроков МЧД, захват до платежа, журнал, HTTP API, допуск платежа по OpenID AuthZEN 1.0 и готовность к пилоту. Данные кейсов вымышлены.</p>
-    <figure class="demo-video reveal">
-      <video controls playsinline preload="none" width="1920" height="1080" poster="img/video-poster.webp" src="materials/Mandat_demo.mp4" aria-labelledby="video-h">
-        <a href="materials/Mandat_demo.mp4">Видео-демо, MP4</a>
-      </video>
-      <figcaption>MP4, 1920×1080, субтитры на русском, без закадрового голоса · <a href="materials/Mandat_demo.mp4" download>скачать</a> · <a href="showcase.html">захват по шагам</a></figcaption>
-    </figure>
+    <h2 class="sr-only" id="sprint-h">Этапы соревнования</h2>
+    <ol class="stages" aria-label="Этапы соревнования">
+$stages
+    </ol>
   </div>
 </section>
 
-<section id="date" class="sec">
+<section id="pain" class="sec">
+  <div class="wrap two">
+    <div class="reveal">
+      <p class="kicker">Сегодня</p>
+      <h2>Полномочия проверяют вручную</h2>
+      <p>Чтобы допустить представителя к счёту компании, сотрудник банка открывает три источника: доверенность, выписку из реестра юридических лиц (ЕГРЮЛ) и устав. Сводит их сам и решает, можно ли. Ошибка дорога в обе стороны: пропустит чужого — компания теряет деньги, откажет законному директору — банк проигрывает суд.</p>
+      <p class="stat"><b>$incidents_9m</b> операций без согласия клиента у юрлиц за девять месяцев 2026 года на <b>$loss_9m_bln&nbsp;млрд&nbsp;₽</b>; в III квартале — около 0,75&nbsp;млн&nbsp;₽ на операцию, компаниям возмещено около 11&nbsp;%. Источник — обзоры Банка России.</p>
+    </div>
+    <div class="reveal">
+      <p class="kicker">С «Мандатом»</p>
+      <h2>Один ответ с доказательством</h2>
+      <p>«Мандат» собирает те же документы в одну цепочку: компания, её директор, доверенность, передоверие. И проверяет каждое звено на день операции. Доверенность есть в реестре и не отменена. Подписал её тот, кто был директором на дату выдачи. Она покрывает именно эту операцию, а устав её не ограничивает.</p>
+      <p>Сотрудник видит ответ и норму закона. Интернет-банк получает допуск ровно на одну операцию.</p>
+      <p>Дальше «Мандат» следит за реестрами и сроками. За 30 дней до конца доверенности он предупреждает банк, а при признаках захвата компании приостанавливает удостоверения, и следующий платёж получает отказ до списания денег.</p>
+    </div>
+  </div>
+</section>
+
+<section id="date" class="sec alt">
   <div class="wrap">
     <img class="sec-art" src="img/obj-dial-640.webp" width="628" height="640" alt="" loading="lazy" decoding="async">
     <p class="kicker">Одна доверенность — шесть ответов</p>
     <h2 class="reveal">Сдвиньте дату операции, и ответ изменится</h2>
-    <p class="sub reveal">Кейс 14: тот же представитель, та же МЧД, та же выписка. Меняется только день, когда представитель хочет подписать платёж на $scrub_amount&nbsp;₽. Ответ на каждый день посчитало ядро «Мандата» при сборке этой страницы.</p>
+    <p class="sub reveal">Тот же человек, та же доверенность, та же компания. Меняется только день, когда представитель хочет подписать платёж на $scrub_amount&nbsp;₽. Ответ на каждый день посчитал сам «Мандат» — это демо-кейс 14.</p>
     <div class="scrub" id="scrub" hidden>
       <div class="scrub-head">
         <label for="scrub-day" class="scrub-date"><span class="note">Дата операции</span> <output id="scrub-out" for="scrub-day"></output></label>
@@ -130,93 +145,6 @@ $scrub_rows
   </div>
 </section>
 
-<section id="sprint" class="sec alt">
-  <div class="wrap">
-    <p class="kicker">Где мы сейчас</p>
-    <h2 class="reveal">Полуфинал. Решение № 2 загружаем до 29 ноября</h2>
-    <ol class="stages reveal" aria-label="Этапы соревнования">
-$stages
-    </ol>
-    <h3 class="reveal">Шесть критериев спринта 2 и что мы показываем по каждому</h3>
-    <p class="reveal">Фокус спринта по условиям трека: довести MVP, посчитать финансовую модель и показать защиту данных. Критериев шесть, в сумме сто баллов. По ним выбирают финалистов.</p>
-    <ol class="criteria">
-      <li class="reveal"><span class="pts">0–18</span><b>Данные, безопасность и комплаенс</b><span>Ядро работает без внешней сети, ФИО и номера становятся метками до модели, отчёты зашифрованы. Чек-лист воркшопа о данных — в коде: удалённое не возвращается из копии, отчёт об инциденте за 24 и 72 часа, ревизия доступа; $ready_ok из $ready_all пунктов матрицы готовности проверены тестами.</span><a href="#data">Защита данных</a></li>
-      <li class="reveal"><span class="pts">0–22</span><b>Техническая реализация и масштабирование</b><span>$rules&nbsp;$rules_word, четыре вердикта, CLI и HTTP API с ролями. Интернет-банк (ДБО) спрашивает допуск к платежу, в том числе по открытому стандарту OpenID AuthZEN 1.0; nonce одноразовый, общее хранилище Redis для нескольких машин. МЧД нескольких подписантов сверяется с ЕГРЮЛ по каждому. Медиана проверки — $median_ms&nbsp;мс.</span><a href="cases.html">Кейсы</a></li>
-      <li class="reveal"><span class="pts">0–22</span><b>Оценка ценности: unit-экономика, эффект и ROI</b><span>Вручную проверка полномочий стоит около $unit_manual&nbsp;₽, с «Мандатом» — около $unit_mandat&nbsp;₽. Разовые затраты ВТБ окупаются за $payback.</span><a href="economics.html">Калькулятор</a></li>
-      <li class="reveal"><span class="pts">0–16</span><b>Зрелость решения и прогресс</b><span>За спринт: подпись юриста под правилом, нормы по первоисточнику, допуск ДБО и по OpenID AuthZEN, захват до платежа одной командой, чек-лист воркшопа о данных в коде, полный прогон тестов на Linux и Windows, атака на собственные механизмы до сдачи и напоминание о конце срока МЧД за 30 дней.</span><a href="$repo/blob/main/submission/FORM_SPRINT2.md">Результаты спринта</a></li>
-      <li class="reveal"><span class="pts">0–12</span><b>Подтверждённость проблемы и рынка</b><span>$incidents_9m операций без согласия у юрлиц за девять месяцев 2026 года на $loss_9m_bln&nbsp;млрд&nbsp;₽ по данным Банка России. Рынок посчитан двумя способами. Банкам уже продают API МЧД, но не ответ на операцию; ближайшие аналоги работают в Нидерландах и Швеции. В открытом коде 1С проверка полномочий оставлена приложению. Пять интервью с банками под NDA подтвердили проблему и интерес к пилоту.</span><a href="#pain">Проблема</a></li>
-      <li class="reveal"><span class="pts">0–10</span><b>Реалистичность пилота</b><span>Шесть недель в теневом режиме на праве подписи платёжных документов. Пилот останавливается при первом ложном «подтверждено». Пакет для юриста, календарь норм до 2028 года и матрица готовности: $ready_bank&nbsp;$ready_bank_word за банком, у каждого владелец и условие.</span><a href="pilot.html">Пилот</a></li>
-    </ol>
-    <a class="more" href="criteria.html">Все критерии: спринт 1, спринт 2, спринт 3 и условия трека</a>
-  </div>
-</section>
-
-<section id="pain" class="sec">
-  <div class="wrap two">
-    <div class="reveal">
-      <h2>Захват компании начинается с полномочия</h2>
-      <p>Мошенник меняет директора в реестре по поддельным документам, выписывает себе доверенность или приходит с уже отменённой МЧД. Потом подписывает платёж от имени компании. Сотрудник банка сверяет три источника вручную и ошибается в обе стороны: пропустит захват — компания теряет деньги, откажет законному директору — банк проигрывает суд.</p>
-      <p class="stat"><b>$incidents_9m</b> операций без согласия клиента у юрлиц за девять месяцев 2026 года на <b>$loss_9m_bln&nbsp;млрд&nbsp;₽</b>; в III квартале — около 0,75&nbsp;млн&nbsp;₽ на операцию, компаниям возмещено около 11&nbsp;%. Источник — обзоры Банка России.</p>
-    </div>
-    <div class="reveal">
-      <h2>Что делает «Мандат»</h2>
-      <p>Перед операцией проверяет, что полномочие держится именно в этот день. Доверенность есть в реестре и не отменена. Подписал её тот, кто был директором на дату выдачи. Передоверие разрешено и не шире исходной доверенности. Устав не ограничивает сделку, компания не банкротится.</p>
-      <p>Сотрудник видит ответ и норму. ДБО получает допуск ровно на одну операцию.</p>
-      <p>После выдачи прав «Мандат» следит за ЕГРЮЛ, реестром и сроками МЧД. За 30 дней до конца срока он предупреждает банк, а при признаках захвата приостанавливает удостоверения до платежа.</p>
-    </div>
-  </div>
-</section>
-
-<section id="routes" class="sec">
-  <div class="wrap">
-    <p class="kicker">С чего начать</p>
-    <h2 class="reveal">Пять маршрутов по сайту, для каждой роли свой</h2>
-    <p class="sub">Маршрут ведёт по страницам в нужном порядке и на каждой подсказывает, что смотреть. Внизу страницы — «Дальше», внизу экрана — ход маршрута; закрыть его можно в любой момент.</p>
-    <div class="routes">
-      $routes
-    </div>
-  </div>
-</section>
-
-<section id="try" class="sec alt">
-  <div class="wrap">
-    <p class="kicker">Попробуйте сами</p>
-    <h2 class="reveal">Восемь страниц, где всё можно проверить самому</h2>
-    <ul class="tour">
-      <li class="reveal"><a href="cases.html"><img class="tour-art" src="img/icon-cases-160.webp" srcset="img/icon-cases-160.webp 160w, img/icon-cases.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>$demo_count кейсов</b><span>Выберите кейс и посмотрите, на чём держится ответ: даты, проверки, норма и следующий шаг.</span><i>Разобрать кейс</i></a></li>
-      <li class="reveal"><a href="showcase.html"><img class="tour-art" src="img/icon-showcase-160.webp" srcset="img/icon-showcase-160.webp 160w, img/icon-showcase.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>Захват до платежа</b><span>Семь шагов сценария: допуск, отказ повтору и лишней сумме, признаки захвата и отказ следующему платежу.</span><i>Запустить сценарий</i></a></li>
-      <li class="reveal"><a href="verify.html"><img class="tour-art" src="img/icon-verify-160.webp" srcset="img/icon-verify-160.webp 160w, img/icon-verify.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>Проверка в браузере</b><span>Подпись удостоверения, его статус и запись журнала проверяет ваш браузер, без доступа к базе.</span><i>Проверить подпись</i></a></li>
-      <li class="reveal"><a href="economics.html"><img class="tour-art" src="img/icon-economics-160.webp" srcset="img/icon-economics-160.webp 160w, img/icon-economics.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>Калькулятор эффекта</b><span>Подвигайте допущения модели: доли событий, минуты на кейс, долю ВТБ. Окупаемость пересчитается.</span><i>Посчитать</i></a></li>
-      <li class="reveal"><a href="pilot.html"><img class="tour-art" src="img/icon-pilot-160.webp" srcset="img/icon-pilot-160.webp 160w, img/icon-pilot.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>Пилот и масштаб</b><span>Шесть недель в теневом режиме, стоп-критерий, ворота от финала до второго банка.</span><i>Открыть план</i></a></li>
-      <li class="reveal"><a href="law.html"><img class="tour-art" src="img/icon-law-160.webp" srcset="img/icon-law-160.webp 160w, img/icon-law.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>Закон завтра</b><span>Выберите дату и посмотрите, какие правила пакета опираются на действующие акты.</span><i>Сдвинуть дату</i></a></li>
-      <li class="reveal"><a href="criteria.html"><img class="tour-art" src="img/icon-criteria-160.webp" srcset="img/icon-criteria-160.webp 160w, img/icon-criteria.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>Критерии трека</b><span>Каждый критерий спринтов 1–3: что показываем и где проверить.</span><i>Сверить</i></a></li>
-      <li class="reveal"><a href="pitch.html"><img class="tour-art" src="img/icon-search-160.webp" srcset="img/icon-search-160.webp 160w, img/icon-search.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>Слайды</b><span>Презентация целиком, у каждого слайда свой адрес и текст выступления.</span><i>Листать</i></a></li>
-    </ul>
-  </div>
-</section>
-
-<section id="screens" class="sec">
-  <div class="wrap">
-    <p class="kicker">Шесть экранов</p>
-    <h2 class="reveal">Сайт открывается на телефоне, планшете и большом экране</h2>
-    <figure class="devices reveal">
-      <picture>
-        <source type="image/avif" srcset="img/devices-1200.avif 1200w, img/devices-2400.avif 2400w" sizes="(max-width: 1240px) calc(100vw - 32px), 1200px">
-        <img src="img/devices-1200.webp" srcset="img/devices-1200.webp 1200w, img/devices-2400.webp 2400w" sizes="(max-width: 1240px) calc(100vw - 32px), 1200px" width="1200" height="647" loading="lazy" decoding="async" alt="Сайт «Мандата» на шести устройствах: захват компании по шагам на большом экране, главная на мониторе компьютера, разбор кейса в тёмной теме на ноутбуке, проверка подписи с печатью на планшете, ось дат операции на iPhone и план пилота на Android">
-      </picture>
-      <figcaption>Снимки настоящих страниц этой сборки, не макеты. Перед публикацией каждая страница проходит проверку на девяти экранах, от сложенного Galaxy Z Fold до монитора 2560&nbsp;px, в светлой и тёмной теме.</figcaption>
-    </figure>
-    <ul class="device-list reveal" aria-label="Что открыто на каждом экране">
-        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M7 21h10"/></svg><b>Большой экран</b><span>2560&nbsp;px, захват по шагам</span></li>
-        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg><b>Компьютер</b><span>1920&nbsp;px, главная</span></li>
-        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/></svg><b>Ноутбук</b><span>1512&nbsp;px, разбор кейса в тёмной теме</span></li>
-        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M12 18h.01"/></svg><b>Планшет</b><span>834&nbsp;px, проверка подписи</span></li>
-        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg><b>iPhone</b><span>393&nbsp;px, ось дат в тёмной теме</span></li>
-        <li><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg><b>Android</b><span>412&nbsp;px, план пилота</span></li>
-    </ul>
-  </div>
-</section>
-
 <section id="chain" class="sec keynote">
   <div class="wrap">
     <div class="keynote-copy">
@@ -231,27 +159,59 @@ $stages
   <div class="wrap">
     <h2 class="reveal">Как это работает</h2>
     <ol class="steps">
-      <li class="reveal"><b>Документы</b><span>МЧД в XML, выписка ЕГРЮЛ, устав, статус в реестре ФНС, сведения о банкротстве.</span></li>
-      <li class="reveal"><b>Цепочка</b><span>Компания → руководитель → доверенность → передоверие. У каждого звена дата и поле документа.</span></li>
-      <li class="reveal"><b>Правила</b><span>$rules&nbsp;$rules_word лежат данными. У каждого норма закона, поле документа и тест. Утверждает правило юрист банка, своей подписью.</span></li>
-      <li class="reveal"><b>Ответ</b><span>Вердикт, список того, чего не хватает, подписанное удостоверение и запись в журнале.</span></li>
+      <li class="reveal"><b>Документы</b><span>Доверенность (МЧД), выписка ЕГРЮЛ, устав, статус в реестре ФНС, сведения о банкротстве.</span></li>
+      <li class="reveal"><b>Цепочка</b><span>Компания → директор → доверенность → передоверие. У каждого звена дата и поле документа.</span></li>
+      <li class="reveal"><b>Правила</b><span>$rules&nbsp;$rules_word. У каждого норма закона, поле документа и тест. В силу правило вводит юрист банка, своей подписью.</span></li>
+      <li class="reveal"><b>Ответ</b><span>Один из четырёх, с доказательством, подписанным удостоверением и записью в журнале.</span></li>
     </ol>
-    <ul class="verdicts" aria-label="Четыре ответа">
-      <li class="badge ok">подтверждено</li>
-      <li class="badge no">опровергнуто</li>
-      <li class="badge review">на разбор</li>
-      <li class="badge gap">недостаточно данных</li>
+    <h3 class="reveal">Четыре ответа, и ни один не оставляет банк без объяснения</h3>
+    <dl class="answers reveal">
+      <div><dt><span class="badge ok">подтверждено</span></dt><dd>Все обязательные проверки пройдены. Банк получает подписанное удостоверение.</dd></div>
+      <div><dt><span class="badge no">опровергнуто</span></dt><dd>Полномочия нет: доверенность отменена, срок истёк или передоверие запрещено. Видно звено и норму закона.</dd></div>
+      <div><dt><span class="badge review">на разбор</span></dt><dd>Есть спорное: директор сменился недавно, в уставе стоит порог суммы. Решает человек, досье уже собрано.</dd></div>
+      <div><dt><span class="badge gap">недостаточно данных</span></dt><dd>Источник не ответил или документа нет. Вместо «да» банк получает список того, чего не хватает.</dd></div>
+    </dl>
+    <p class="note">Модель ИИ банк включает по желанию, и работает она в его контуре. Она приносит дословную цитату из устава, а ответ выносят правила. Нет цитаты — нет факта.</p>
+    <h3 class="reveal">Интернет-банк спрашивает «Мандат» перед каждым платежом</h3>
+    <p class="reveal">Вот удостоверение, вот операция: компания, день, сумма, получатель. В ответ приходит «допустить» или причины отказа. Повтор того же запроса и сумма больше проверенной получают отказ. Для ИТ: это <code>POST /v1/operations/authorize</code> и тот же допуск по стандарту OpenID AuthZEN 1.0.</p>
+    <a class="more" href="showcase.html">Пройти сценарий по шагам</a>
+  </div>
+</section>
+
+<section id="video" class="sec alt" aria-labelledby="video-h">
+  <div class="wrap">
+    <h2 class="reveal" id="video-h">Весь «Мандат» за две с половиной минуты</h2>
+    <p class="reveal">Ролик собран из настоящего вывода команд: карточка сотрудника, захват компании и отказ платежу, журнал и допуск для интернет-банка. Компании и люди в кейсах вымышлены.</p>
+    <figure class="demo-video reveal">
+      <video controls playsinline preload="none" width="1920" height="1080" poster="img/video-poster.webp" src="materials/Mandat_demo.mp4" aria-labelledby="video-h">
+        <a href="materials/Mandat_demo.mp4">Видео-демо, MP4</a>
+      </video>
+      <figcaption>MP4, 1920×1080, субтитры на русском, без закадрового голоса · <a href="materials/Mandat_demo.mp4" download>скачать</a></figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="try" class="sec">
+  <div class="wrap">
+    <p class="kicker">Попробуйте сами</p>
+    <h2 class="reveal">Здесь всё работает прямо в браузере</h2>
+    <ul class="tour">
+      <li class="reveal"><a href="cases.html"><img class="tour-art" src="img/icon-cases-160.webp" srcset="img/icon-cases-160.webp 160w, img/icon-cases.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>$demo_count кейсов</b><span>Выберите кейс и посмотрите, на чём держится ответ: даты, проверки, норма и следующий шаг.</span><i>Разобрать кейс</i></a></li>
+      <li class="reveal"><a href="showcase.html"><img class="tour-art" src="img/icon-showcase-160.webp" srcset="img/icon-showcase-160.webp 160w, img/icon-showcase.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>Захват до платежа</b><span>Семь шагов сценария: допуск, отказ повтору и лишней сумме, признаки захвата и отказ следующему платежу.</span><i>Запустить сценарий</i></a></li>
+      <li class="reveal"><a href="verify.html"><img class="tour-art" src="img/icon-verify-160.webp" srcset="img/icon-verify-160.webp 160w, img/icon-verify.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>Проверка в браузере</b><span>Подпись удостоверения, его статус и запись журнала проверяет ваш браузер, без доступа к базе.</span><i>Проверить подпись</i></a></li>
+      <li class="reveal"><a href="economics.html"><img class="tour-art" src="img/icon-economics-160.webp" srcset="img/icon-economics-160.webp 160w, img/icon-economics.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>Калькулятор эффекта</b><span>Подвигайте допущения модели: доли событий, минуты на кейс, долю ВТБ. Окупаемость пересчитается.</span><i>Посчитать</i></a></li>
+      <li class="reveal"><a href="pilot.html"><img class="tour-art" src="img/icon-pilot-160.webp" srcset="img/icon-pilot-160.webp 160w, img/icon-pilot.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>Пилот и масштаб</b><span>Шесть недель в теневом режиме, стоп-критерий, ворота от финала до второго банка.</span><i>Открыть план</i></a></li>
+      <li class="reveal"><a href="law.html"><img class="tour-art" src="img/icon-law-160.webp" srcset="img/icon-law-160.webp 160w, img/icon-law.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>Закон завтра</b><span>Выберите дату и посмотрите, какие правила пакета опираются на действующие акты.</span><i>Сдвинуть дату</i></a></li>
+      <li class="reveal"><a href="criteria.html"><img class="tour-art" src="img/icon-criteria-160.webp" srcset="img/icon-criteria-160.webp 160w, img/icon-criteria.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>Критерии трека</b><span>Каждый критерий спринтов 1–3: что показываем и где проверить.</span><i>Сверить</i></a></li>
+      <li class="reveal"><a href="pitch.html"><img class="tour-art" src="img/icon-search-160.webp" srcset="img/icon-search-160.webp 160w, img/icon-search.webp 341w" sizes="76px" width="160" height="160" alt="" loading="lazy"><b>Слайды</b><span>Презентация целиком, у каждого слайда свой адрес и текст выступления.</span><i>Листать</i></a></li>
     </ul>
-    <p class="note">Модель ИИ включается по желанию банка и работает в его контуре. Она приносит дословную цитату из устава, а вердикт выносят правила. Без цитаты факта нет.</p>
-    <h3 class="reveal">Допуск платежа для ДБО</h3>
-    <p class="reveal">ДБО присылает в <code>POST /v1/operations/authorize</code> удостоверение и запрос одной операции: компания, день, сумма, представитель, получатель и одноразовый nonce. Допуск выдаётся только служебной учётной записи системы банка. Из восьми одновременных повторов проходит один, а повтор после потерянного ответа получает отказ со временем первого допуска.</p>
   </div>
 </section>
 
 <section id="value" class="sec lux">
   <div class="wrap">
     <h2 class="reveal">Ценность <em class="serif">для банка</em></h2>
-    <p class="reveal">Финансовая модель на формулах, три сценария. Ниже базовый. Доли событий и минуты на кейс — допущения команды, пилот заменит их цифрами банка.</p>
+    <p class="reveal">Базовый сценарий финансовой модели. Три её параметра — долю клиентов с событием, минуты на пакет и долю случаев с полномочиями — уточнит хронометраж в пилоте.</p>
     <ul class="value">
       <li class="reveal"><b>≈$unit_manual&nbsp;₽</b><span>стоит одна проверка полномочий вручную</span></li>
       <li class="reveal"><b>≈$unit_mandat&nbsp;₽</b><span>тратит банк на одну проверку с «Мандатом», в $unit_ratio&nbsp;раза меньше</span></li>
@@ -287,7 +247,7 @@ $stages
   <div class="wrap">
     <img class="sec-art" src="img/obj-perimeter-640.webp" width="640" height="599" alt="" loading="lazy" decoding="async">
     <h2 class="reveal">Данные клиента не покидают банк</h2>
-    <p>Ядро проверяет без внешней сети. Если банк включит модель, она получит только строки устава о&nbsp;полномочиях, где ФИО, паспорт, СНИЛС и&nbsp;ИНН уже заменены метками.</p>
+    <p>«Мандат» работает внутри банка, без внешней сети. Если банк включит модель, она получит только строки устава о&nbsp;полномочиях, где имена, паспорт, СНИЛС и&nbsp;ИНН уже заменены метками.</p>
     <figure class="perimeter reveal">
       <figcaption class="perimeter-cap">Контур банка · без внешней сети</figcaption>
       <ol class="flow">
@@ -307,12 +267,13 @@ $stages
         <dt>В модель</dt>
         <dd>Директор <mark class="tag">[ДИРЕКТОР]</mark>, ИНН <mark class="tag">[ИНН:d4d89e6e604b4e26]</mark>, паспорт <mark class="tag">[ПАСПОРТ:49e56e8994ff1f52]</mark>, вправе заключать сделки <mark class="keep">до 1&nbsp;000&nbsp;000 рублей</mark></dd>
       </dl>
-      <p class="fine">Строка синтетическая. Имя заменяет <code>privacy/names.py</code>, номера — HMAC-псевдонимы из <code>privacy/pii.py</code> на ключе стенда. Сумма остаётся: модели она нужна, человека она не выдаёт.</p>
+      <p class="fine">Строка вымышленная. Имя заменяет <code>privacy/names.py</code>, номера — HMAC-псевдонимы из <code>privacy/pii.py</code> на ключе стенда. Сумма остаётся: модели она нужна, человека она не выдаёт.</p>
     </div>
-  </div>
-  <div class="wrap two">
+    <details class="fold">
+      <summary>Для службы безопасности: что закрыто в коде и в цепочке поставки</summary>
+      <div class="two">
     <div class="reveal">
-      <h3>Что ещё закрыто в коде</h3>
+      <h3>Что закрыто в коде</h3>
       <ul class="ticks">
         <li>Ядро ставится в контур банка: Docker и пилотный compose. Модель выключена, пока её не включит банк, и ходит только на разрешённые хосты.</li>
         <li>Подменённая запись, отчёт другого кейса или прежняя версия разбора дают отказ, а не данные. Уничтожение ключа уничтожает отчёты во всех копиях.</li>
@@ -333,6 +294,8 @@ $stages
         <li>Действия CI закреплены по SHA, у токена минимальные права. Сайт ничего не грузит со сторонних адресов: это запрещает его политика CSP.</li>
       </ul>
     </div>
+      </div>
+    </details>
   </div>
 </section>
 
@@ -340,7 +303,7 @@ $stages
   <div class="wrap">
     <img class="sec-art wide" src="img/obj-weeks-640.webp" width="640" height="368" alt="" loading="lazy" decoding="async">
     <h2 class="reveal">Пилот идёт шесть недель в теневом режиме</h2>
-    <p class="reveal">«Мандат» проверяет те же пакеты, что и сотрудники банка, но на выдачу прав не влияет. Операция одна: право подписи платёжных документов в интернет-банке для представителя по МЧД.</p>
+    <p class="reveal">«Мандат» проверяет те же пакеты, что и сотрудники банка, но на выдачу прав не влияет. Операция одна: право подписи платёжных документов в интернет-банке для представителя по доверенности.</p>
     <figure class="ptrack reveal">
       <figcaption class="sr-only">Шесть недель пилота: неделя 1 — подготовка, недели 2–5 — теневая проверка, неделя 6 — разметка и замер, затем решение на воротах G2. Стоп-критерий действует все шесть недель.</figcaption>
       <div class="pt-bar" aria-hidden="true"><span class="pt-a" data-short="1">неделя 1</span><span class="pt-b" data-short="2–5">недели 2–5: теневая проверка</span><span class="pt-a" data-short="6">неделя 6</span><span class="pt-g2"><b>G2</b></span></div>
@@ -351,11 +314,62 @@ $stages
       <li class="reveal"><b>Недели 2–5</b><span>Параллельная проверка 50&#8288;–&#8288;100 обезличенных пакетов. Каждое расхождение с сотрудником идёт в журнал.</span></li>
       <li class="reveal"><b>Неделя 6</b><span>Независимая разметка расхождений, замер времени и точности, решение: продолжать или остановить.</span></li>
     </ol>
-    <p class="note reveal">Календарь от вашей даты и ворота от финала до второго банка — в <a href="pilot.html">плане пилота и масштабирования</a>.</p>
+    <p class="note reveal">Календарь от вашей даты и этапы от финала до второго банка — в <a href="pilot.html">плане пилота и масштабирования</a>.</p>
   </div>
 </section>
 
-<section id="materials" class="sec alt">
+<section id="routes" class="sec alt">
+  <div class="wrap">
+    <p class="kicker">Выберите свою роль</p>
+    <h2 class="reveal">Пять маршрутов по сайту, для каждой роли свой</h2>
+    <p class="sub">Маршрут ведёт по страницам в нужном порядке и на каждой подсказывает, что смотреть. Выйти из него можно в любой момент.</p>
+    <div class="routes compact">
+      $routes
+    </div>
+  </div>
+</section>
+
+<section id="jury" class="sec">
+  <div class="wrap">
+    <p class="kicker">Для жюри</p>
+    <h2 class="reveal">Шесть критериев спринта 2 и что мы показываем по каждому</h2>
+    <p class="sub reveal">Фокус спринта по условиям трека: довести MVP, посчитать финансовую модель и показать защиту данных. Критериев шесть, в сумме сто баллов.</p>
+    <ol class="criteria">
+      <li class="reveal"><span class="pts">0–18</span><b>Данные, безопасность и комплаенс</b><span>Ядро работает без внешней сети. ФИО и номера становятся метками до модели, отчёты зашифрованы, каждое чтение записано в журнал. Чек-лист воркшопа о данных выполнен в коде: $ready_ok из $ready_all пунктов матрицы готовности закрыты тестами.</span><a href="#data">Защита данных</a></li>
+      <li class="reveal"><span class="pts">0–22</span><b>Техническая реализация и масштабирование</b><span>$rules&nbsp;$rules_word, четыре ответа, CLI и HTTP API с ролями. Интернет-банк спрашивает допуск к платежу, в том числе по открытому стандарту OpenID AuthZEN 1.0. Несколько машин работают с общим хранилищем, медиана проверки — $median_ms&nbsp;мс.</span><a href="cases.html">Кейсы</a></li>
+      <li class="reveal"><span class="pts">0–22</span><b>Оценка ценности: unit-экономика, эффект и ROI</b><span>Проверка полномочий вручную стоит около $unit_manual&nbsp;₽, с «Мандатом» — около $unit_mandat&nbsp;₽. Разовые затраты ВТБ окупаются за $payback.</span><a href="economics.html">Калькулятор</a></li>
+      <li class="reveal"><span class="pts">0–16</span><b>Зрелость решения и прогресс</b><span>За спринт: допуск платежа и остановка захвата одной командой, подпись юриста под правилом, нормы по первоисточнику, шифрование хранилища, полный прогон тестов на Linux и Windows.</span><a href="$repo/blob/main/submission/FORM_SPRINT2.md">Результаты спринта</a></li>
+      <li class="reveal"><span class="pts">0–12</span><b>Подтверждённость проблемы и рынка</b><span>$incidents_9m операций без согласия у юрлиц за девять месяцев 2026 года на $loss_9m_bln&nbsp;млрд&nbsp;₽ по данным Банка России. Пять интервью с банками подтвердили проблему и интерес к пилоту. В Нидерландах и Швеции такой ответ уже продают как отдельный сервис.</span><a href="#pain">Проблема</a></li>
+      <li class="reveal"><span class="pts">0–10</span><b>Реалистичность пилота</b><span>Шесть недель в теневом режиме на одной операции, стоп при первом ложном «подтверждено». Пакет для юриста, календарь норм до 2028 года и матрица готовности, где у каждого пункта есть владелец.</span><a href="pilot.html">Пилот</a></li>
+    </ol>
+    <a class="more" href="criteria.html">Все критерии: спринт 1, спринт 2, спринт 3 и условия трека</a>
+  </div>
+</section>
+
+<section id="faq" class="sec alt">
+  <div class="wrap">
+    <h2 class="reveal">Частые вопросы</h2>
+    <div class="faq">
+      <details class="fold"><summary>Решение принимает ИИ?</summary><p>Нет. Ответ выносят правила, и у каждого есть норма закона. Модель банк включает по желанию: она только находит в уставе нужный пункт и приносит его дословно.</p></details>
+      <details class="fold"><summary>Реестр ФНС уже показывает статус доверенности. Зачем «Мандат»?</summary><p>Статус в реестре — одно правило из $rules. Остальные проверяют, кто подписал доверенность, не сменился ли директор, разрешено ли передоверие, не истёк ли срок и покрывает ли доверенность именно эту операцию.</p></details>
+      <details class="fold"><summary>Что будет, если реестр не ответил?</summary><p>Ответ — «недостаточно данных» и список того, чего не хватает. Молчание источника не считается хорошей новостью.</p></details>
+      <details class="fold"><summary>Кто отвечает за решение?</summary><p>Банк, по своему регламенту. «Мандат» готовит карточку с нормой и полем документа и записывает решение в журнал, который нельзя незаметно поправить.</p></details>
+      <details class="fold"><summary>Куда уходят данные клиентов?</summary><p>Никуда: «Мандат» работает внутри банка, без внешней сети. Если банк включит модель, она получит только строки устава, где имена и номера уже заменены метками.</p></details>
+      <details class="fold"><summary>Сколько это стоит банку?</summary><p>В базовом сценарии — около $unit_mandat&nbsp;₽ на проверку против примерно $unit_manual&nbsp;₽ вручную, разовые затраты возвращаются за $payback. <a href="economics.html">Пересчитать на своих допущениях</a>.</p></details>
+    </div>
+    <h3 class="reveal">Слова, которые встречаются на сайте</h3>
+    <dl class="glossary">
+      <div><dt>МЧД</dt><dd>Машиночитаемая доверенность: электронная доверенность в формате ФНС, подписанная электронной подписью компании.</dd></div>
+      <div><dt>ЕГРЮЛ</dt><dd>Государственный реестр юридических лиц. В нём записано, кто директор компании и с какого числа.</dd></div>
+      <div><dt>Передоверие</dt><dd>Представитель передаёт свои полномочия другому человеку, если доверенность это разрешает.</dd></div>
+      <div><dt>ДБО</dt><dd>Дистанционное банковское обслуживание, проще говоря — интернет-банк для бизнеса.</dd></div>
+      <div><dt>Удостоверение</dt><dd>Подписанная запись «Мандата» о проверке. Её можно проверить без доступа к базе и отозвать.</dd></div>
+      <div><dt>Теневой пилот</dt><dd>«Мандат» проверяет те же документы, что и сотрудники, но на решения банка не влияет.</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="materials" class="sec">
   <div class="wrap">
     <h2 class="reveal">Материалы</h2>
     <ul class="links reveal">
@@ -363,10 +377,10 @@ $stages
       <li><a href="materials/Mandat_demo.mp4">Видео-демо, две с половиной минуты</a></li>
       <li><a href="materials/Mandat_analytics_all.pdf">Пакет аналитики: проект, модель, рынок, план внедрения</a></li>
       <li><a href="materials/Mandat_financial_model.xlsx">Финансовая модель, Excel</a></li>
-      <li><a href="$repo#readme">README и запуск одной командой</a></li>
+      <li><a href="$repo#readme">Код и запуск одной командой</a></li>
       <li><a href="$repo/blob/main/docs/legal/README.md">Пакет для юриста банка: карточка нормы на каждое правило</a></li>
-      <li><a href="$repo/blob/main/LIMITS.md">Границы: чего стенд не делает</a></li>
       <li><a href="$repo/blob/main/SECURITY.md">Безопасность</a></li>
+      <li><a href="$repo/blob/main/LIMITS.md">Границы стенда</a></li>
     </ul>
   </div>
 </section>

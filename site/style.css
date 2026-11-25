@@ -121,7 +121,7 @@ p, li { text-wrap: pretty; }
 /* ---------- Типографика ---------- */
 .kicker { margin: 0 0 10px; color: var(--accent); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12.5px; }
 h1 { margin: 0; font-size: clamp(30px, 5.2vw, 58px); line-height: 1.04; letter-spacing: -0.03em; color: var(--ink-2); }
-h2 { margin: 0 0 14px; font-size: clamp(24px, 3.2vw, 36px); line-height: 1.12; letter-spacing: -0.022em; color: var(--ink-2); }
+h2 { margin: 0 0 14px; font-size: clamp(25px, 3.4vw, 40px); line-height: 1.1; letter-spacing: -0.024em; color: var(--ink-2); }
 h3 { margin: 26px 0 8px; font-size: 20px; font-weight: 700; line-height: 1.3; letter-spacing: -0.01em; color: var(--ink-2); }
 .lead { max-width: 64ch; font-size: clamp(17px, 1.6vw, 19px); color: var(--muted); }
 .note { color: var(--muted); font-size: 15px; }
@@ -250,7 +250,7 @@ figure.page-art { margin: 0 0 8px 24px; width: clamp(120px, 17vw, 200px); }
 .kpi span { display: block; margin-top: 6px; font-size: 14px; color: var(--muted); line-height: 1.45; }
 
 /* ---------- Разделы и сетки ---------- */
-.sec { padding: clamp(40px, 6vw, 68px) 0; }
+.sec { padding: clamp(44px, 7vw, 88px) 0; }
 /* Видео-демо на главной: обложка вместо чёрного кадра, файл грузится по нажатию */
 .demo-video { margin: 22px 0 0; }
 .demo-video video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: var(--radius); background: #061a4a; box-shadow: var(--glow); }
@@ -933,3 +933,79 @@ html.on-route body { padding-bottom: 80px; }
 @media (max-width: 760px) { .foot-map { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 380px) { .foot-map { grid-template-columns: minmax(0, 1fr); } }
 @media print { .routebar, .pager-sec, .roles, .audience, .toc, .foot-map { display: none !important; } }
+
+/* ---------- Главная: одна история для любого посетителя ----------
+   Первый экран — вопрос и два действия, остальные ссылки тише. Этапы соревнования — одной строкой под ним.
+   Четыре ответа объяснены словами. Подробности для специалистов и частые вопросы свёрнуты (<details>),
+   маршруты по ролям — короткими карточками, слова сайта — в словаре. */
+.hero-links { display: flex; flex-wrap: wrap; gap: 0 24px; margin: 10px 0 0; }
+.strip { padding: 16px 0; border-block: 1px solid var(--line); }
+.strip .stages { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.strip .stages li { display: flex; align-items: baseline; gap: 8px; padding: 7px 14px; border-radius: 999px; }
+.strip .stages li b { font-size: 14.5px; }
+.strip .stages li span { display: none; }
+.strip .stages li small { margin: 0; font-size: 13px; }
+.strip .stages li.now { box-shadow: none; background: var(--accent-soft); }
+/* Пройденный этап — имя и галочка; его итог остаётся в разметке для экранных дикторов. */
+.strip .stages li.done small { font-size: 0; }
+.strip .stages li.done b::after { content: " ✓"; color: var(--ok); }
+@media (max-width: 700px) { .strip { padding: 12px 0; } .strip .stages li:not(.now) { display: none; } }
+/* Телефон: сначала схема цепочки — она объясняет продукт, портрет меньше и после неё. */
+@media (max-width: 600px) { .hero-art .chain { order: -1; } .hero-art .anna { width: min(56%, 230px); } }
+.two .kicker { margin-bottom: 8px; }
+.answers { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; margin: 10px 0 18px; }
+.answers div { padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+.answers dt { margin: 0 0 10px; }
+.answers dd { margin: 0; color: var(--muted); font-size: 15px; }
+.fold { margin: 18px 0 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+.fold > summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 56px; padding: 10px 20px; cursor: pointer; font-weight: 600; font-size: 17px; color: var(--ink-2); list-style: none; border-radius: var(--radius); }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::after { content: "+"; flex: none; font: 400 26px/1 var(--display); color: var(--accent); transition: transform .25s var(--ease); }
+.fold[open] > summary::after { transform: rotate(45deg); }
+.fold > summary:focus-visible { outline: 3px solid var(--accent-2); outline-offset: 2px; }
+.fold > :not(summary) { margin: 0; padding: 0 20px 18px; }
+.fold h3 { margin-top: 6px; }
+@media (hover: hover) { .fold > summary:hover { color: var(--accent); } }
+.faq { display: grid; gap: 10px; max-width: 880px; margin: 20px 0 0; }
+.faq .fold { margin: 0; }
+.faq p { color: var(--muted); }
+.glossary { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 0 36px; margin: 14px 0 0; }
+.glossary div { padding: 12px 0; border-top: 1px solid var(--line); }
+.glossary dt { font-weight: 700; color: var(--ink-2); }
+.glossary dd { margin: 2px 0 0; color: var(--muted); font-size: 15px; }
+.routes.compact { grid-template-columns: repeat(auto-fit, minmax(min(100%, 212px), 1fr)); gap: 14px; }
+.routes.compact .route, .routes.compact .route.featured { grid-column: auto; padding: 18px; gap: 10px; border-color: var(--line); box-shadow: none; }
+.routes.compact .route-head { align-items: flex-start; gap: 12px; }
+.routes.compact .route-head .ic { width: 40px; height: 40px; padding: 10px; border-radius: 12px; }
+.routes.compact .route h3 { font-size: 17px; line-height: 1.25; }
+.routes.compact .route-lead { font-size: 14.5px; }
+.routes.compact .route-steps, .routes.compact .route-docs { display: none; }
+.routes.compact .route-go { min-height: 42px; padding: 8px 14px; font-size: 15px; box-shadow: none; }
+@media (max-width: 560px) {
+  .kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .kpi li { padding: 12px; }
+  .kpi span { font-size: 13px; }
+  .fold > summary { font-size: 16px; padding: 10px 16px; }
+  .fold > :not(summary) { padding: 0 16px 16px; }
+}
+@media (max-width: 340px) { .kpi { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- Критерии, спринт 2: три задачи фокуса и шесть карточек «главный результат — что сделано — где проверить».
+   Подробные доказательства со ссылками свёрнуты под карточками; поиск их раскрывает, а сводку прячет. */
+.focus { list-style: none; margin: 16px 0 6px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 12px; }
+.focus li { position: relative; padding: 16px 18px 16px 56px; border-radius: var(--radius); background: var(--ok-bg); }
+.focus li::before { content: "✓"; position: absolute; left: 18px; top: 17px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--ok); color: var(--bg); font-size: 14px; font-weight: 700; }
+.focus b { display: block; font-size: 17px; color: var(--ink-2); }
+.focus span { display: block; margin-top: 2px; font-size: 14.5px; color: var(--muted); }
+.done-grid { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 14px; }
+.done-grid > li { display: flex; flex-direction: column; gap: 10px; padding: 22px; border: 1px solid var(--line); border-radius: 20px; background: var(--card); box-shadow: var(--shadow); }
+.done-grid .pts { align-self: flex-start; padding: 3px 11px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.done-grid h3 { margin: 0; font-size: 19px; line-height: 1.25; }
+.done-fact { margin: 0; color: var(--muted); font-size: 15px; }
+.done-fact b { display: block; margin-bottom: 2px; font-family: var(--display); font-weight: 800; font-size: clamp(27px, 3vw, 36px); line-height: 1.1; letter-spacing: -0.025em; color: var(--accent); font-variant-numeric: tabular-nums; }
+.done-list { flex: 1; align-content: start; list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 8px; }
+.done-list li { position: relative; padding-left: 30px; font-size: 15px; }
+.done-list li::before { content: "✓"; position: absolute; left: 0; top: 2px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--ok-bg); color: var(--ok); font-size: 12px; font-weight: 700; }
+.panel.searching .digest { display: none; }
+.panel .fold .crit { padding: 0 20px 18px; }
+.panel .fold .crit > li { background: var(--bg-alt); }
