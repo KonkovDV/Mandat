@@ -107,7 +107,7 @@ function render(i) {
   card.replaceChildren(
     el("div", { class: "scrub-verdict" }, el("span", { class: `badge big ${s.css}`, text: s.label }), el("span", { class: "note", text: `платёж ${rub(scrub.amount)} · ${ruDate(iso)}` })),
     ...why,
-    el("p", { class: "fine", text: `Так ядро отвечает с ${ruDate(s.from)} по ${ruDate(s.to)}.` }),
+    el("p", { class: "fine", text: `Так «Мандат» отвечает с ${ruDate(s.from)} по ${ruDate(s.to)}.` }),
   );
   const changed = card.dataset.seg !== s.from;
   card.dataset.seg = s.from;
