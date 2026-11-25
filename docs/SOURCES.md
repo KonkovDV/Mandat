@@ -56,8 +56,8 @@
 Открыты 13.10.2026, если не сказано иное.
 
 - ФНС: «5 млн машиночитаемых доверенностей зарегистрировано в едином блокчейн-реестре», 27.07.2026 (M-08) — https://www.nalog.gov.ru/rn77/news/activities_fts/16639371/
-- 5 558 119 МЧД на 03.09.2026, вторичный источник (M-08, слайд 15) — https://selsup.ru/blog/kak-sdelat-mchd/
-- 1 598 514 МЧД на 28.10.2024, вторичный источник (M-10, слайд 15) — https://emchd.ru/blog/news/rynok-mchd-prodolzhaet-rasti-novye-rekordy-po-kolichestvu-doverennostej-i-proverok/
+- 5 558 119 МЧД на 03.09.2026, вторичный источник (M-08, слайд 16) — https://selsup.ru/blog/kak-sdelat-mchd/
+- 1 598 514 МЧД на 28.10.2024, вторичный источник (M-10, слайд 16) — https://emchd.ru/blog/news/rynok-mchd-prodolzhaet-rasti-novye-rekordy-po-kolichestvu-doverennostej-i-proverok/
 - Пресс-релиз ВТБ к МСФО за 1П 2026 в пересказе: «порядка 1,8 млн предприятий и предпринимателей», 29.07.2026 (M-09) — https://altapress.ru/story/gruppa-vtb-objyavlyaet-finansovie-rezultati-po-msfo-za-pervoe-polugodie-goda-391521
 - Раздел результатов по МСФО на сайте ВТБ (первичный источник M-09; 13.10.2026 PDF за 1П 2026 не открылся из-за ошибки доверия к TLS-сертификату) — https://www.vtb.ru/ir/statements/results/
 
@@ -74,4 +74,4 @@
 Названы в презентации; перед питчем сверить число со строкой реестра:
 
 - опросы Fenergo 2022 и 2025 — данные поставщика ПО (M-11);
-- vtb.ru/r/terms_mchd, HFLabs, buh.ru, fintechacademy.ru, bankinform.ru, aif.ru — справочные материалы к колоде: слайды 3, 4, 13, 17 и приложение.
+- vtb.ru/r/terms_mchd, HFLabs, buh.ru, fintechacademy.ru, bankinform.ru, aif.ru — справочные материалы к колоде: слайды 3, 4, 14, 18 и приложение.

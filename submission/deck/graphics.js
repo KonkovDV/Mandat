@@ -259,6 +259,7 @@ async function buildGraphics(opts = {}) {
     "Webhook", "ScrollText", "Briefcase", "Mail", "Phone", "Github", "Quote", "Layers", "Siren", "Ban", "SearchCheck",
     "ClipboardCheck", "Banknote", "IdCard", "Activity", "GitCompare", "Award", "Puzzle", "Plug", "Container", "Gauge",
     "Microscope", "UserRound", "CircleHelp", "Waypoints", "ScanSearch", "PenLine", "Signature", "Rocket",
+    "MonitorSmartphone", "MousePointerClick",
   ];
   out.icon = {};
   out.iconLight = {};
