@@ -251,12 +251,12 @@ mandat incident-report --journal var/api/journal.jsonl --detected-at 2026-11-20T
 | `MANDAT_LLM_ALLOW_INSECURE_LOOPBACK` | `1` разрешает в `pilot` и `prod` `http` к модели на `127.0.0.1`, `localhost` или `::1` | выключено: в `pilot` и `prod` только `https` |
 | `MANDAT_LLM_EXTRA` | JSON с дополнительными полями запроса; принимаются только `provider`, `usage`, `reasoning`, `response_format`, `max_tokens`, `transforms` | пусто |
 
-Консультант стенда работает через OpenRouter на модели `deepseek/deepseek-v4-flash`; как её выбирали и чем она лучше соседей — в [замере моделей](ADVISORY_MODELS.md). Подключение вне стенда:
+Консультант стенда работает через OpenRouter на модели `mistralai/mistral-small-3.2-24b-instruct` с открытыми весами: в контуре банка её ставят на свою видеокарту. Как выбирали — в [замере моделей](ADVISORY_MODELS.md). Подключение через OpenRouter:
 
 ```bash
 MANDAT_LLM_BASE_URL=https://openrouter.ai/api/v1
 MANDAT_LLM_ALLOWED_HOSTS=openrouter.ai
-MANDAT_LLM_MODEL=deepseek/deepseek-v4-flash
+MANDAT_LLM_MODEL=mistralai/mistral-small-3.2-24b-instruct
 MANDAT_LLM_API_KEY=<ключ OpenRouter>
 MANDAT_LLM_EXTRA='{"provider":{"data_collection":"deny"},"usage":{"include":true}}'
 ```
