@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-11-24T12:30:57+00:00",
+  "generated_at": "2026-11-28T10:55:21+00:00",
   "engine": "mandat/0.4.0",
   "source": {
-    "base_commit": "ca9066dd7b5ddd6ff5bfae1d59c1bc83bf3af7fd",
+    "base_commit": "ac5c28ddb8a92f5a505572d8649f6b06b37609b4",
     "sources": [
       "src",
       "tests",
       "scripts",
       "examples"
     ],
-    "sha256": "ee00c94581d0bcfc3343a567e835fa97548567efcccb79ee1a56c57cdcbe6dbc",
+    "sha256": "0214494d218dac4f2204f579b9e6b5381ef3783183d320f529d5c3f831b45380",
     "check": "python scripts/build_evidence.py --verify-source"
   },
   "python": "3.13.18",
@@ -157,18 +157,19 @@
   "latency": {
     "command": "python scripts/bench.py --rounds 20",
     "cases": 280,
-    "median_ms": 3.9,
-    "p95_ms": 5.58,
+    "median_ms": 3.38,
+    "p95_ms": 5.88,
     "machine": "x86_64, Python 3.13.18",
     "scope": "разбор XML и JSON, 39 правил, свёртка, отчёт; без сети и без модели"
   },
   "tests": {
     "command": "python -m pytest -q",
-    "returncode": 0,
-    "summary": "2147 passed in 221.40s (0:03:41)",
-    "passed": 2147,
-    "collected": 2147,
-    "coverage_percent": 95.8
+    "returncode": 1,
+    "summary": "1 failed, 2150 passed in 203.40s (0:03:23)",
+    "failed": 1,
+    "passed": 2150,
+    "collected": 2151,
+    "coverage_percent": 95.7
   },
   "pilot_readiness": {
     "command": "python -m pytest -rA tests/test_access_matrix.py tests/test_api_errors.py tests/test_attestation_request_binding.py tests/test_attestation_validation.py tests/test_erase_case.py tests/test_incident_and_access_review.py::test_access_review_names_what_to_remove_or_assign tests/test_incident_and_access_review.py::test_both_deadlines_run_from_detection_not_one_after_another tests/test_incident_and_access_review.py::test_report_lists_who_touched_which_cases_before_detection tests/test_journal_minimisation.py tests/test_keymaterial.py tests/test_llm_chokepoint.py tests/test_pii_minimisation.py tests/test_pilot_checklist.py::test_every_network_module_is_a_declared_route tests/test_pilot_checklist.py::test_every_personal_field_has_a_purpose tests/test_pilot_checklist.py::test_fields_without_a_purpose_do_not_reach_the_report tests/test_readyz_and_pilot_compose.py tests/test_restore_check.py tests/test_server_log_scrub.py tests/test_token_lifecycle.py",
