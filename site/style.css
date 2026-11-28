@@ -648,8 +648,10 @@ video { display: block; width: 100%; border-radius: 14px; border: 1px solid var(
 
 /* ---------- Подвал ---------- */
 .foot { padding: 28px 0 calc(40px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
-.foot .row { display: flex; flex-wrap: wrap; gap: 8px 22px; justify-content: space-between; }
+.foot .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; justify-content: space-between; }
 .foot a { color: var(--muted); }
+/* «Код на GitHub» и «Наверх» — цели касания 44 px в высоту, а не строка текста. */
+.foot-links a { display: inline-flex; align-items: center; min-height: 44px; }
 
 /* Появление по прокрутке: только там, где есть scroll-driven animations; без них всё видно сразу */
 @supports (animation-timeline: view()) {
@@ -1078,3 +1080,15 @@ html.on-route body { padding-bottom: 80px; }
 @keyframes live-in { from { opacity: 0; transform: translateY(8px); } }
 @media (max-width: 1023px) { .hero-art .live { position: relative; left: auto; bottom: auto; width: min(50%, 360px); flex: none; } }
 @media (max-width: 600px) { .hero-art .live { width: min(100%, 380px); } }
+
+/* ---------- Касание пальцем: цели не меньше 44 × 44 px (WCAG 2.5.5) ----------
+   Только для сенсорных экранов: с мышью и трекпадом ленты, оглавления и подвал остаются плотными. */
+@media (pointer: coarse) {
+  .roles a, .audience a, .toc a, .pager-all a, .scrub-date { min-height: 44px; }
+  .pager-track a { height: 44px; }
+  .foot-map a { display: inline-flex; align-items: center; min-height: 44px; padding: 0; }
+  details:not(.fold) > summary { min-height: 44px; padding-block: 8px; }
+  .inputs input[type="range"], .law-ctl input[type="range"] { min-height: 44px; }
+  .live-toggle { top: 4px; right: 4px; width: 44px; height: 44px; }
+  .live-top { padding-right: 46px; }
+}
