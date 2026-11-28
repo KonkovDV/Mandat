@@ -149,6 +149,18 @@ def test_r_id_003_wrong_representative_refutes():
     assert report.verdict.value == "refuted"
 
 
+def test_r_id_003_unparsed_poa_makes_absence_not_verified():
+    """Заявитель указан в передоверии, которое не разобралось: его отсутствие в корневой МЧД — не опровержение."""
+
+    def spoil(scenario):
+        scenario.files["poa-child.xml"] = scenario.files["poa-child.xml"][:200]
+
+    report = run("ok_subdelegation", mutate=spoil)
+    assert rule_effects(report, "R-ID-003") == {"not_verified"}
+    assert report.verdict.value == "insufficient_data"
+    assert run("wrong_representative").verdict.value == "refuted", "без сбоя разбора отказ остаётся отказом"
+
+
 def test_r_reg_001_revoked_refutes():
     report = run("revoked")
     assert "refutes" in rule_effects(report, "R-REG-001")

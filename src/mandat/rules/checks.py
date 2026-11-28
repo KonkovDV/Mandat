@@ -506,6 +506,16 @@ def id_conflict(ctx: RuleContext) -> list[Finding]:
     ]
 
 
+def _absent(ctx: RuleContext, message: str, refs: list[EvidenceRef]) -> list[Finding]:
+    """Заявителя нет в разобранных МЧД. Если какая-то МЧД пакета не разобрана, он мог быть указан в ней:
+    это «не проверено», а не опровержение."""
+    unread = [err.doc_id for err in ctx.case.intake_errors if err.kind == "emchd_xml"]
+    if unread:
+        tail = f"; не разобрана МЧД {', '.join(unread)}, заявитель мог быть указан в ней"
+        return [ctx.emit("R-ID-003", E.NOT_VERIFIED, message + tail, refs)]
+    return [ctx.emit("R-ID-003", E.REFUTES, message, refs)]
+
+
 @rule("R-ID-003")
 def id_representative(ctx: RuleContext) -> list[Finding]:
     req = ctx.case.requester
@@ -521,7 +531,7 @@ def id_representative(ctx: RuleContext) -> list[Finding]:
         if not ctx.case.poas:
             return []
         refs = [poa.ref("representative.1") for poa in ctx.case.poas]
-        return [ctx.emit("R-ID-003", E.REFUTES, f"{req.label()} не указан представителем ни в одной МЧД пакета", refs)]
+        return _absent(ctx, f"{req.label()} не указан представителем ни в одной МЧД пакета", refs)
     leaf = ctx.chain.leaf
     assert leaf is not None
     if any(rep.conflicts_with(req) for rep in leaf.representatives) and not any(
@@ -538,7 +548,7 @@ def id_representative(ctx: RuleContext) -> list[Finding]:
                     [leaf.ref(f"representative.{index}")],
                 )
             ]
-    return [ctx.emit("R-ID-003", E.REFUTES, "Заявитель не совпадает с представителем", [leaf.ref("representative.1")])]
+    return _absent(ctx, "Заявитель не совпадает с представителем", [leaf.ref("representative.1")])
 
 
 _ORG_FORMS = {
