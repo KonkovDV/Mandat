@@ -6,18 +6,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
 
 from mandat import ENGINE
 from mandat.data import sha256_json
+from mandat.domain.conclusion import Conclusion
 from mandat.domain.graph import AuthorityChain, build_chain
 from mandat.domain.model import Case, EvidenceRef, Finding, PowerOfAttorney
 from mandat.domain.verdict import CHECK_LABEL_RU, VERDICT_LABEL_RU, LegalEffect, Verdict, fold, get_profile
 from mandat.domain.verdict_oracle import oracle_verdict
 from mandat.ports import FixtureBankruptcy, FixtureRegistry, NotConnectedSignature, Ports
-from mandat.rules.approvals import effective_pack
+from mandat.rules.approvals import Approvals, effective_pack
 from mandat.rules.checks import RuleContext, run_rules
 from mandat.rules.classifier import Classifier, default_classifier
 from mandat.rules.pack import OperationCatalog, RulePack, default_catalog, default_pack
@@ -56,12 +58,21 @@ class CaseReport:
     stand: tuple[str, ...]
     objection: str
     generated_at: str
+    # Что дал реестр заключений юриста (только строгий профиль и только если у ОГРН кейса есть заключения).
+    # Без заключений поля в отчёте нет, и хеш отчёта прежний.
+    conclusions: dict[str, Any] | None = None
 
     @property
     def verdict_label(self) -> str:
         return VERDICT_LABEL_RU[self.verdict]
 
     def body(self) -> dict[str, Any]:
+        out = self._body()
+        if self.conclusions is not None:
+            out["charter_conclusions"] = self.conclusions
+        return out
+
+    def _body(self) -> dict[str, Any]:
         return {
             "engine": ENGINE,
             "case_id": self.case_id,
@@ -226,14 +237,22 @@ def verify_case(
     advisory: list[Finding] | None = None,
     trusted_sources: frozenset[str] = frozenset(),
     now: datetime | None = None,
+    conclusions: Sequence[Conclusion] = (),
+    approvals: Approvals | None = None,
 ) -> CaseReport:
-    """``advisory`` — находки модели: попадают в отчёт как справка и не влияют на вердикт (ADR-001)."""
+    """``advisory`` — находки модели: попадают в отчёт как справка и не влияют на вердикт (ADR-001).
+
+    ``conclusions`` — заключения юриста по уставам из реестра банка (``api/storage.py``); их читает только
+    строгий профиль (R-CHR-002). Из манифеста клиента они не приходят. ``approvals`` — набор подписанных
+    утверждений правил вместо файлов из окружения: так оценка строит конфигурацию пилота
+    (``eval/repeat.py``); HTTP API этот параметр не передаёт.
+    """
     # Профиль проверяется серверной политикой: в pilot/prod demo недоступен ни явно, ни по умолчанию.
     prof = get_profile(resolve_profile(profile))
     catalog = catalog or default_catalog()
     # Статус «approved» — только по действующей подписанной записи юриста (rules/approvals.py), в любом профиле;
     # для правил, читающих каталог операций, запись привязана и к этому каталогу.
-    pack, approval_notes = effective_pack(pack or default_pack(), now or datetime.now(UTC), None, catalog.sha256)
+    pack, approval_notes = effective_pack(pack or default_pack(), now or datetime.now(UTC), approvals, catalog.sha256)
     classifier = classifier or default_classifier()
     ports = ports or default_ports(case)
     chain = build_chain(case, max_links=int(pack.get("R-SUB-008").param("max_chain_links")))
@@ -247,6 +266,7 @@ def verify_case(
         profile_name=prof.name,
         # Сверка снимков с часами — только при явно переданном моменте: синтетика демо живёт в своих датах.
         now=now,
+        conclusions=tuple(conclusions),
     )
     findings = run_rules(ctx)
     if prof.name == "strict":
@@ -306,4 +326,5 @@ def verify_case(
         stand=tuple(_stand(prof.name, stand_notes(ports, catalog, classifier))),
         objection=objection,
         generated_at=(now or datetime.now(UTC)).isoformat(timespec="seconds"),
+        conclusions=ctx.conclusion_match.section() if ctx.conclusion_match is not None else None,
     )

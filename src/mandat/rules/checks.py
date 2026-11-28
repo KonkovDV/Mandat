@@ -14,6 +14,7 @@ from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import Any
 
 from mandat.data import load_json, sha256_json
+from mandat.domain.conclusion import Conclusion
 from mandat.domain.graph import AuthorityChain
 from mandat.domain.identifiers import (
     comparable_snils,
@@ -27,6 +28,7 @@ from mandat.domain.model import Case, EvidenceRef, ExecutiveRecord, Finding, Pow
 from mandat.domain.verdict import LegalEffect
 from mandat.intake.charter import CandidateFact, extract_charter_facts
 from mandat.ports import BankruptcyStatus, Ports, RegistryObservation, RegistryStatus, SignatureStatus
+from mandat.rules import conclusions as registry
 from mandat.rules.classifier import Classifier, default_classifier
 from mandat.rules.pack import OperationCatalog, RulePack
 from mandat.services.env_policy import protected
@@ -57,6 +59,11 @@ class RuleContext:
     profile_name: str = "demo"
     # Момент проверки: снимок источника позже него — не наблюдение, а ошибка часов или подмена.
     now: datetime | None = None
+    # Реестр заключений юриста по уставам организации кейса (``rules.conclusions``): читает только строгий профиль.
+    conclusions: tuple[Conclusion, ...] = ()
+    conclusion_match: registry.Match | None = None
+    # Факты, найденные в тексте устава шаблонами. Когда действует заключение, ``charter_facts`` — его ограничения.
+    heuristic_facts: list[CandidateFact] = field(default_factory=list)
     _registry: dict[str, RegistryObservation] = field(default_factory=dict, repr=False)
 
     def registry(self, number: str | None) -> RegistryObservation:
@@ -1811,6 +1818,10 @@ def _same_day_transfers(ctx: RuleContext) -> list[Finding]:
 
 @rule("R-CHR-001")
 def charter_limits(ctx: RuleContext) -> list[Finding]:
+    """Ограничения устава: найденные в тексте шаблонами или записанные в применённом заключении юриста.
+
+    Ограничение из заключения проверяется так же, как найденное в тексте, и в сообщении назван номер заключения.
+    """
     amount = ctx.case.operation.amount_rub
     out = []
     thresholds = [fact for fact in ctx.charter_facts if fact.value is not None]
@@ -1819,14 +1830,20 @@ def charter_limits(ctx: RuleContext) -> list[Finding]:
             ctx.emit(
                 "R-CHR-001",
                 E.NEEDS_REVIEW,
-                "Сумма операции не задана или неположительна: порог устава не с чем сравнить",
+                "Сумма операции не задана или неположительна: порог устава не с чем сравнить"
+                + registry.source(thresholds[0]),
                 [thresholds[0].ref],
             )
         )
     for fact in ctx.charter_facts:
         if fact.kind == "joint_signature":
             out.append(
-                ctx.emit("R-CHR-001", E.NEEDS_REVIEW, "Устав требует совместных действий или подписей", [fact.ref])
+                ctx.emit(
+                    "R-CHR-001",
+                    E.NEEDS_REVIEW,
+                    "Устав требует совместных действий или подписей" + registry.source(fact),
+                    [fact.ref],
+                )
             )
         elif fact.kind == "large_deal_approval" and fact.value is None:
             out.append(
@@ -1834,7 +1851,7 @@ def charter_limits(ctx: RuleContext) -> list[Finding]:
                     "R-CHR-001",
                     E.NEEDS_REVIEW,
                     "В уставе есть положение о крупных сделках без числового порога: "
-                    "применимость к этой операции не установлена и одобрение не показано",
+                    "применимость к этой операции не установлена и одобрение не показано" + registry.source(fact),
                     [fact.ref],
                 )
             )
@@ -1848,7 +1865,8 @@ def charter_limits(ctx: RuleContext) -> list[Finding]:
                 ctx.emit(
                     "R-CHR-001",
                     E.NEEDS_REVIEW,
-                    f"Сумма операции {amount:,} ₽ {word} порога устава {fact.value:,} ₽".replace(",", " "),
+                    f"Сумма операции {amount:,} ₽ {word} порога устава {fact.value:,} ₽".replace(",", " ")
+                    + registry.source(fact),
                     [fact.ref],
                 )
             )
@@ -1857,22 +1875,65 @@ def charter_limits(ctx: RuleContext) -> list[Finding]:
 
 @rule("R-CHR-002")
 def charter_info(ctx: RuleContext) -> list[Finding]:
-    """Отметка ``charter_disposition`` приходит из манифеста клиента.
+    """Отметка ``charter_disposition`` приходит из манифеста клиента; заключение юриста — из реестра банка.
 
-    Принимает её только профиль demo: у отметки нет согласующего, основания, версии документа и
+    Отметку принимает только профиль demo: у неё нет согласующего, основания, версии документа и
     области действия. Профиль demo вне demo/dev/test не запускается (``services.env_policy``), а
     ``protected()`` оставлен как второй рубеж для прямых вызовов. Об игнорировании сказано в отчёте.
+
+    Строгий профиль принимает вместо отметки заключение из реестра (``rules.conclusions``): утверждённое вторым
+    юристом, действующее, по той же редакции устава и с областью, которая покрывает операцию. Находка называет
+    заключение. Заключение, которое не подошло, названо с причиной, а кейс идёт тем же путём, что и без реестра.
     """
+    found = ctx.conclusion_match
+    if found is not None and found.applied:
+        return _applied_conclusions(ctx, found)
     if ctx.case.charter_disposition is None or (ctx.profile_name == "demo" and not protected()):
-        return _charter_info(ctx, cleared=ctx.case.charter_disposition == "no_applicable_restriction")
-    note = ctx.emit(
-        "R-CHR-002",
-        E.NEEDS_REVIEW,
-        "Отметка манифеста об отсутствии ограничений устава в этом профиле не принимается: "
-        "нужно заключение уполномоченного сотрудника",
-        [],
-    )
-    return [note, *_charter_info(ctx, cleared=False)]
+        base = _charter_info(ctx, cleared=ctx.case.charter_disposition == "no_applicable_restriction")
+    else:
+        note = ctx.emit(
+            "R-CHR-002",
+            E.NEEDS_REVIEW,
+            "Отметка манифеста об отсутствии ограничений устава в этом профиле не принимается: "
+            "нужно заключение уполномоченного сотрудника",
+            [],
+        )
+        base = [note, *_charter_info(ctx, cleared=False)]
+    if found is None:
+        return base
+    # Неприменённое заключение — справка, если без реестра кейс идёт дальше, и повод для разбора рядом с таким же.
+    effect = E.NEEDS_REVIEW if any(f.effect is E.NEEDS_REVIEW for f in base) else E.INFO
+    notes = [
+        ctx.emit("R-CHR-002", effect, registry.skipped_message(item, why), [registry.ref(item)])
+        for item, why in found.skipped[: registry.MAX_NOTES]
+    ]
+    return [*base, *notes]
+
+
+def _applied_conclusions(ctx: RuleContext, found: registry.Match) -> list[Finding]:
+    """Устав закрыт заключением: справка о каждом применённом, расхождение выводов — на разбор."""
+    doc = ctx.case.charter
+    refs = [EvidenceRef(doc.doc_id, doc.sha256, "text")] if doc is not None else []
+    kinds = ", ".join(sorted({f.kind for f in ctx.heuristic_facts}))
+    code = ctx.case.operation.code
+    out = [
+        ctx.emit("R-CHR-002", E.INFO, registry.applied_message(item, code, kinds), [registry.ref(item), *refs])
+        for item in found.applied
+    ]
+    out += [
+        ctx.emit("R-CHR-002", E.NEEDS_REVIEW, registry.skipped_message(item, why), [registry.ref(item)])
+        for item, why in found.conflict[: registry.MAX_NOTES]
+    ]
+    if ctx.case.charter_disposition is not None:
+        out.append(
+            ctx.emit(
+                "R-CHR-002",
+                E.INFO,
+                "Отметка манифеста об уставе не учитывается: устав закрыт заключением юриста из реестра",
+                [],
+            )
+        )
+    return out
 
 
 def _charter_info(ctx: RuleContext, *, cleared: bool) -> list[Finding]:
@@ -2003,6 +2064,13 @@ def run_rules(ctx: RuleContext) -> list[Finding]:
     charter = ctx.case.charter
     max_chars = int(ctx.pack.get("R-CHR-002").param("charter_max_chars"))
     ctx.charter_facts = extract_charter_facts(charter) if charter and len(charter.text) <= max_chars else []
+    ctx.heuristic_facts = list(ctx.charter_facts)
+    # Реестр заключений юриста читает только строгий профиль: demo по-прежнему верит отметке манифеста.
+    ctx.conclusion_match = (
+        registry.match(ctx.conclusions, ctx.case, ctx.now) if ctx.conclusions and ctx.profile_name == "strict" else None
+    )
+    if ctx.conclusion_match is not None and ctx.conclusion_match.applied:
+        ctx.charter_facts = registry.facts(ctx.conclusion_match.applied)
     findings: list[Finding] = []
     for rule_id in ctx.pack.rules:
         if ctx.pack.rules[rule_id].status == "retired":
