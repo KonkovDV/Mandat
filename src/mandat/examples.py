@@ -53,16 +53,15 @@ CHARTER_NOTE = (
 SEED = 2026
 
 
-def write_examples(target: Path) -> list[Path]:
-    written = []
+def demo_cases() -> list[tuple[str, dict[str, Any], dict[str, bytes]]]:
+    """Демо-кейсы, как в examples/cases: имя папки, манифест (документы — путями) и файлы документов."""
     plan: list[tuple[str, str, str, str | None]] = [
         (folder, defect, title, None) for folder, (defect, title) in DEMO.items()
     ]
     plan += [(folder, defect, title, expected) for folder, (defect, title, expected) in OVERLAYS.items()]
+    cases = []
     for folder, defect, title, expected in plan:
         scenario = build(defect, seed=SEED)
-        case_dir = target / folder
-        case_dir.mkdir(parents=True, exist_ok=True)
         manifest = {
             **scenario.manifest,
             "case_id": folder,
@@ -74,10 +73,19 @@ def write_examples(target: Path) -> list[Path]:
         if folder == "14_old_director_charter_cleared":
             manifest["charter_disposition"] = "no_applicable_restriction"
             manifest["charter_disposition_note"] = CHARTER_NOTE
+        cases.append((folder, manifest, dict(scenario.files)))
+    return cases
+
+
+def write_examples(target: Path) -> list[Path]:
+    written = []
+    for folder, manifest, files in demo_cases():
+        case_dir = target / folder
+        case_dir.mkdir(parents=True, exist_ok=True)
         (case_dir / "case.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
         )
-        for name, raw in scenario.files.items():
+        for name, raw in files.items():
             (case_dir / name).write_bytes(raw)
         written.append(case_dir)
     events = target.parent / "events"
