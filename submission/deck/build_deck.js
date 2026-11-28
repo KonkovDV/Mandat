@@ -10,7 +10,7 @@ const fs = require("fs");
 const path = require("path");
 const pptxgen = require("pptxgenjs");
 const sharp = require("sharp");
-const { buildGraphics, photoPanel, roundedPhoto, squarePhoto, icon3d } = require("./graphics");
+const { buildGraphics, photoPanel, photoCorner, fillBackground, roundedPhoto, squarePhoto, icon3d } = require("./graphics");
 
 const EVIDENCE = process.argv[2] || path.join(__dirname, "..", "..", "evidence.json");
 const OUT = process.argv[3] || path.join(__dirname, "..", "..", "Mandat_VTB.pptx");
@@ -307,11 +307,14 @@ const TERMINAL = {
 
 (async () => {
   const G = await buildGraphics({ terminal: TERMINAL, qrSvg: path.join(ASSETS, "qr-github.svg"), qrSiteSvg: path.join(ASSETS, "qr-site.svg") });
-  // Амбассадор и 3D-значки сделаны в Figma (docs/VISUALS.md).
+  // Амбассадор и 3D-значки сделаны в Figma (docs/VISUALS.md). У Анны на каждом слайде своя поза: кадры полного роста
+  // лежат в docs/assets/anna, поясной «привет» — в консоли стенда; sharp читает WebP сам, в колоду идёт JPEG.
   const VIS = path.join(ASSETS, "visuals");
+  const POSE = (name) => path.join(ROOT, "docs", "assets", "anna", `${name}.webp`);
   const ANNA = {
-    cover: await photoPanel(path.join(VIS, "anna-hero.jpg"), 8.5, { position: "top" }),
-    final: await photoPanel(path.join(VIS, "anna-final.jpg"), 8.75, { position: "left" }),
+    // Приветствие в полный рост: ладонь у левого края фигуры, поэтому растушёвка короче обычной и на ладонь не заходит.
+    cover: await photoPanel(POSE("anna-welcome"), 8.45, { position: "top", fade: 0.2 }),
+    final: await photoCorner(path.join(ROOT, "src", "mandat", "console", "static", "anna-hello-480.webp"), 8.7, 4.35, { edgeLeft: 0.05, edgeTop: 0.02 }),
   };
   const ICON3D = {};
   for (const name of ["showcase", "law", "verify", "pilot", "criteria", "search"]) ICON3D[name] = await icon3d(path.join(VIS, `icon-${name}.png`));
@@ -491,7 +494,7 @@ const TERMINAL = {
   // ---------- 1. Обложка ----------
   {
     const s = pres.addSlide({ masterName: "Обложка", sectionTitle: "Питч" });
-    s.addImage({ data: ANNA.cover.data, x: ANNA.cover.x, y: 0, w: ANNA.cover.w, h: ANNA.cover.h, altText: "Анна, амбассадор «Мандата», в тёмно-синем костюме", objectName: "Фото амбассадора" });
+    s.addImage({ data: ANNA.cover.data, x: ANNA.cover.x, y: 0, w: ANNA.cover.w, h: ANNA.cover.h, altText: "Анна, амбассадор «Мандата», в полный рост приветствует поднятой ладонью", objectName: "Фото амбассадора" });
     T(s, "Академия Финтеха 2026 · трек ВТБ «Финтех без границ» · задача «Онбординг и проверка полномочий»", L, 0.55, 7.0, 0.55, { size: 12, color: TINT.ice });
     s.addImage({ data: G.lockupDark, x: L, y: 1.6, w: 3.9, h: 0.78, altText: "Логотип «Мандата»", objectName: "Логотип" });
     s.addText(typoRuns([{ text: "Единое окно полномочий", options: { breakLine: true } }, { text: "для бизнес-клиентов банка", options: { fontFace: SERIF, italic: true, bold: false, fontSize: 30, color: "8FD0FF" } }]), { placeholder: "title" });
@@ -984,14 +987,24 @@ const TERMINAL = {
     const file = path.join(ROOT, "site", "img", "devices-2400.webp");
     const meta = await sharp(file).metadata();
     const bh = 0.62, by = BOTTOM - bh;
-    const dw = 8.0, dh = (dw * meta.height) / meta.width;
-    if (TOP + dh > by - 0.04) throw new Error(`«Шесть экранов»: картинка высотой ${dh.toFixed(2)} дюйма заходит на плашку`);
+    const rx = L + 8.2, rw = R - rx;
+    // Слева Анна в полный рост показывает ладонью на экраны (anna-present.webp, 1200×800). Правее ладони в кадре
+    // голограмма цепочки документов: край первого листа над ладонью (x от 557, y 100–257) закрывается ровным фоном,
+    // ладонь (y от 260) не трогается. В карточку идёт вся фигура с ладонью, без обрезанных листов.
+    const figure = { left: 170, top: 0, width: 426, height: 800 };
+    const presentFull = await fillBackground(POSE("anna-present"), { left: 549, top: 60, width: 51, height: 200 });
+    const ah = by - GAP - TOP, aw = (ah * figure.width) / figure.height;
+    s.addImage({
+      data: await roundedPhoto(presentFull, aw, ah, 0.12, HEX.lt2, { crop: figure }), x: L, y: TOP, w: aw, h: ah, objectName: "Фото амбассадора",
+      altText: "Анна, амбассадор «Мандата», в полный рост показывает ладонью на экраны с демо",
+    });
+    const dx = L + aw + 0.2, dw = rx - 0.2 - dx, dh = (dw * meta.height) / meta.width;
+    if (dh > ah) throw new Error(`«Шесть экранов»: картинка высотой ${dh.toFixed(2)} дюйма выше колонки`);
     const jpg = await sharp(file).flatten({ background: `#${HEX.lt2}` }).jpeg({ quality: 88, chromaSubsampling: "4:4:4" }).toBuffer();
     s.addImage({
-      data: "image/jpeg;base64," + jpg.toString("base64"), x: L - 0.05, y: TOP, w: dw, h: dh, objectName: "Шесть экранов",
+      data: "image/jpeg;base64," + jpg.toString("base64"), x: dx, y: TOP + (ah - dh) / 2, w: dw, h: dh, objectName: "Шесть экранов",
       altText: "Сайт «Мандата» на шести устройствах: захват компании по шагам на большом экране, главная на мониторе, разбор кейса в тёмной теме на ноутбуке, проверка подписи на планшете, ось дат операции на iPhone и план пилота на Android",
     });
-    const rx = L + dw + 0.2, rw = R - rx;
     // QR-код сайта: жюри открывает демо с телефона, пока идёт питч.
     const qh = 1.9, qs = 1.5;
     card(s, rx, TOP, rw, qh, { name: "Карточка QR-кода" });
@@ -1368,7 +1381,15 @@ const TERMINAL = {
     s.addShape(pres.shapes.DIAMOND, { x: dX, y: dCy - dd / 2, w: dd, h: dd, fill: { color: HEX.accent3 }, line: { type: "none" }, objectName: "Решение G2" });
     T(s, "G2", dX, dCy - dd / 2, dd, dd, { size: 10.5, bold: true, color: C.background1, align: "center", valign: "middle" });
     T(s, [{ text: "Решение", options: { bold: true, color: HEX.dk2, breakLine: true } }, { text: "продолжать или остановить" }], dX + dd + 0.1, dCy - 0.62, R - (dX + dd + 0.1) - 0.16, 0.84, { size: 11, valign: "bottom" });
-    const y2 = TOP + gh + 0.2, h2 = 1.74, w2 = (W - GAP) / 2;
+    // Справа внизу — Анна идёт к пилоту с папкой, рядом голограмма календаря (anna-pilot.webp, 640×960): карточка
+    // на высоту карточек и плашки, в кадре вся фигура с голограммой.
+    const y2 = TOP + gh + 0.2, h2 = 1.74;
+    const pilot = { left: 155, top: 0, width: 465, height: 960 };
+    const ah = BOTTOM - y2, aw = (ah * pilot.width) / pilot.height, aW = W - aw - GAP, w2 = (aW - GAP) / 2;
+    s.addImage({
+      data: await roundedPhoto(POSE("anna-pilot"), aw, ah, 0.12, HEX.lt2, { crop: pilot }), x: R - aw, y: y2, w: aw, h: ah, objectName: "Фото амбассадора",
+      altText: "Анна, амбассадор «Мандата», в полный рост идёт с папкой к пилоту, рядом голограмма календаря",
+    });
     const parts = [
       ["Target", "Критерии: продолжать или остановить", ["0 ложных «подтверждено» на выборке от 300 пакетов", "доля «на разбор» не выше согласованного порога", "согласие с экспертами: каппа Коэна не ниже 0,8", "время на пакет меньше, чем по замеру недели 1"]],
       ["Handshake", "Что нужно от ВТБ", ["владелец процесса и куратор пилота", "регламент одной операции и типовые отказы", "от 300 обезличенных пакетов, из них 139 с дефектом", "юрист для правил; базовые цифры для расчёта эффекта"]],
@@ -1378,12 +1399,12 @@ const TERMINAL = {
       card(s, x, y2, w2, h2);
       tile(s, x + 0.25, y2 + 0.16, 0.42, ic);
       T(s, head, x + 0.82, y2 + 0.16, w2 - 1.02, 0.42, { size: 14, bold: true, color: C.text2, valign: "middle" });
-      bullets(s, items, x + 0.3, y2 + 0.7, w2 - 0.55, h2 - 0.78, { size: 12, psa: 3 });
+      bullets(s, items, x + 0.3, y2 + 0.7, w2 - 0.5, h2 - 0.78, { size: 11.5, psa: 3 });
     });
     const cy = y2 + h2 + 0.2, chh = BOTTOM - cy;
-    s.addImage({ data: G.band, x: L, y: cy, w: W, h: chh, altText: "", objectName: "Плашка запроса" });
+    s.addImage({ data: G.band, x: L, y: cy, w: aW, h: chh, altText: "", objectName: "Плашка запроса" });
     tile(s, L + 0.22, cy + (chh - 0.44) / 2, 0.44, "Rocket", { fill: TINT.navyTile, icon: "light" });
-    T(s, "Просим теневой пилот через Акселератор ВТБ. Метрики согласуем до старта", L + 0.86, cy, W - 1.1, chh, { size: 15, bold: true, color: C.background1, valign: "middle" });
+    T(s, "Просим теневой пилот через Акселератор ВТБ. Метрики согласуем до старта", L + 0.86, cy, aW - 1.1, chh, { size: 15, bold: true, color: C.background1, valign: "middle" });
     s.addNotes("[4:08–4:22] Предлагаем теневой пилот на одной операции: праве подписи платежей по доверенности. Сначала четыре-восемь недель подготовки, потом шесть недель проверки. «Мандат» работает рядом с сотрудниками и на решения банка не влияет. Стоп-критерий один: первое ложное «да».");
   }
 
@@ -1496,7 +1517,7 @@ const TERMINAL = {
   // ---------- 24. Контакты ----------
   {
     const s = pres.addSlide({ masterName: "Финал", sectionTitle: "Питч" });
-    s.addImage({ data: ANNA.final.data, x: ANNA.final.x, y: 0, w: ANNA.final.w, h: ANNA.final.h, altText: "Анна, амбассадор «Мандата», с планшетом", objectName: "Фото амбассадора" });
+    s.addImage({ data: ANNA.final.data, x: ANNA.final.x, y: 0, w: ANNA.final.w, h: ANNA.final.h, altText: "Анна, амбассадор «Мандата», машет рукой на прощание", objectName: "Фото амбассадора" });
     s.addImage({ data: G.lockupDark, x: L, y: 0.66, w: 2.4, h: 0.48, altText: "Логотип «Мандата»", objectName: "Логотип" });
     s.addText(typo("Спасибо! Готовы к теневому пилоту в ВТБ"), { placeholder: "title" });
     const rows = [

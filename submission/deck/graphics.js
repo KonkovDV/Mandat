@@ -313,10 +313,61 @@ async function photoPanel(file, xIn, opts = {}) {
   return { data: jpeg(out), x: xIn, w: SLIDE_W - xIn, h: 7.5 };
 }
 
+// Поясной кадр на тёмном слайде: снимок шириной wIn прижат к правому и нижнему краю полосы от xIn. Вверх и влево
+// он достроен копией своего крайнего ряда, и в фон уходит этот достроенный край, а не фигура: голова и рука целы.
+// edgeLeft и edgeTop — доли кадра у левого и верхнего края, где на снимке ещё только фон.
+async function photoCorner(file, xIn, wIn, opts = {}) {
+  const left = Math.round(xIn * BG_PX), width = BG_W - left;
+  const meta = await sharp(file).metadata();
+  const pw = Math.round(wIn * BG_PX), ph = Math.round((pw * meta.height) / meta.width);
+  if (pw > width || ph > BG_H) throw new Error(`photoCorner: кадр ${wIn}″ не помещается в полосу от ${xIn}″`);
+  const padL = width - pw, padT = BG_H - ph;
+  const bg = await sharp(await darkBackground()).extract({ left, top: 0, width, height: BG_H }).png().toBuffer();
+  const photo = await sharp(file).resize(pw, ph, { kernel: "lanczos3" }).extend({ top: padT, left: padL, extendWith: "copy" }).png().toBuffer();
+  const fx = ((padL + (opts.edgeLeft ?? 0) * pw) / width).toFixed(3);
+  const y0 = (Math.max(0, padT - (opts.fadeTop ?? 1.4) * BG_PX) / BG_H).toFixed(3), y1 = ((padT + (opts.edgeTop ?? 0) * ph) / BG_H).toFixed(3);
+  const mask = (x2, y2, a, b) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${BG_H}"><defs>
+    <linearGradient id="f" x1="0" y1="0" x2="${x2}" y2="${y2}"><stop offset="${a}" stop-color="#FFF" stop-opacity="0"/><stop offset="${b}" stop-color="#FFF" stop-opacity="1"/></linearGradient></defs>
+    <rect width="${width}" height="${BG_H}" fill="url(#f)"/></svg>`);
+  const faded = await sharp(photo).ensureAlpha()
+    .composite([{ input: mask(1, 0, 0, fx), blend: "dest-in" }, { input: mask(0, 1, y0, y1), blend: "dest-in" }]).png().toBuffer();
+  const out = await sharp(bg).composite([{ input: faded }]).jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toBuffer();
+  return { data: jpeg(out), x: xIn, w: SLIDE_W - xIn, h: 7.5 };
+}
+
+// Закрыть кусок ровного студийного фона (box — в точках исходника): каждый столбец плавно идёт от полосы над куском
+// к полосе под ним, а у левого края заливка подгоняется к соседним столбцам. Опорные полосы усреднены, чтобы шум
+// сжатия не тянулся вертикальными штрихами; всё вокруг куска не меняется, поэтому шва нет. Только для фона.
+async function fillBackground(file, box) {
+  const { data, info } = await sharp(file).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info, src = Buffer.from(data);
+  const { left: x0, top: y0, width: bw, height: bh } = box, y1 = y0 + bh;
+  const mean = (xa, xb, ya, yb, c) => {
+    let s = 0, n = 0;
+    for (let y = Math.max(0, ya); y <= Math.min(height - 1, yb); y++)
+      for (let x = Math.max(0, xa); x <= Math.min(width - 1, xb); x++) { s += src[(y * width + x) * channels + c]; n++; }
+    return s / n;
+  };
+  for (let c = 0; c < channels; c++) {
+    const top = (x) => mean(x - 3, x + 3, y0 - 3, y0 - 1, c), bot = (x) => mean(x - 3, x + 3, y1, y1 + 2, c);
+    for (let y = y0; y < y1; y++) {
+      const t = (y - y0 + 1) / (bh + 1);
+      const drift = mean(x0 - 3, x0 - 1, y - 2, y + 2, c) - ((1 - t) * top(x0 - 2) + t * bot(x0 - 2));
+      for (let x = x0; x < x0 + bw; x++) {
+        const v = (1 - t) * top(x) + t * bot(x) + drift * Math.exp(-(x - x0 + 1) / 12);
+        data[(y * width + x) * channels + c] = Math.max(0, Math.min(255, Math.round(v)));
+      }
+    }
+  }
+  return sharp(data, { raw: info }).png().toBuffer();
+}
+
 // Фото со скруглёнными углами на светлом слайде: углы закрашены цветом фона, файл остаётся JPEG.
+// opts.crop — кусок исходника в его точках, который ложится в рамку: так фигура в полный рост не обрезается.
 async function roundedPhoto(file, wIn, hIn, rIn, bgHex, opts = {}) {
   const k = 192, w = Math.round(wIn * k), h = Math.round(hIn * k), r = Math.round(rIn * k);
-  const photo = await sharp(file).resize(w, h, { fit: "cover", position: opts.position ?? "centre" }).png().toBuffer();
+  const src = opts.crop ? sharp(file).extract(opts.crop) : sharp(file);
+  const photo = await src.resize(w, h, { fit: "cover", position: opts.position ?? "centre" }).png().toBuffer();
   const mask = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" rx="${r}" fill="#FFF"/></svg>`;
   const clipped = await sharp(photo).ensureAlpha().composite([{ input: Buffer.from(mask), blend: "dest-in" }]).png().toBuffer();
   const out = await sharp({ create: { width: w, height: h, channels: 3, background: `#${bgHex}` } })
@@ -337,4 +388,4 @@ async function icon3d(file, size = 256) {
   return "image/png;base64," + out.toString("base64");
 }
 
-module.exports = { BRAND, FONT, buildGraphics, photoPanel, roundedPhoto, squarePhoto, icon3d };
+module.exports = { BRAND, FONT, buildGraphics, photoPanel, photoCorner, fillBackground, roundedPhoto, squarePhoto, icon3d };
