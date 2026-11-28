@@ -126,8 +126,11 @@ def main() -> None:
     ap.add_argument("--out", default="var/eval/advisory.json")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--timeout", type=float, default=TIMEOUT, help="предел одного вызова, с")
+    ap.add_argument("--extra", help="JSON доп. полей вместо полей OpenRouter; '{}' — без них (Yandex AI Studio)")
     args = ap.parse_args()
     globals()["TIMEOUT"] = args.timeout
+    if args.extra is not None:
+        globals()["EXTRA"] = json.loads(args.extra)
     base = os.environ.get("EVAL_LLM_BASE_URL", "")
     key = os.environ.get("EVAL_LLM_API_KEY", "")
     out = Path(args.out)
