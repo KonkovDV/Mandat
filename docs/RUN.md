@@ -35,6 +35,10 @@ python -m pytest
 docker pull ghcr.io/konkovdv/mandat:0.4.0
 ```
 
+## Стенд для жюри
+
+Консоль сотрудника на `/console/` — проверка, консультант, очередь юриста, допуск в ДБО и прогон — включается флагом `MANDAT_STAND=1` вне `pilot` и `prod`: `MANDAT_STAND=1 mandat serve --port 8000`. Сервер с доменом и HTTPS поднимает одна команда `bash scripts/deploy_stand.sh <домен>`; как передать ключ модели, проверить стенд и откатить выкладку — в [runbook стенда](STAND.md).
+
 ## API
 
 Docker поднимает API только на localhost: `docker compose up --build`. Сначала положите в `.env` токен или список пользователей (образец в `.env.example`). Без них compose не стартует, чтобы стенд не оказался открыт с паролем по умолчанию.
