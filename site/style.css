@@ -211,6 +211,16 @@ figure.page-art { margin: 0 0 8px 24px; width: clamp(120px, 17vw, 200px); }
 @media (max-width: 560px) { .page-art { width: 84px; margin: -6px -4px 4px 12px; } figure.page-art { width: 112px; margin: 0 0 6px 14px; } }
 /* На узком телефоне картинка шапки не обтекается текстом: иначе длинное слово заголовка не влезает в строку. */
 @media (max-width: 480px) { .page-art { float: none; display: block; width: 64px; margin: -6px 0 6px -6px; } figure.page-art { display: none; } }
+/* Анна в шапке «Экономики» — в полный рост, в шапке «Закона» — по плечи в круглой рамке. Картинка декоративная.
+   Заголовки этих страниц без длинных слов, поэтому и на узком телефоне фото остаётся справа маленьким, текст его
+   обтекает и под него не заходит. */
+figure.page-art.round { width: clamp(120px, 15vw, 184px); }
+.page-art.photo.round img { aspect-ratio: 1; border-radius: 50%; box-shadow: 0 0 0 1px rgb(214 178 106 / 55%), 0 18px 40px rgb(10 41 115 / 24%); }
+@media (max-width: 480px) {
+  figure.page-art.full, figure.page-art.round { display: block; float: right; width: 84px; margin: 0 0 6px 12px; }
+  .page-art.photo.full img { border-radius: 14px; }
+}
+@media (max-width: 340px) { figure.page-art.full, figure.page-art.round { float: none; margin: 0 0 8px; } }
 .banner { position: relative; margin: 0 0 32px; border-radius: 22px; overflow: hidden; background: #0a1f5c; box-shadow: var(--shadow); }
 .banner img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; object-position: 70% 0%; }
 .banner figcaption { position: absolute; inset: 0 auto 0 0; display: flex; flex-direction: column; justify-content: center; gap: 10px; width: min(46%, 520px);
