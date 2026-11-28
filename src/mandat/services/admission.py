@@ -1,9 +1,12 @@
-"""Допуск операции по удостоверению через HTTP: контракт для ДБО и других систем банка.
+"""Допуск операции по удостоверению: контракт для ДБО и других систем банка.
 
 Второй шаг после проверки кейса. Система банка присылает удостоверение «Мандата» и запрос одной операции,
 решение принимает ``attestation.authorize_operation`` без ослаблений: подлинность и срок удостоверения, статус
 по спискам, вердикт ``confirmed``, организация, день операции по Москве, операция, сумма не больше проверенной,
 представитель, получатель (``audience``) и одноразовый ``nonce``. Момент проверки — часы сервера, не поле запроса.
+
+``admit`` — общая часть ``POST /v1/operations/authorize``, AuthZEN и ``mandat mcp``: отказы до решения, само
+решение и запись о нём в журнале. Канал меняет только конверт запроса и ответа.
 
 Одноразовость ``nonce`` держит общее хранилище: ``claim`` атомарен в памяти, SQLite и Redis, поэтому из
 двух одновременных запросов с одним ``nonce`` проходит один. Вместе с ``nonce`` хранится отпечаток запроса и время
@@ -22,15 +25,17 @@ import hashlib
 import hmac
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from mandat.api.principals import Principal
 from mandat.api.storage import Store
-from mandat.audit import attestation
+from mandat.audit import attestation, journal
 from mandat.audit.signing import Keyring
+from mandat.audit.status_list import known_risk
 from mandat.strictjson import strict_loads
 
 KEYRING_ENV = "MANDAT_ATTESTATION_KEYRING"
@@ -214,3 +219,143 @@ def parse_day(value: str) -> date:
         return date.fromisoformat(value)
     except ValueError as exc:
         raise ValueError("operation_date: календарная дата ГГГГ-ММ-ДД") from exc
+
+
+NOT_CONFIGURED = "допуск не настроен: задайте MANDAT_ATTESTATION_KEYRING и MANDAT_STATUS_DIR"
+NOT_SHARED = "в защищённом режиме допуск требует общего хранилища и журнала аудита"
+
+
+class AdmissionRefused(Exception):
+    """Допуск не выдан до решения или решение не записано: ``status`` — код ответа HTTP, ``detail`` — текст для
+    вызывающей системы, ``cause`` — для журнала сервера, без данных запроса."""
+
+    def __init__(self, status: int, detail: str, cause: str) -> None:
+        super().__init__(cause)
+        self.status, self.detail, self.cause = status, detail, cause
+
+
+@dataclass(frozen=True)
+class Admitted:
+    """Ответ допуска и запись о нём в журнале (``None``, если журнал не ведётся: так бывает только на стенде)."""
+
+    answer: dict[str, Any]
+    record: dict[str, Any] | None
+
+
+def may_request(principal: Principal, *, protected: bool) -> bool:
+    """Кто получает допуск операции.
+
+    В pilot и prod — только ``dbo``: служебная учётная запись системы банка, которая проводит операцию.
+    Сотрудник допуск к платежу не получает: разделение обязанностей и минимальные привилегии (приказ
+    ФСТЭК № 21, меры УПД.4 и УПД.5; ГОСТ Р 57580.1). На стенде допуск доступен и ролям с правом записи.
+    """
+    return principal.role == "dbo" or (principal.can_write and not protected)
+
+
+def ready(
+    config: AdmissionConfig | None, store: Store, journal_path: Path | None, *, protected: bool
+) -> AdmissionConfig:
+    """Допуск настроен, а в защищённом режиме у него есть общее хранилище nonce и журнал; иначе отказ 503."""
+    if config is None:
+        raise AdmissionRefused(503, NOT_CONFIGURED, "admission: not configured")
+    if protected and (store.name == "memory" or journal_path is None):
+        raise AdmissionRefused(503, NOT_SHARED, "admission: no shared store or no journal")
+    return config
+
+
+def admit(
+    credential: dict[str, Any],
+    fields: Mapping[str, Any],
+    operation_risk: str | None,
+    principal: Principal,
+    *,
+    config: AdmissionConfig,
+    store: Store,
+    journal_path: Path | None,
+    via: str,
+    protected: bool,
+) -> Admitted:
+    """Решение о допуске одной операции и запись о нём в журнал.
+
+    ``fields`` — запрос операции: ``organization_inn``, ``operation``, ``operation_date``, ``amount_rub``,
+    ``representative_inn``, ``audience``, ``nonce``. Отказы до решения — ``AdmissionRefused``, ``nonce`` при них не
+    расходуется: получатель удостоверения не из ``audiences`` учётной записи (403), уровень риска не из карты окон
+    (422), дата не читается (422), хранилище недоступно (503). Допуск без записи в журнал не выдаётся: при сбое
+    журнала — 503, а ``nonce``, который занял этот допуск, освобождается, и повтор того же запроса проверяется
+    заново. ИНН представителя в журнал не пишется.
+    """
+    audience = fields["audience"]
+    if principal.audiences and audience not in principal.audiences:
+        # Учётная запись одного канала не расходует удостоверения другого; nonce не тронут.
+        raise AdmissionRefused(
+            403,
+            "учётной записи не разрешён этот получатель удостоверения (audience)",
+            f"admission: audience not allowed for {principal.name}",
+        )
+    if not known_risk(operation_risk):
+        # Окно свежести задаёт подписанная операция; незнакомое слово не угадывается, nonce не тронут.
+        raise AdmissionRefused(422, "уровень риска операции не из карты окон свежести", "operation_risk: unknown")
+    try:
+        operation = attestation.OperationRequest(
+            operation=fields["operation"],
+            amount_rub=fields["amount_rub"],
+            representative_inn=fields["representative_inn"],
+            audience=audience,
+            nonce=fields["nonce"],
+            organization_inn=fields["organization_inn"],
+            operation_date=parse_day(fields["operation_date"]),
+        )
+    except ValueError as exc:
+        raise AdmissionRefused(422, "запрос операции не соответствует схеме", str(exc)) from exc
+    moment = datetime.now(UTC)
+    try:
+        decision = decide_detailed(
+            AdmissionRequest(credential, operation, operation_risk), config, store, now=moment, protected=protected
+        )
+    except Exception as exc:
+        raise AdmissionRefused(503, "хранилище недоступно, допуск не выдан", f"store: {type(exc).__name__}") from exc
+    problems = decision.problems
+    allowed = not problems
+    subject = credential.get("credentialSubject")
+    report_sha = subject.get("reportSha256") if isinstance(subject, dict) else None
+    record = None
+    if journal_path is not None:
+        unbound = {key: value for key, value in fields.items() if key != "representative_inn"}
+        payload = json.dumps({"credential": credential, "request": unbound}, sort_keys=True, ensure_ascii=False)
+        try:
+            record = journal.append(
+                journal_path,
+                action="authorize_operation",
+                actor=principal.name,
+                role=principal.role,
+                case_id=str(report_sha)[:64] if isinstance(report_sha, str) else "unknown",
+                payload_hash=hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+                details={
+                    "allowed": allowed,
+                    "operation": fields["operation"],
+                    "audience": audience,
+                    "problems": len(problems),
+                    "already_admitted": decision.already_admitted,
+                    "via": via,
+                },
+            )
+        except (ValueError, OSError, journal.JournalKeyMissing) as exc:
+            # Допуск без записи в журнал не выдаётся: в защищённом режиме решение должно быть доказуемо.
+            # nonce, который занял этот допуск, освобождается: иначе повтор получил бы «уже допущен».
+            cause = f"journal: {type(exc).__name__}"
+            if allowed:
+                try:
+                    store.release(nonce_key(audience, fields["nonce"]))
+                except Exception:  # noqa: BLE001 — недоступное хранилище: повтор получит отказ
+                    cause += "; nonce не освобождён"
+            raise AdmissionRefused(503, "журнал аудита недоступен, допуск не выдан", cause) from exc
+    answer = {
+        "allowed": allowed,
+        "problems": problems,
+        "already_admitted": decision.already_admitted,
+        "admitted_at": decision.admitted_at,
+        "operation": fields["operation"],
+        "audience": audience,
+        "checked_at": moment.isoformat(timespec="seconds"),
+    }
+    return Admitted(answer, record)

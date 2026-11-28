@@ -19,17 +19,18 @@ AuthZEN — открытый стандарт обмена между точко
 не расходуется на запросе, который всё равно отвергнут. Поиск субъектов, ресурсов и действий (раздел 8) не
 реализован: PDP без состояния не знает, кто ещё вправе действовать за организацию, и в метаданных этих адресов нет.
 Ответ не подписывается (раздел 11.6 это допускает): подлинность решения держат TLS и журнал «Мандата».
+
+Профиль читает обычный JSON и не зависит от FastAPI: тот же запрос присылает и ИИ-агент через ``mandat mcp``.
+Схема тела HTTP для документации API — в ``api/app.py``.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
-
-from pydantic import BaseModel, ConfigDict, Field
 
 from mandat.audit.status_list import known_risk
 
@@ -41,6 +42,7 @@ PDP_ENV = "MANDAT_AUTHZEN_PDP"
 
 SUBJECT_TYPE = "representative"
 RESOURCE_TYPE = "organization"
+PARTS = ("subject", "action", "resource", "context")
 SEMANTICS = ("execute_all", "deny_on_first_deny", "permit_on_first_permit")
 # Раздел 11.7: пакет ограничен, как тело запроса и глубина JSON. Каждая оценка пишет запись в журнал.
 MAX_EVALUATIONS = 64
@@ -50,58 +52,6 @@ BAD_REQUEST = "запрос не соответствует профилю AuthZ
 _INN = re.compile(r"\d{10}(?:\d{2})?")
 _DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 MAX_SAFE_INTEGER = 2**53 - 1
-
-
-class _Open(BaseModel):
-    """Неизвестные поля игнорируются: так требует раздел 10.1.1 ради совместимости версий."""
-
-    model_config = ConfigDict(extra="ignore")
-
-
-class Subject(_Open):
-    type: str = Field(description="representative")
-    id: str = Field(description="ИНН представителя: 10 или 12 цифр")
-    properties: dict[str, Any] | None = None
-
-
-class Resource(_Open):
-    type: str = Field(description="organization")
-    id: str = Field(description="ИНН организации: 10 или 12 цифр")
-    properties: dict[str, Any] | None = None
-
-
-class Action(_Open):
-    name: str = Field(description="код операции из каталога операций")
-    properties: dict[str, Any] | None = Field(
-        default=None, description="operation_date — день операции по Москве (ГГГГ-ММ-ДД), amount_rub — целые рубли"
-    )
-
-
-class EvaluationRequest(_Open):
-    """Раздел 6.1. ``context``: credential, nonce, audience и необязательный operation_risk."""
-
-    subject: Subject
-    action: Action
-    resource: Resource
-    context: dict[str, Any] | None = None
-
-
-class PartialEvaluation(_Open):
-    subject: Subject | None = None
-    action: Action | None = None
-    resource: Resource | None = None
-    context: dict[str, Any] | None = None
-
-
-class EvaluationsRequest(_Open):
-    """Раздел 7.1: верхние ``subject``, ``action``, ``resource`` и ``context`` — значения по умолчанию для оценок."""
-
-    subject: Subject | None = None
-    action: Action | None = None
-    resource: Resource | None = None
-    context: dict[str, Any] | None = None
-    evaluations: list[PartialEvaluation] | None = None
-    options: dict[str, Any] | None = None
 
 
 class AuthzenError(ValueError):
@@ -126,6 +76,18 @@ class Admission:
     nonce: str
     operation_risk: str | None
 
+    def fields(self) -> dict[str, Any]:
+        """Запрос операции в полях ``POST /v1/operations/authorize`` (``admission.admit``)."""
+        return {
+            "organization_inn": self.organization_inn,
+            "operation": self.operation,
+            "operation_date": self.operation_date,
+            "amount_rub": self.amount_rub,
+            "representative_inn": self.representative_inn,
+            "audience": self.audience,
+            "nonce": self.nonce,
+        }
+
 
 def _bad(cause: str) -> AuthzenError:
     return AuthzenError(400, BAD_REQUEST, cause)
@@ -137,18 +99,34 @@ def _text(value: Any, name: str, *, low: int, high: int) -> str:
     return value
 
 
-def admission_of(evaluation: EvaluationRequest) -> Admission:
-    """Профиль «Мандата» для одной оценки. Нарушение — ``AuthzenError(400)``, до расхода ``nonce``."""
-    if evaluation.subject.type != SUBJECT_TYPE:
+def _object(value: Any, name: str, *, optional: bool = False) -> dict[str, Any]:
+    if value is None and optional:
+        return {}
+    if not isinstance(value, dict):
+        raise _bad(f"{name}: объект JSON")
+    return value
+
+
+def _inn(value: Any, name: str) -> str:
+    if not isinstance(value, str) or not _INN.fullmatch(value):
+        raise _bad(f"{name}: ИНН из 10 или 12 цифр")
+    return value
+
+
+def admission_of(evaluation: Mapping[str, Any]) -> Admission:
+    """Профиль «Мандата» для одной оценки — объекта JSON по разделу 6.1. Нарушение — ``AuthzenError(400)``, до
+    расхода ``nonce``. Поля вне профиля не читаются (раздел 10.1.1)."""
+    subject = _object(evaluation.get("subject"), "subject")
+    resource = _object(evaluation.get("resource"), "resource")
+    action = _object(evaluation.get("action"), "action")
+    if subject.get("type") != SUBJECT_TYPE:
         raise _bad(f"subject.type: ожидается {SUBJECT_TYPE}")
-    if evaluation.resource.type != RESOURCE_TYPE:
+    if resource.get("type") != RESOURCE_TYPE:
         raise _bad(f"resource.type: ожидается {RESOURCE_TYPE}")
-    if not _INN.fullmatch(evaluation.subject.id):
-        raise _bad("subject.id: ИНН из 10 или 12 цифр")
-    if not _INN.fullmatch(evaluation.resource.id):
-        raise _bad("resource.id: ИНН из 10 или 12 цифр")
-    operation = _text(evaluation.action.name, "action.name", low=1, high=64)
-    props = evaluation.action.properties or {}
+    representative_inn = _inn(subject.get("id"), "subject.id")
+    organization_inn = _inn(resource.get("id"), "resource.id")
+    operation = _text(action.get("name"), "action.name", low=1, high=64)
+    props = _object(action.get("properties"), "action.properties", optional=True)
     day = props.get("operation_date")
     if not isinstance(day, str) or not _DAY.fullmatch(day):
         raise _bad("action.properties.operation_date: ГГГГ-ММ-ДД")
@@ -157,7 +135,7 @@ def admission_of(evaluation: EvaluationRequest) -> Admission:
         raise _bad("action.properties.amount_rub: целое число рублей")
     if amount is not None and not 0 <= amount <= MAX_SAFE_INTEGER:
         raise _bad("action.properties.amount_rub: от 0 до 2^53−1")
-    context = evaluation.context or {}
+    context = _object(evaluation.get("context"), "context", optional=True)
     credential = context.get("credential")
     if not isinstance(credential, dict):
         raise _bad("context.credential: удостоверение «Мандата» — объект")
@@ -168,11 +146,11 @@ def admission_of(evaluation: EvaluationRequest) -> Admission:
             raise _bad("context.operation_risk: уровня нет в карте окон свежести")
     return Admission(
         credential=credential,
-        organization_inn=evaluation.resource.id,
+        organization_inn=organization_inn,
         operation=operation,
         operation_date=day,
         amount_rub=amount,
-        representative_inn=evaluation.subject.id,
+        representative_inn=representative_inn,
         audience=_text(context.get("audience"), "context.audience", low=1, high=200),
         nonce=_text(context.get("nonce"), "context.nonce", low=16, high=200),
         operation_risk=risk,
@@ -200,35 +178,32 @@ def failed(error: AuthzenError) -> dict[str, Any]:
     return {"decision": False, "context": {"error": {"status": error.status, "message": error.message}}}
 
 
-def expand(body: EvaluationsRequest) -> tuple[list[EvaluationRequest], str]:
-    """Оценки пакета с подставленными значениями по умолчанию и семантика.
+def expand(body: Mapping[str, Any]) -> tuple[list[dict[str, Any]], str]:
+    """Оценки пакета (раздел 7.1, тело уже прошло схему HTTP) с подставленными значениями по умолчанию и семантика.
 
     Ключ оценки заменяет верхний ключ целиком (раздел 7.1.1). Оценка без subject, action или resource и без
     верхнего значения — ошибка всего пакета: она проверяется до первой оценки.
     """
-    options = body.options or {}
+    options = body.get("options") or {}
     semantic = options.get("evaluations_semantic", "execute_all")
     if semantic not in SEMANTICS:
         raise _bad("options.evaluations_semantic: " + ", ".join(SEMANTICS))
-    items = body.evaluations or []
+    items = body.get("evaluations") or []
     if len(items) > MAX_EVALUATIONS:
         raise _bad(f"evaluations: не больше {MAX_EVALUATIONS} оценок в пакете")
-    out: list[EvaluationRequest] = []
-    for index, item in enumerate(items or [PartialEvaluation()]):
-        subject = item.subject or body.subject
-        action = item.action or body.action
-        resource = item.resource or body.resource
-        if subject is None or action is None or resource is None:
+    out: list[dict[str, Any]] = []
+    for index, item in enumerate(items or [{}]):
+        merged = {key: item[key] if item.get(key) is not None else body.get(key) for key in PARTS}
+        if any(merged[key] is None for key in ("subject", "action", "resource")):
             raise _bad(f"evaluations[{index}]: нет subject, action или resource и нет значения по умолчанию")
-        context = item.context if item.context is not None else body.context
-        out.append(EvaluationRequest(subject=subject, action=action, resource=resource, context=context))
+        out.append(merged)
     return out, semantic
 
 
 def run_batch(
-    evaluations: list[EvaluationRequest],
+    evaluations: list[dict[str, Any]],
     semantic: str,
-    evaluate: Callable[[EvaluationRequest], dict[str, Any]],
+    evaluate: Callable[[dict[str, Any]], dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Оценки по порядку. ``deny_on_first_deny`` останавливается на первом отказе, ``permit_on_first_permit`` — на
     первом допуске; остальные оценки не выполняются и ``nonce`` не расходуют (раздел 7.1.2.1)."""

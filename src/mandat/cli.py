@@ -621,6 +621,18 @@ def server_options() -> dict[str, Any]:
     }
 
 
+def cmd_mcp(args: argparse.Namespace) -> int:
+    """MCP по stdio: проверка кейса и допуск операции для ИИ-агентов банка (docs/MCP.md). В stdout — только MCP."""
+    from mandat import mcp
+
+    try:
+        session = mcp.Session.from_env()
+    except ValueError as exc:
+        print(f"ошибка: {exc}", file=sys.stderr)
+        return 2
+    return mcp.serve(sys.stdin.buffer, sys.stdout.buffer, session)
+
+
 def cmd_restore_check(args: argparse.Namespace) -> int:
     """После восстановления из копии: удалённое не воскресло, отзывы не откатились, журнал цел (services/recovery)."""
     from mandat.api.sealing import sealed
@@ -870,6 +882,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--port", type=int, default=8000)
     s.add_argument("--workers", type=int, default=1, help="больше одного нужен MANDAT_API_STORE")
     s.set_defaults(func=cmd_serve)
+
+    mc = sub.add_parser("mcp", help="MCP по stdio: проверка полномочий и допуск операции для ИИ-агентов банка")
+    mc.set_defaults(func=cmd_mcp)
     w = sub.add_parser("webhook-secret", help="новый секрет вебхука: whsec_ (HMAC) или пара whsk_/whpk_ (Ed25519)")
     w.add_argument("--asymmetric", action="store_true", help="пара ключей Ed25519 для подписи v1a")
     w.set_defaults(func=cmd_webhook_secret)
