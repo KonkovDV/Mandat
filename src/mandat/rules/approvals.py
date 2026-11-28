@@ -7,7 +7,8 @@
   (``MANDAT_APPROVAL_KEYS``), и этот ключ действовал в момент подписи;
 - в записи хеш нормативного текста правила (:func:`rule_text_sha256`): правка ``check``, ``title``,
   ``norm_ref`` или ``effects`` после подписи снимает утверждение;
-- запись того же пакета правил, дата подписи не в будущем, срок не истёк и не длиннее года.
+- запись того же пакета правил, дата подписи не в будущем, срок не истёк и не длиннее года; дни подписи
+  и проверки считаются по Москве (Europe/Moscow), в каком бы поясе ни был записан момент.
 
 Подпись защищает каждую запись, но не полноту набора. Удалить запись может любой, кто пишет в файл, и это
 безопасная сторона: правило становится черновиком. Вернуть удалённую запись тоже можно, пока не истёк её срок;
@@ -28,7 +29,7 @@ from typing import Any
 
 from cryptography.exceptions import InvalidSignature
 
-from mandat.audit.attestation import b58decode, b58encode
+from mandat.audit.attestation import b58decode, b58encode, bank_date
 from mandat.audit.jcs import JcsError, canonicalize
 from mandat.audit.signing import Keyring, Signer, checked_sign
 from mandat.data import load_json
@@ -190,11 +191,14 @@ def check_record(
         return "signed_at — дата и время с часовым поясом"
     if signed_at > now + MAX_CLOCK_SKEW:
         return "дата подписи в будущем"
-    if checked_on > signed_at.date():
+    # Дни записи — календарные дни по Москве, как дата операции: тот же момент подписи или проверки,
+    # записанный в +03:00, +10:00, -05:00 или Z, даёт тот же день и то же решение.
+    signed_on = bank_date(signed_at)
+    if checked_on > signed_on:
         return "норма сверена позже подписи"
-    if valid_until < signed_at.date() or valid_until - signed_at.date() > MAX_VALIDITY:
+    if valid_until < signed_on or valid_until - signed_on > MAX_VALIDITY:
         return "срок записи — от даты подписи и не длиннее года"
-    if now.date() > valid_until:
+    if bank_date(now) > valid_until:
         return f"срок записи истёк {valid_until.isoformat()}"
     if keyring is None:
         return f"связка ключей утверждающих не задана ({KEYS_ENV})"

@@ -10,14 +10,17 @@ from __future__ import annotations
 import copy
 import dataclasses
 import json
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from conftest import ROOT
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from mandat.audit.signing import Keyring, LocalSigner
+from mandat.audit.attestation import b58encode
+from mandat.audit.jcs import canonicalize
+from mandat.audit.signing import Keyring, LocalSigner, checked_sign
 from mandat.cli import main
 from mandat.domain.model import PowerOfAttorney
 from mandat.eval import synth
@@ -38,6 +41,7 @@ from mandat.services.verify import verify_case
 PACK = default_pack()
 NOW = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
 SIGNED = datetime(2026, 11, 20, 9, 0, tzinfo=UTC)
+MOSCOW = ZoneInfo("Europe/Moscow")
 CONFIRMED = ROOT / "examples" / "cases" / "14_old_director_charter_cleared"
 TRUSTED = frozenset({"registry", "egrul", "bankruptcy", "signature"})
 
@@ -155,8 +159,51 @@ def test_expired_record_stops_approving_the_day_after_valid_until():
     signer = _signer()
     keyring = _keyring(_active(signer))
     record = _record("R-TERM-002", signer, valid_until=date(2026, 12, 1))
-    assert check_record(record, PACK, keyring, datetime(2026, 12, 1, 23, 0, tzinfo=UTC)) is None
-    assert "истёк" in check_record(record, PACK, keyring, datetime(2026, 12, 2, 0, 1, tzinfo=UTC))
+    assert check_record(record, PACK, keyring, datetime(2026, 12, 1, 23, 59, tzinfo=MOSCOW)) is None
+    assert "истёк" in check_record(record, PACK, keyring, datetime(2026, 12, 2, 0, 1, tzinfo=MOSCOW))
+    # 23:00 UTC 01.12 — уже 02:00 по Москве 02.12: срок кончается по московскому дню, а не по суткам UTC.
+    assert "истёк" in check_record(record, PACK, keyring, datetime(2026, 12, 1, 23, 0, tzinfo=UTC))
+
+
+def _written(instant: datetime) -> list[str]:
+    """Один момент, записанный в +03:00, +10:00, -05:00 и Z."""
+    zones = [timezone(timedelta(hours=h)) for h in (3, 10, -5, 0)]
+    return [instant.astimezone(z).isoformat(timespec="seconds").replace("+00:00", "Z") for z in zones]
+
+
+def _signed_as(record: dict, signer: LocalSigner, signed_at: str) -> dict:
+    """Та же запись с моментом подписи, записанным строкой ``signed_at``, и новой подписью."""
+    body = {k: v for k, v in record.items() if k != "signature"} | {"signed_at": signed_at}
+    return body | {"signature": "z" + b58encode(checked_sign(signer, canonicalize(body).encode("utf-8")))}
+
+
+def test_approval_days_are_moscow_days_in_any_offset():
+    """Дни записи — дни по Москве: тот же момент подписи и проверки в +03:00, +10:00, -05:00 и Z — то же решение.
+
+    День брался в поясе записи: подпись в 01:30 по Владивостоку 20.11 (18:30 по Москве 19.11) принимала норму,
+    сверенную 20.11, а та же подпись в +03:00 — нет; проверка в 00:30 по Москве 02.12, записанная в Z, ещё
+    считала действующей запись со сроком до 01.12.
+    """
+    signer = _signer()
+    keyring = _keyring(_active(signer))
+    day, later = date(2026, 11, 20), datetime(2026, 11, 25, 12, 0, tzinfo=UTC)
+    for step in range(0, 36, 3):
+        instant = datetime(2026, 11, 19, 6, 30, tzinfo=UTC) + timedelta(hours=step)
+        signed_on = instant.astimezone(MOSCOW).date()
+        for checked_on, reason in ((day, "сверена позже подписи"), (day - timedelta(days=1), "не длиннее года")):
+            record = _record("R-TERM-002", signer, norm_checked_on=checked_on, valid_until=day + timedelta(days=366))
+            decisions = {check_record(_signed_as(record, signer, m), PACK, keyring, later) for m in _written(instant)}
+            assert len(decisions) == 1, (instant, checked_on, decisions)
+            (decision,) = decisions
+            assert decision is None if signed_on >= day else reason in (decision or ""), (instant, decision)
+
+    record = _record("R-TERM-002", signer, valid_until=date(2026, 12, 1))
+    for step in range(0, 36, 3):
+        instant = datetime(2026, 12, 1, 6, 30, tzinfo=UTC) + timedelta(hours=step)
+        decisions = {check_record(record, PACK, keyring, datetime.fromisoformat(m)) for m in _written(instant)}
+        assert len(decisions) == 1, (instant, decisions)
+        expired = instant.astimezone(MOSCOW).date() > date(2026, 12, 1)
+        assert decisions == ({"срок записи истёк 2026-12-01"} if expired else {None}), (instant, decisions)
 
 
 def test_foreign_revoked_and_retired_keys():
