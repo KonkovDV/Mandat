@@ -8,9 +8,9 @@
 |---|---|---|
 | Жюри | [для жюри](JURY.md) | [реестр утверждений](../CLAIMS_REGISTRY.md), [конкуренты](COMPETITORS.md), [оценка](EVALUATION.md) |
 | Юрист банка | [пакет для юриста](legal/README.md), [вопросы юристу](LEGAL_REVIEW.md) | [нормы](REGULATORY.md), [нормы о защите данных](DATA_PROTECTION_LAW.md), [правила](RULES.md), [трассировка норм](legal/TRACEABILITY.md) |
-| Информационная безопасность банка | [модель угроз](THREAT_MODEL.md), [SECURITY](../SECURITY.md), [чек-лист перед пилотом](PILOT_CHECKLIST.md) | [границы доверия](TRUST_BOUNDARIES.md), [защита данных](DATA_PROTECTION.md), [риски модели](AI_RISKS.md), [ключи](KEYS.md) |
+| Информационная безопасность банка | [модель угроз](THREAT_MODEL.md), [SECURITY](../SECURITY.md), [чек-лист перед пилотом](PILOT_CHECKLIST.md) | [границы доверия](TRUST_BOUNDARIES.md), [защита данных](DATA_PROTECTION.md), [риски модели](AI_RISKS.md), [выбор модели консультанта](ADVISORY_MODELS.md), [ключи](KEYS.md) |
 | Владелец процесса | [пилот](PILOT.md) | [экономика](ECONOMICS.md), [готовность](READINESS.md), [дорожная карта](ROADMAP.md) |
-| Инженер | [запуск и API](RUN.md) | [архитектура](ARCHITECTURE.md), [каркас MVP](MVP.md), [предметная модель](DOMAIN.md), [ключи](KEYS.md) |
+| Инженер | [запуск и API](RUN.md) | [стенд](STAND.md), [модель консультанта](ADVISORY_MODELS.md), [архитектура](ARCHITECTURE.md), [каркас MVP](MVP.md), [предметная модель](DOMAIN.md), [ключи](KEYS.md) |
 | Участник проекта | [как вносить изменения](../CONTRIBUTING.md) | [кодекс поведения](../CODE_OF_CONDUCT.md), [история изменений](../CHANGELOG.md) |
 
 ## По вопросу

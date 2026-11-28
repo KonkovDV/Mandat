@@ -249,6 +249,19 @@ mandat incident-report --journal var/api/journal.jsonl --detected-at 2026-11-20T
 | `MANDAT_LLM_API_KEY` | ключ доступа к модели, если он нужен | пусто |
 | `MANDAT_LLM_ALLOWED_HOSTS` | хосты модели через запятую; другой хост — ошибка | `127.0.0.1,localhost` |
 | `MANDAT_LLM_ALLOW_INSECURE_LOOPBACK` | `1` разрешает в `pilot` и `prod` `http` к модели на `127.0.0.1`, `localhost` или `::1` | выключено: в `pilot` и `prod` только `https` |
+| `MANDAT_LLM_EXTRA` | JSON с дополнительными полями запроса; принимаются только `provider`, `usage`, `reasoning`, `response_format`, `max_tokens`, `transforms` | пусто |
+
+Консультант стенда работает через OpenRouter на модели `deepseek/deepseek-v4-flash`; как её выбирали и чем она лучше соседей — в [замере моделей](ADVISORY_MODELS.md). Подключение вне стенда:
+
+```bash
+MANDAT_LLM_BASE_URL=https://openrouter.ai/api/v1
+MANDAT_LLM_ALLOWED_HOSTS=openrouter.ai
+MANDAT_LLM_MODEL=deepseek/deepseek-v4-flash
+MANDAT_LLM_API_KEY=<ключ OpenRouter>
+MANDAT_LLM_EXTRA='{"provider":{"data_collection":"deny"},"usage":{"include":true}}'
+```
+
+`data_collection: deny` оставляет только провайдеров, которые не хранят запросы; `usage` возвращает стоимость каждого вызова.
 
 ## Календарь норм
 

@@ -41,15 +41,16 @@ ROOT = Path(__file__).resolve().parents[1]
 QUESTION = "Может ли представитель провести эту операцию и что делать сотруднику?"
 # Для OpenRouter: только провайдеры без хранения запросов, стоимость вызова в ответе, без рассуждений вслух.
 EXTRA = {"provider": {"data_collection": "deny"}, "usage": {"include": True}, "reasoning": {"enabled": False}}
+TIMEOUT = 90.0
 
 
-def call(base: str, key: str, model: str, messages: list[dict[str, str]], timeout: float = 90) -> dict[str, Any]:
+def call(base: str, key: str, model: str, messages: list[dict[str, str]]) -> dict[str, Any]:
     extra = dict(EXTRA)
     if model.startswith("openai/gpt-oss"):  # у этих моделей рассуждение не выключается, только сокращается
         extra["reasoning"] = {"effort": "low"}
     t0 = time.monotonic()
     try:
-        out = eval_complete(base, model, key, messages, extra=extra, timeout=timeout)
+        out = eval_complete(base, model, key, messages, extra=extra, timeout=TIMEOUT)
     except Exception as exc:  # noqa: BLE001 — сбой вызова учитывается как ошибка модели
         return {"ok": False, "error": type(exc).__name__, "s": time.monotonic() - t0, "cost": 0.0}
     return {"ok": True, "text": out["text"], "s": time.monotonic() - t0, "cost": float(out["usage"].get("cost") or 0)}
@@ -124,13 +125,18 @@ def main() -> None:
     ap.add_argument("--models", required=True)
     ap.add_argument("--out", default="var/eval/advisory.json")
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--timeout", type=float, default=TIMEOUT, help="предел одного вызова, с")
     args = ap.parse_args()
+    globals()["TIMEOUT"] = args.timeout
     base = os.environ.get("EVAL_LLM_BASE_URL", "")
     key = os.environ.get("EVAL_LLM_API_KEY", "")
-    results = [run_model(base, key, m.strip(), args.workers) for m in args.models.split(",") if m.strip()]
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(results, ensure_ascii=False, indent=1), "utf-8")
+    results: list[dict[str, Any]] = []
+    for model in (m.strip() for m in args.models.split(",") if m.strip()):
+        results.append(run_model(base, key, model, args.workers))
+        # Файл переписывается после каждой модели: долгий прогон, прерванный на середине, не теряет готовое.
+        out.write_text(json.dumps(results, ensure_ascii=False, indent=1), "utf-8")
     head = ("модель", "устав: верно / лишних / пропущено", "кейсов с лишним фактом")
     head += ("пояснение: фраз / отброшено", "медиана, с", "цена прогона, $")
     print("| " + " | ".join(head) + " |\n|" + "---|" * len(head))
