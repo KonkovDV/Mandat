@@ -24,7 +24,7 @@ def _cell(text: str | None) -> str:
     return (text or "—").replace("|", "\\|")
 
 
-WAIVED_REASON = {"signature": "в стенде нет СКЗИ", "bankruptcy": "ЕФРСБ в стенде не подключён"}
+WAIVED_REASON = {"signature": "СКЗИ банка подключается в пилоте", "bankruptcy": "ЕФРСБ подключается в пилоте"}
 
 
 def profile_cell(profile: Profile, check: str) -> str:
@@ -48,7 +48,7 @@ def render_rules_doc() -> str:
         return " | ".join(profile_cell(profile, check) for profile in (demo, strict))
 
     waived = "; ".join(
-        f"«{CHECK_LABEL_RU.get(c, c)}» ({WAIVED_REASON.get(c, 'источник в стенде не подключён')})"
+        f"«{CHECK_LABEL_RU.get(c, c)}» ({WAIVED_REASON.get(c, 'источник подключается в пилоте')})"
         for c in sorted(demo.waived, key=list(CHECK_LABEL_RU).index)
     )
 
@@ -62,9 +62,8 @@ def render_rules_doc() -> str:
         "Руками его не правят: тест `test_rules_doc_is_up_to_date` упадёт, если он разойдётся с пакетом.",
         "",
         f"Пакет `{pack.pack_id}`, версия `{pack.version}`, статус `{pack.status}`, sha256 `{pack.sha256[:16]}…`. "
-        "Статус `draft` значит, что норму подобрала команда, а юрист банка её ещё не проверил. "
-        "Утверждает правило только подписанная запись юриста, а не строка в `rules.json` "
-        "([ADR-009](adr/ADR-009-rule-approval-records.md)).",
+        "Статус `draft` значит, что норму подобрала команда, а в силу правило вводит подписанная запись "
+        "юриста банка, а не строка в `rules.json` ([ADR-009](adr/ADR-009-rule-approval-records.md)).",
         "",
         "## Как правила превращаются в вердикт",
         "",
