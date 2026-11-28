@@ -7,9 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from mandat.advisory.llm import charter_messages
+from mandat.advisory.llm import MixedAlphabet, charter_messages
 from mandat.eval.metrics import clopper_pearson
-from mandat.privacy.unknown_names import MARKER, WORD, default_detector, mask_unknown_names
+from mandat.privacy.names import DIRECTOR, KnownPerson, mask_names
+from mandat.privacy.unknown_names import MARKER, WORD, default_detector, mask_unknown_names, mixed_words
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "names"
 
@@ -121,3 +122,46 @@ def test_model_request_masks_unknown_names():
     messages = charter_messages("Генеральный директор вправе подписывать договоры. Подпись: Пахомов Р.Ю.")
     assert "Пахомов" not in messages[1]["content"]
     assert MARKER in messages[1]["content"]
+
+
+# --- регистр, двойники латиницы и разрядка: имя не проходит в модель в другой записи -----------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Договор подписал ПЕТРОВ ИВАН ИВАНОВИЧ.",
+        "Подпись: ИВАНОВА М. С., главный бухгалтер.",
+        "Сделки подписывает генеральный директор Пeтров Иван.",  # латинская e
+        "Сделки подписывает Ивaнов Пётр Сергеевич.",  # латинская a
+        "Сделки подписывает П е т р о в  И в а н.",
+        "Сделки подписывает П е т р о в И в а н И в а н о в и ч.",
+        "Подпись директора ПеТРОВ ИВАН.",
+    ],
+)
+def test_names_in_capitals_lookalikes_and_spacing_are_masked(text):
+    content = charter_messages(text)[1]["content"]
+    assert MARKER in content
+    for part in ("ПЕТРОВ", "Пeтров", "Ивaнов", "П е т", "ПеТРОВ", "ИВАН", "Иван", "Петров", "ИВАНОВА"):
+        assert part not in content, (text, content)
+
+
+def test_charter_terms_in_capitals_stay():
+    text = (
+        "СОВЕТ ДИРЕКТОРОВ ОДОБРЯЕТ СДЕЛКИ СВЫШЕ 1 000 000 РУБЛЕЙ. ГЕНЕРАЛЬНЫЙ ДИРЕКТОР ПЕТРОВ И.И. ВПРАВЕ ПОДПИСЫВАТЬ"
+    )
+    content = charter_messages(text)[1]["content"]
+    assert "СОВЕТ ДИРЕКТОРОВ ОДОБРЯЕТ СДЕЛКИ" in content and "ВПРАВЕ ПОДПИСЫВАТЬ" in content
+    assert "ПЕТРОВ" not in content
+
+
+def test_known_person_with_a_lookalike_letter_is_masked():
+    people = [KnownPerson(DIRECTOR, "Пeтров Пётр Петрович")]  # в данных кейса латинская e
+    assert mask_names("Сделку подписал ПЕТРОВ П. П.", people) == f"Сделку подписал {DIRECTOR}"
+    assert mask_names("Сделку подписал Петров", [KnownPerson(DIRECTOR, "Петров Пётр")]) == f"Сделку подписал {DIRECTOR}"
+
+
+def test_text_with_a_mixed_alphabet_word_is_not_sent():
+    with pytest.raises(MixedAlphabet):
+        charter_messages("Сделки подписывает директор Пqтров.")  # q двойника в кириллице нет
+    assert mixed_words("Пqтров и Mandat-Сервис, SYN-BANK-PAY-SIGN") == ["Пqтров"]

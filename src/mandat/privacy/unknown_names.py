@@ -17,6 +17,13 @@
 - двойная фамилия через дефис целиком, если хотя бы одна часть есть в словаре или с русским суффиксом
   («Петров-Шор»). «Альфа-Банк» и «Санкт-Петербург» частями фамилий не являются.
 
+Перед поиском текст выравнивается (``normalize_letters``): латинские буквы-двойники в кириллическом слове
+(«Пeтров» с латинской e) становятся кириллицей, слово в разрядку («П е т р о в») собирается, слово с
+заглавными посередине («ПеТРОВ») пишется с одной заглавной. Слово целиком заглавными («ПЕТРОВ ИВАН») сверяется со
+словарём и правилами соседства, как то же слово с одной заглавной, но без правила одного суффикса: иначе
+«СОВЕТ ДИРЕКТОРОВ» стал бы ФИО. Слово, где кириллица и латиница так и остались вперемешку, в модель не уходит:
+``mixed_words`` его находит, ``advisory.llm`` отказывает в запросе.
+
 Не ловится: то же слово без подсказки, имени, отчества и инициалов («В протоколе назван Шор») и дефис,
 у которого ни одна часть не известна («Дюбуа-Леруа»). Это остаток в LIMITS.
 """
@@ -30,6 +37,14 @@ from importlib import resources
 
 MARKER = "[ФИО]"
 WORD = re.compile(r"(?<![А-ЯЁа-яё])[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?")
+CAPS_WORD = re.compile(r"(?<![А-ЯЁа-яё])[А-ЯЁ]{2,}(?:-[А-ЯЁ]{2,})?(?![А-ЯЁа-яё])")
+# Латинские буквы, которые на письме не отличить от кириллицы.
+CONFUSABLES = str.maketrans("AaBCcEeHKkMOoPpTXxYy", "АаВСсЕеНКкМОоРрТХхУу")
+_LETTERS = re.compile(r"[^\W\d_]+")
+# Буквы в разрядку: три и больше одиночных буквы через один пробел. Два пробела — граница слова.
+_SPACED = re.compile(r"(?<![^\W\d_])[^\W\d_](?: [^\W\d_]){2,}(?![^\W\d_])")
+_CYRILLIC = re.compile(r"[А-ЯЁа-яё]")
+_LATIN = re.compile(r"[A-Za-z]")
 INITIALS = re.compile(r"(?<![А-ЯЁа-яё])[А-ЯЁ]\.\s?(?:[А-ЯЁ]\.)?")
 PATRONYMIC = re.compile(
     r"^[А-ЯЁ][а-яё]+(?:(?:ович|евич|ьич|ич)(?:а|у|ем|ом|е)?|(?:овн|евн|ичн|иничн)(?:а|ы|е|у|ой|ою))$"
@@ -108,6 +123,40 @@ def _fold(word: str) -> str:
     return word.lower().replace("ё", "е")
 
 
+def _mixed(word: str) -> bool:
+    return bool(_CYRILLIC.search(word)) and bool(_LATIN.search(word))
+
+
+def _even_case(word: str) -> str:
+    """Кириллическое слово с заглавной посередине («ПеТРОВ», «пЕТРОВ») — с одной заглавной. Заглавные целиком,
+    строчные и слово с одной заглавной в начале не меняются."""
+    if not _CYRILLIC.search(word) or word.isupper() or word.islower() or word[1:].islower():
+        return word
+    return word.capitalize()
+
+
+def normalize_letters(text: str) -> str:
+    """Текст перед поиском ФИО: двойники латиницы в кириллическом слове, разрядка и регистр выровнены."""
+
+    def spaced(match: re.Match[str]) -> str:
+        word = match.group(0).replace(" ", "")
+        # «ПетровИван» из «П е т р о в И в а н»: строчная перед заглавной — граница слова.
+        return re.sub(r"(?<=[а-яёa-z])(?=[А-ЯЁA-Z])", " ", word)
+
+    def letters(match: re.Match[str]) -> str:
+        word = match.group(0)
+        if _mixed(word):
+            word = word.translate(CONFUSABLES)
+        return _even_case(word)
+
+    return _LETTERS.sub(letters, _SPACED.sub(spaced, text))
+
+
+def mixed_words(text: str) -> list[str]:
+    """Слова, где кириллица и латиница остались вперемешку: словарь их не узнаёт, в модель они не уходят."""
+    return [m.group(0) for m in _LETTERS.finditer(text) if _mixed(m.group(0))]
+
+
 class NameDetector:
     """Поиск ФИО по словарю имён и фамилий и правилам соседства."""
 
@@ -117,9 +166,11 @@ class NameDetector:
 
     def spans(self, text: str) -> list[tuple[int, int]]:
         """Участки текста (начало, конец), которые нужно замаскировать."""
-        tokens = [(m.start(), m.end(), m.group(0)) for m in WORD.finditer(text)]
+        caps = [(m.start(), m.end(), m.group(0)) for m in CAPS_WORD.finditer(text)]
+        tokens = sorted([(m.start(), m.end(), m.group(0)) for m in WORD.finditer(text)] + caps)
         initials = [(m.start(), m.end()) for m in INITIALS.finditer(text)]
-        kinds = [self._kind(word) for _, _, word in tokens]
+        # Слово заглавными сверяется как то же слово с одной заглавной, но один суффикс фамилии его не выдаёт.
+        kinds = [self._kind(w.title()) - {"s"} if w.isupper() else self._kind(w) for _, _, w in tokens]
         n = len(tokens)
 
         def touching(left_end: int, right_start: int) -> bool:
@@ -131,12 +182,15 @@ class NameDetector:
             return kinds[j] if 0 <= j < n else set()
 
         out = list(initials)
-        for i, (start, end, _word) in enumerate(tokens):
+        for i, (start, end, word) in enumerate(tokens):
             own = kinds[i]
             prev = kind(i - 1) if i > 0 and adjacent[i - 1] else set()
             nxt = kind(i + 1) if adjacent[i] else set()
             nxt2 = kind(i + 2) if adjacent[i] and i + 1 < n and adjacent[i + 1] else set()
             near_initials = any(touching(b, start) or touching(end, a) for a, b in initials)
+            if near_initials and word.isupper():
+                # «ПЕТРОВ И.И. ВПРАВЕ»: рядом с инициалами заглавными маскируется слово, похожее на ФИО.
+                near_initials = bool(self._kind(word.title()))
             if (
                 "P" in own
                 or "S" in own
@@ -206,4 +260,4 @@ def default_detector() -> NameDetector:
 
 def mask_unknown_names(text: str) -> str:
     """Замаскировать ФИО, которых нет в данных кейса (после ``names.mask_names``)."""
-    return default_detector().mask(text)
+    return default_detector().mask(normalize_letters(text))

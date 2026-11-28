@@ -15,6 +15,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from mandat.domain.model import Case
+from mandat.privacy.unknown_names import normalize_letters
 
 DIRECTOR = "[ДИРЕКТОР]"
 REPRESENTATIVE = "[ПРЕДСТАВИТЕЛЬ]"
@@ -119,10 +120,14 @@ def known_people(case: Case) -> list[KnownPerson]:
 
 
 def mask_names(text: str, people: Iterable[KnownPerson]) -> str:
-    """Заменить упоминания известных людей меткой роли. Более длинные ФИО — первыми."""
-    out = text
+    """Заменить упоминания известных людей меткой роли. Более длинные ФИО — первыми.
+
+    Текст и ФИО сначала выравниваются (``unknown_names.normalize_letters``): «Пeтров» с латинской e и «П е т р о в»
+    в разрядку находятся так же, как «Петров»; регистр поиск не различает.
+    """
+    out = normalize_letters(text)
     for person in sorted(people, key=lambda p: -len(p.full_name)):
-        pattern = person_pattern(person.full_name)
+        pattern = person_pattern(normalize_letters(person.full_name))
         if pattern is not None:
             out = pattern.sub(person.marker, out)
     return out
