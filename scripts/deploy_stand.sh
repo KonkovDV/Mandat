@@ -161,6 +161,10 @@ if [ "$SRC" != "$APP" ]; then
   cp -a "$SRC/src" "$APP/src.new"
   find "$APP/src.new" -name __pycache__ -prune -exec rm -rf {} +
   cp "$SRC/pyproject.toml" "$SRC/README.md" "$SRC/LICENSE" "$SRC/NOTICE.md" "$APP/"
+  # Вкладка «Аналитика» консоли берёт числа сборки из рабочего каталога службы, как BUILD.
+  cp "$SRC/evidence.json" "$APP/"
+  mkdir -p "$APP/submission/analytics/out"
+  cp "$SRC/submission/analytics/out/model_values.json" "$APP/submission/analytics/out/"
   rm -rf "$APP/requirements" && cp -a "$SRC/requirements" "$APP/requirements"
   if [ -d "$APP/src" ]; then rm -rf "$APP/src.prev" && mv "$APP/src" "$APP/src.prev"; fi
   [ -f "$APP/BUILD" ] && cp "$APP/BUILD" "$APP/BUILD.prev"

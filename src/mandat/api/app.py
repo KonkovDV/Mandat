@@ -931,8 +931,7 @@ def create_app(
         section = report.get("charter_conclusions")
         if not section:
             return
-        status = ((report.get("checks") or {}).get("charter") or {}).get("status")
-        cleared = status not in {"review", "not_verified", "refuted", "missing"}
+        cleared = conclusion_api.cleared(report)
         for row in section.get("applied") or []:
             try:
                 shared.conclusion_tally(str(row.get("id")), cleared)

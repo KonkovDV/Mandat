@@ -191,7 +191,7 @@
   }
 
   // --- вкладки --------------------------------------------------------------------------------------------------
-  const TABS = ["check", "consult", "review", "dbo", "eval"];
+  const TABS = ["check", "consult", "review", "dbo", "eval", "analytics"];
   function selectTab(name, focus) {
     if (!TABS.includes(name)) name = "check";
     TABS.forEach((tab) => {
@@ -945,6 +945,64 @@
   }
   new MutationObserver(() => loadUsage()).observe($("#eval"), { attributes: true, attributeFilter: ["hidden"] });
   setInterval(() => { if (!document.hidden) loadUsage(); }, 30000);
+
+  // --- «Аналитика» ----------------------------------------------------------------------------------------------
+  // Только чтение: числа, подписи и источники присылает сервер, страница их лишь раскладывает по карточкам.
+  async function loadAnalytics(tries) {
+    if ($("#analytics").hidden) return;
+    if (!state.session) {
+      if ((tries || 0) < 20) setTimeout(() => loadAnalytics((tries || 0) + 1), 500);
+      return;
+    }
+    const reply = await call("GET", "/console/api/analytics");
+    if (reply.ok) renderAnalytics(reply.data);
+    else notice(problemText(reply));
+  }
+  // Ключ источника переносится по точкам и подчёркиваниям, а не посреди слова.
+  function keyNode(text) {
+    const node = el("span", "an-key");
+    String(text).split(/([._])/).forEach((part, i) => {
+      node.append(part);
+      if (i % 2) node.append(document.createElement("wbr"));
+    });
+    return node;
+  }
+  function analyticsTile(t) {
+    const node = el("div", "tile" + (t.hero ? " hero" : ""));
+    const verdict = t.verdict && VERDICT[t.verdict];
+    node.append(el("strong", "", t.value), verdict ? tag(verdict.cls, t.label) : el("span", "fine", t.label));
+    node.append(keyNode(t.src));
+    return node;
+  }
+  function analyticsCard(c) {
+    const card = el("article", "card an-" + c.id);
+    card.append(el("h2", "section-title", c.title));
+    if (c.tiles.length) {
+      const tiles = el("div", "tiles");
+      c.tiles.forEach((t) => tiles.append(analyticsTile(t)));
+      card.append(tiles);
+    }
+    if (c.rows.length) {
+      const rows = el("dl", "kv");
+      c.rows.forEach((r) => {
+        const value = el("dd", "", r.value);
+        value.append(keyNode(r.src));
+        rows.append(el("dt", "", r.label), value);
+      });
+      card.append(rows);
+    }
+    if (c.note) card.append(el("p", "fine", c.note));
+    card.append(el("p", "fine an-source", "Источник: " + c.source));
+    return card;
+  }
+  function renderAnalytics(d) {
+    const target = clear($("#an-cards"));
+    d.cards.forEach((c) => target.append(analyticsCard(c)));
+    const missing = $("#an-missing");
+    missing.hidden = !d.missing.length;
+    missing.textContent = d.missing.length ? "Служба не нашла " + d.missing.join(", ") + ": карточек по этим файлам нет." : "";
+  }
+  new MutationObserver(() => loadAnalytics()).observe($("#analytics"), { attributes: true, attributeFilter: ["hidden"] });
 
   // --- старт ----------------------------------------------------------------------------------------------------
   async function start() {
