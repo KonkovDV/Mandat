@@ -31,6 +31,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from mandat.audit.status_list import known_risk
+
 METADATA_PATH = "/.well-known/authzen-configuration"
 EVALUATION_PATH = "/access/v1/evaluation"
 EVALUATIONS_PATH = "/access/v1/evaluations"
@@ -162,6 +164,8 @@ def admission_of(evaluation: EvaluationRequest) -> Admission:
     risk = context.get("operation_risk")
     if risk is not None:
         risk = _text(risk, "context.operation_risk", low=1, high=32)
+        if not known_risk(risk):
+            raise _bad("context.operation_risk: уровня нет в карте окон свежести")
     return Admission(
         credential=credential,
         organization_inn=evaluation.resource.id,

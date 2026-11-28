@@ -244,6 +244,8 @@ def test_check_after_moscow_midnight_is_the_next_day(tmp_path):
     # 22:00 UTC — уже следующие сутки в Москве.
     late = datetime(2026, 10, 1, 22, 0, tzinfo=UTC)
     assert late.astimezone(ZoneInfo("Europe/Moscow")).date() == NOW.date() + timedelta(days=1)
+    # Список свежий и в 22:00: окно платежа задаёт операция, «default» в запросе его не расширяет.
+    StatusRegistry.open(sd).save(key, now=late - timedelta(minutes=1))
     problems = attestation.authorize_operation(
         cred,
         [key.public_key()],

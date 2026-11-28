@@ -44,6 +44,7 @@ from mandat.api.sealing import SealError, sealed
 from mandat.api.storage import Idem, Pending, ReviewVersionConflict, Store, open_store
 from mandat.audit import journal
 from mandat.audit.attestation import NONCE_MIN_CHARS, OperationRequest
+from mandat.audit.status_list import known_risk
 from mandat.intake.case_loader import CaseError, load_case_inline
 from mandat.report.html import render
 from mandat.review.state_machine import (
@@ -162,7 +163,12 @@ class AdmissionBody(BaseModel):
 
     credential: dict[str, Any]
     request: AdmissionOperation
-    operation_risk: str | None = Field(default=None, max_length=32, description="уровень риска: payment, high, low…")
+    operation_risk: str | None = Field(
+        default=None,
+        max_length=32,
+        description="уровень риска из карты окон (payment, high, default…): окно свежести списка статусов задаёт "
+        "подписанная операция, это поле может его только сузить; слово не из карты — 422",
+    )
 
 
 # Основания удаления кейса: закрытый список вместо свободного текста, чтобы в журнал не попали ПДн.
@@ -955,6 +961,9 @@ def create_app(
                 "учётной записи не разрешён этот получатель удостоверения (audience)",
                 f"admission: audience not allowed for {principal.name}",
             )
+        if not known_risk(operation_risk):
+            # Окно свежести задаёт подписанная операция; незнакомое слово не угадывается, nonce не тронут.
+            raise ApiProblem(422, "уровень риска операции не из карты окон свежести", "operation_risk: unknown")
         try:
             operation = OperationRequest(
                 operation=fields.operation,

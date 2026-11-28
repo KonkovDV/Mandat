@@ -245,6 +245,8 @@ def test_unknown_fields_are_ignored(issuer, tmp_path):
         lambda b: b["action"]["properties"].update(amount_rub=True),
         lambda b: b["action"]["properties"].update(amount_rub=-1),
         lambda b: b.update(context=None),
+        # Уровень риска не из карты окон: окно свежести задаёт операция, незнакомое слово не угадывается.
+        lambda b: b["context"].update(operation_risk="lowest"),
     ],
 )
 def test_malformed_request_is_400_and_spends_no_nonce(issuer, tmp_path, spoil):
