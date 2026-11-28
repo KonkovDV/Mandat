@@ -24,6 +24,7 @@ from mandat.audit.signing import Keyring, LocalSigner, checked_sign
 from mandat.cli import main
 from mandat.domain.model import PowerOfAttorney
 from mandat.eval import synth
+from mandat.eval.repeat import pilot_approvals
 from mandat.intake.case_loader import load_case_dir, load_case_inline
 from mandat.ports import FixtureBankruptcy, FixtureRegistry, Ports, SignatureResult, SignatureStatus
 from mandat.report.html import render
@@ -35,7 +36,7 @@ from mandat.rules.approvals import (
     rule_text_sha256,
     sign_record,
 )
-from mandat.rules.pack import default_pack
+from mandat.rules.pack import default_catalog, default_pack
 from mandat.services.verify import verify_case
 
 PACK = default_pack()
@@ -204,6 +205,14 @@ def test_approval_days_are_moscow_days_in_any_offset():
         assert len(decisions) == 1, (instant, decisions)
         expired = instant.astimezone(MOSCOW).date() > date(2026, 12, 1)
         assert decisions == ({"срок записи истёк 2026-12-01"} if expired else {None}), (instant, decisions)
+
+
+def test_pilot_approvals_hold_whatever_offset_the_run_moment_is_written_in():
+    """Оценка датирует свои записи днём подписи по Москве: момент прогона в +10:00 не делает норму сверенной позже."""
+    for written in _written(datetime(2026, 10, 20, 17, 30, tzinfo=UTC)):  # 03:30 21.10 по Владивостоку
+        now = datetime.fromisoformat(written)
+        pack, notes = effective_pack(PACK, now, pilot_approvals(now), default_catalog().sha256)
+        assert notes == [] and pack.approvals is not None, (written, notes[:1])
 
 
 def test_foreign_revoked_and_retired_keys():
