@@ -1,6 +1,5 @@
 """Статистика оценки: интервалы Клоппера — Пирсона и Вилсона, размер выборки, κ Коэна.
 
-Перенесено из AeroBIM (``study_design.wilson_interval``, ``eval_statistics.cohen_kappa``).
 Источник формул: Clopper, Pearson (1934), Biometrika 26(4); Brown, Cai, DasGupta (2001),
 Statistical Science 16(2); Cohen (1960).
 """

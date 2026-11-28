@@ -4,7 +4,7 @@
     python scripts/build_evidence.py --no-tests # без прогона pytest
     python scripts/build_evidence.py --verify-source  # evidence.json собран из этих исходников?
 
-Перенесено по образцу SynAPS-ProgramPlan (evidence.json + CLAIMS_REGISTRY.md).
+Утверждения с этими числами — в CLAIMS_REGISTRY.md; числа в текстах с evidence.json сверяет scripts/lint_claims.py.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ except ModuleNotFoundError:
 def collected_count() -> int:
     """Число тестов в дереве по ``pytest --collect-only``, без запуска.
 
-    Перенесено из SynAPS-GridPlan (снимок collect-only в CI). Хеш исходников один не ловит, что числа
+    ``--verify-source`` сверяет его с прогоном в evidence.json: хеш исходников один не ловит, что числа
     в evidence.json от старого прогона: 20.10 хеш переписали без pytest, и 1491 осталось при 1554 тестах.
     """
     proc = subprocess.run(

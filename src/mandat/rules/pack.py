@@ -1,8 +1,8 @@
 """Загрузка пакета правил и каталога операций с хешем версии.
 
 Хеш пакета попадает в каждый отчёт: по нему видно, какой набор правил вынес вердикт.
-Идея и проверки при загрузке перенесены из AeroBIM (``json_norm_rule_pack_loader``,
-``norm_pack_hash``, ``norm_rule_eligibility``).
+При загрузке пакет без правил, с повторным id, неизвестной группой или статусом, без эффектов или ссылки
+на норму отклоняется.
 """
 
 from __future__ import annotations
@@ -28,7 +28,8 @@ CHECKS = {
     "bankruptcy",
 }
 STATUSES = {"draft", "approved", "retired"}
-# Юридическая сила акта, на котором стоит правило (идея реестра инструментов AeroBIM, npa_legal_force).
+# Юридическая сила акта, на котором стоит правило: кодекс, федеральный закон, постановление правительства,
+# приказ ведомства, акт Банка России.
 LEGAL_FORCE = {"code", "federal_law", "government_decree", "agency_order", "cbr_act"}
 OFFICIAL_HOSTS = ("publication.pravo.gov.ru", "pravo.gov.ru")
 EFFECTS = {"supports", "refutes", "needs_review", "not_verified", "info"}

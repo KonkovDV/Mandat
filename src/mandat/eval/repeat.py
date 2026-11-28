@@ -25,6 +25,7 @@ from typing import Any
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from mandat.audit import journal
+from mandat.audit.attestation import bank_date
 from mandat.audit.signing import Keyring, LocalSigner
 from mandat.domain.conclusion import MSK, Conclusion
 from mandat.domain.model import Case, PowerOfAttorney
@@ -113,8 +114,8 @@ def pilot_approvals(moment: datetime) -> Approvals:
             signer,
             approver_role="юрист банка (оценка)",
             norm_edition="редакция пакета правил",
-            norm_checked_on=signed.date(),
-            valid_until=(signed + timedelta(days=365)).date(),
+            norm_checked_on=bank_date(signed),
+            valid_until=bank_date(signed) + timedelta(days=365),
             signed_at=signed,
             catalog_sha256=default_catalog().sha256,
         )
