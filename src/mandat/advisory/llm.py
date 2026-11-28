@@ -280,8 +280,10 @@ def eval_complete(
     """Один вызов модели для офлайн-оценки на синтетических данных (``scripts/eval_advisory.py``).
 
     Не для кейсов клиентов: запрос не проходит шлюз обезличивания, поэтому в защищённых режимах (pilot, prod)
-    функция отказывает. Хост — только из ``MANDAT_LLM_ALLOWED_HOSTS``, переадресация запрещена. Прокси окружения
-    здесь допускается: так оценку можно запустить из среды разработки с исходящим прокси.
+    функция отказывает. Хост — только из ``MANDAT_LLM_ALLOWED_HOSTS``, переадресация запрещена. Схема — https;
+    http допускается только для loopback (127.0.0.1, localhost, ::1): модель на той же машине (Ollama, llama.cpp),
+    как у ``OpenAICompatClient`` с ``MANDAT_LLM_ALLOW_INSECURE_LOOPBACK``. Прокси окружения допускается для внешнего
+    хоста (оценка из среды разработки с исходящим прокси), запрос к loopback идёт мимо прокси.
     Возвращает ``{"text": ответ, "usage": расход}``.
     """
     from mandat.services import env_policy
@@ -289,8 +291,10 @@ def eval_complete(
     if env_policy.protected():
         raise LlmDisabled("оценка моделей не запускается в защищённом режиме")
     parsed = urlparse(base_url)
-    if parsed.scheme != "https" or (parsed.hostname or "").lower() not in allowed_hosts():
-        raise ValueError("оценка: только https и хост из MANDAT_LLM_ALLOWED_HOSTS")
+    host = (parsed.hostname or "").lower()
+    loopback = host in {"127.0.0.1", "localhost", "::1"}
+    if not (parsed.scheme == "https" or (parsed.scheme == "http" and loopback)) or host not in allowed_hosts():
+        raise ValueError("оценка: https (http — только 127.0.0.1, localhost, ::1) и хост из MANDAT_LLM_ALLOWED_HOSTS")
     keys = {k: v for k, v in (extra or {}).items() if k in EXTRA_KEYS}
     body = {**keys, "model": model, "temperature": 0, "seed": 7, "messages": messages}
     request = urllib.request.Request(  # noqa: S310 — схема и хост проверены выше
@@ -299,7 +303,8 @@ def eval_complete(
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
         method="POST",
     )
-    with urllib.request.build_opener(_NoRedirect()).open(request, timeout=timeout) as response:
+    handlers = (urllib.request.ProxyHandler({}), _NoRedirect()) if loopback else (_NoRedirect(),)
+    with urllib.request.build_opener(*handlers).open(request, timeout=timeout) as response:
         raw = response.read(MAX_RESPONSE_BYTES + 1)
     if len(raw) > MAX_RESPONSE_BYTES:
         raise ValueError(f"ответ модели больше {MAX_RESPONSE_BYTES} байт")
