@@ -16,12 +16,15 @@ from __future__ import annotations
 
 import base64
 import gzip
+import hashlib
 import json
 import math
 import os
 import secrets
 import sys
+import threading
 import zlib
+from collections import OrderedDict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -29,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from mandat.audit import attestation
 from mandat.audit.signing import Signer
@@ -249,7 +253,7 @@ def decode_bits(encoded: str) -> bytearray:
     return bytearray(bits)
 
 
-def get_bit(bits: bytearray, index: int) -> bool:
+def get_bit(bits: bytes | bytearray, index: int) -> bool:
     return bool(bits[index // 8] >> (7 - index % 8) & 1)
 
 
@@ -532,6 +536,89 @@ def _verify_any(status_cred: dict[str, Any], keys: Ed25519PublicKey | Iterable[E
     return any(attestation.public_key_multibase(k) == kid and attestation.verify(status_cred, k) for k in candidates)
 
 
+# Допуск читает списки статусов на каждый запрос. Повторяющаяся работа — разбор JSON, проверка подписи списка,
+# распаковка битовой строки и разбор registry.json издателя (он растёт с каждым выданным удостоверением: на
+# 10 000 — больше мегабайта) — делается один раз на содержимое файла. Решение по-прежнему принимается на каждый
+# запрос: свежесть по часам, high-watermark, эпоха, индекс и бит не кэшируются. Новый список после отзыва или
+# приостановки — новые байты и промах кэша; смена связки ключей — другой ключ кэша.
+_CACHE_LOCK = threading.Lock()
+_LIST_CACHE_SIZE = 64
+_LISTS: OrderedDict[tuple[bytes, tuple[bytes, ...]], tuple[dict[str, Any], bool]] = OrderedDict()
+_BITS: OrderedDict[str, bytes] = OrderedDict()
+_ISSUER: dict[Path, tuple[tuple[int, ...], bytes, int]] = {}
+_HEAD = 4096  # sequence издатель пишет в начале registry.json: заголовок сверяется при каждом попадании
+
+
+def clear_caches() -> None:
+    """Забыть разобранные списки и состояние издателя (тесты, смена каталога статусов без перезапуска)."""
+    with _CACHE_LOCK:
+        _LISTS.clear()
+        _BITS.clear()
+        _ISSUER.clear()
+
+
+def _remember(cache: OrderedDict[Any, Any], key: Any, value: Any) -> None:
+    with _CACHE_LOCK:
+        cache[key] = value
+        cache.move_to_end(key)
+        while len(cache) > _LIST_CACHE_SIZE:
+            cache.popitem(last=False)
+
+
+def _issuer_sequence(state: Path) -> int:
+    """``sequence`` из registry.json издателя; -1, если файла нет.
+
+    Файл разбирается заново, только если изменился: stat (устройство, inode, размер, mtime и ctime в наносекундах) и
+    первые байты файла, где лежит sequence, совпадают с разобранными. Издатель пишет файл заново через os.replace.
+    """
+    try:
+        st = state.stat()
+        with state.open("rb") as fh:
+            head = fh.read(_HEAD)
+    except FileNotFoundError:
+        return -1
+    stamp = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+    with _CACHE_LOCK:
+        hit = _ISSUER.get(state)
+    if hit is not None and hit[0] == stamp and hit[1] == head:
+        return hit[2]
+    sequence = int(strict_loads(state.read_text(encoding="utf-8")).get("sequence") or -1)
+    with _CACHE_LOCK:
+        if len(_ISSUER) >= _LIST_CACHE_SIZE:
+            _ISSUER.clear()
+        _ISSUER[state] = (stamp, head, sequence)
+    return sequence
+
+
+def _signed_list(path: Path, keys: tuple[Ed25519PublicKey, ...]) -> tuple[dict[str, Any], bool]:
+    """Список статусов и верна ли его подпись одним из ``keys``; ключ кэша — SHA-256 текста и сами ключи."""
+    text = path.read_text(encoding="utf-8")
+    fingerprint = (
+        hashlib.sha256(text.encode("utf-8")).digest(),
+        tuple(k.public_bytes(Encoding.Raw, PublicFormat.Raw) for k in keys),
+    )
+    with _CACHE_LOCK:
+        hit = _LISTS.get(fingerprint)
+        if hit is not None:
+            _LISTS.move_to_end(fingerprint)
+            return hit
+    status_cred = strict_loads(text)
+    found = (status_cred, _verify_any(status_cred, keys))
+    _remember(_LISTS, fingerprint, found)
+    return found
+
+
+def _list_bits(encoded: str) -> bytes:
+    with _CACHE_LOCK:
+        hit = _BITS.get(encoded)
+        if hit is not None:
+            _BITS.move_to_end(encoded)
+            return hit
+    bits = bytes(decode_bits(encoded))
+    _remember(_BITS, encoded, bits)
+    return bits
+
+
 def check_status(
     credential: dict[str, Any],
     status_dir: Path,
@@ -560,18 +647,16 @@ def check_status(
         raise ValueError("нет high-watermark seen: в защищённом режиме обязателен для проверки свежести списка")
     result: dict[str, bool | str] = {}
     root = published_root(status_dir)
-    issuer_state = root / "registry.json"
-    issuer_sequence = -1
-    if issuer_state.exists():
-        # Список старше состояния издателя в том же каталоге — подложен: подписан верно, но устарел.
-        issuer_sequence = int(strict_loads(issuer_state.read_text(encoding="utf-8")).get("sequence") or -1)
+    # Список старше состояния издателя в том же каталоге — подложен: подписан верно, но устарел.
+    issuer_sequence = _issuer_sequence(root / "registry.json")
+    keys = (public_key,) if isinstance(public_key, Ed25519PublicKey) else tuple(public_key)
     for entry in credential.get("credentialStatus") or []:
         purpose = entry["statusPurpose"]
         path = root / f"{purpose}.json"
-        status_cred = strict_loads(path.read_text(encoding="utf-8"))
+        status_cred, signed = _signed_list(path, keys)
         if status_cred.get("id") != entry["statusListCredential"]:
             raise ValueError(f"список {path} не тот, на который ссылается удостоверение")
-        if not _verify_any(status_cred, public_key):
+        if not signed:
             raise ValueError(f"подпись списка {path} не верна")
         subject = status_cred.get("credentialSubject") or {}
         if entry.get("epoch") and subject.get("epoch") != entry.get("epoch"):
@@ -590,7 +675,7 @@ def check_status(
         issued = datetime.fromisoformat(str(status_cred.get("validFrom")))
         if issued.tzinfo is None:
             raise ValueError(f"у списка {path} нет часового пояса")
-        bits = decode_bits(subject["encodedList"])
+        bits = _list_bits(subject["encodedList"])
         if len(bits) * 8 < MIN_BITS:
             raise ValueError(f"список {path} короче {MIN_BITS} бит (STATUS_LIST_LENGTH_ERROR)")
         position = int(entry["statusListIndex"])
