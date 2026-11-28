@@ -114,7 +114,7 @@ jobs:
       - name: store tests against real Redis
         run: >-
           python -m pytest tests/test_storage.py tests/test_review_store.py tests/test_review_api.py
-          tests/test_conclusion_store.py --junitxml=var/junit-redis.xml
+          tests/test_conclusion_store.py tests/test_conclusions_api.py --junitxml=var/junit-redis.xml
       - name: no skipped tests
         run: python scripts/check_no_skips.py var/junit-redis.xml
 

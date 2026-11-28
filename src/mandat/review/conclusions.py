@@ -251,7 +251,7 @@ def draft_from_case(
         "outcome": "restriction" if restrictions else None,
         "restrictions": restrictions,
         "basis": f"Проект модели по уставу: {quotes}" if quotes else "",
-        "operations": [operation],
+        "operations": [operation] if operation else [],
         "max_amount_rub": None,
         "valid_until": (msk_day(now) + timedelta(days=DEFAULT_TERM_DAYS)).isoformat(),
         "status": "draft",

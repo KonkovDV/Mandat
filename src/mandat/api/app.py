@@ -26,7 +26,7 @@ import re
 import secrets
 import time
 import traceback
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -34,19 +34,32 @@ from typing import Any, Literal
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from mandat import ENGINE, __version__
+from mandat.advisory import draft as advisory_draft
 from mandat.api import authzen
+from mandat.api import conclusions as conclusion_api
 from mandat.api import review as review_api
 from mandat.api.principals import Directory, Principal, load_users
 from mandat.api.sealing import SealError, sealed
-from mandat.api.storage import Idem, Pending, ReportQuotaExceeded, ReviewVersionConflict, Store, open_store
+from mandat.api.storage import (
+    ConclusionVersionConflict,
+    Idem,
+    Pending,
+    ReportQuotaExceeded,
+    ReviewVersionConflict,
+    Store,
+    open_store,
+)
 from mandat.audit import journal
 from mandat.audit.attestation import NONCE_MIN_CHARS, OperationRequest
 from mandat.audit.status_list import known_risk
+from mandat.domain.conclusion import ID as CONCLUSION_ID
+from mandat.domain.conclusion import Conclusion, ogrn_ok
 from mandat.intake.case_loader import CaseError, load_case_inline
 from mandat.report.html import render
+from mandat.review import conclusions as lifecycle
 from mandat.review.state_machine import (
     JOURNAL_ACTION,
     ReviewConflict,
@@ -55,6 +68,7 @@ from mandat.review.state_machine import (
     ReviewInvalid,
     ReviewState,
 )
+from mandat.rules.pack import default_catalog
 from mandat.services import admission
 from mandat.services.env_policy import PROFILES, ProfileNotAllowed, protected, resolve_profile
 from mandat.services.monitoring import MOSCOW, NOTICE_DAYS, evaluate, parse_as_of, parse_events
@@ -197,6 +211,66 @@ class ReviewAction(BaseModel):
     reason: str = Field(default="", max_length=4000)
     # Только для действия require: специализация, без которой кейс не решить.
     specialization: str | None = Field(default=None, max_length=64)
+
+
+MAX_AMOUNT = 2**53 - 1
+
+
+class RestrictionBody(BaseModel):
+    """Ограничение устава в заключении юриста: вид, порог в рублях, «включительно» и цитата устава."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["approval_threshold", "joint_signature", "large_deal_approval"]
+    value_rub: StrictInt | None = Field(default=None, ge=1, le=MAX_AMOUNT)
+    inclusive: StrictBool = True
+    quote: str | None = Field(default=None, max_length=400)
+
+
+class ConclusionDraft(BaseModel):
+    """Тело POST /v1/conclusions: черновик заключения юриста по одной редакции устава (docs/CONCLUSIONS.md)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ogrn: str = Field(pattern=r"^\d{13}$", description="ОГРН юрлица — область заключения")
+    charter_sha256: str = Field(pattern=r"^[0-9a-f]{64}$", description="sha256 документа устава — его редакция")
+    outcome: Literal["no_restriction", "restriction"]
+    restrictions: list[RestrictionBody] = Field(default_factory=list, max_length=5)
+    basis: str = Field(min_length=1, max_length=4000, description="какие положения прочитаны и почему такой вывод")
+    operations: list[str] = Field(default_factory=list, max_length=20, description="коды операций; пусто — все")
+    max_amount_rub: StrictInt | None = Field(default=None, ge=1, le=MAX_AMOUNT, description="предел суммы")
+    valid_until: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$", description="последний день действия, не дальше года")
+
+
+class ConclusionEdit(BaseModel):
+    """Тело POST /v1/conclusions/{id}/confirm: автор подтверждает черновик, заданные поля заменяют проект."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_version: StrictInt = Field(ge=0)
+    outcome: Literal["no_restriction", "restriction"] | None = None
+    restrictions: list[RestrictionBody] | None = Field(default=None, max_length=5)
+    basis: str | None = Field(default=None, min_length=1, max_length=4000)
+    operations: list[str] | None = Field(default=None, max_length=20)
+    max_amount_rub: StrictInt | None = Field(default=None, ge=1, le=MAX_AMOUNT)
+    valid_until: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class ConclusionAction(BaseModel):
+    """Тело POST /v1/conclusions/{id}/approve и /revoke. ``expected_version`` — поле ``version`` записи."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_version: StrictInt = Field(ge=0)
+    reason: str = Field(default="", max_length=4000)
+
+
+class ConclusionFromCase(BaseModel):
+    """Тело POST /v1/cases/{id}/conclusion-draft: документы того же кейса, чтобы модель банка прочла устав."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    manifest: dict[str, Any] | None = Field(default=None, description="манифест кейса; без него проект пуст")
 
 
 class ApiProblem(Exception):
@@ -650,11 +724,14 @@ def create_app(
             case = load_case_inline(manifest)
         except CaseError as exc:
             raise ApiProblem(422, "кейс не прошёл проверку входных данных", f"CaseError: {exc}") from exc
+        # Строгий профиль читает реестр заключений юриста по уставам организации кейса (docs/CONCLUSIONS.md).
+        conclusions = registry_for(case) if profile == "strict" else ()
+        registry: dict[str, Any] = {"conclusions": conclusions} if conclusions else {}
         # В pilot и prod снимки источников сверяются с часами сервера: снимок «из будущего» не доказательство.
         if protected():
-            report = verify_case(case, profile=profile, now=datetime.now(UTC)).as_dict()
+            report = verify_case(case, profile=profile, now=datetime.now(UTC), **registry).as_dict()
         else:
-            report = verify_case(case, profile=profile).as_dict()
+            report = verify_case(case, profile=profile, **registry).as_dict()
         case_id = report["case_id"]
         # Квота владельца проверяется до записи в журнал; окончательно её держит commit.
         try:
@@ -706,8 +783,28 @@ def create_app(
             shared.stage(case_id, report, principal.name, attempt, idem)
         except Exception as exc:
             raise ApiProblem(503, "хранилище недоступно, кейс не сохранён", f"store: {type(exc).__name__}") from exc
+        applied = (report.get("charter_conclusions") or {}).get("applied") or []
         if audit_log is not None:
             try:
+                # Применённое заключение юриста — своя запись журнала до записи проверки: опубликованный отчёт
+                # всегда идёт после неё, а попытка, которую не опубликовали, оставляет только эти записи.
+                for row in applied:
+                    lifecycle.record_apply(
+                        audit_log,
+                        actor=actor_of(principal),
+                        case_id=case_id,
+                        report_hash=report["reproducibility_hash"],
+                        applied=row,
+                        attempt=attempt,
+                    )
+                details: dict[str, Any] = {
+                    "verdict": report["verdict"],
+                    "profile": report["profile"],
+                    "via": "api",
+                    "attempt": attempt,
+                }
+                if applied:
+                    details["conclusions"] = [str(row.get("id")) for row in applied]
                 journal.append(
                     audit_log,
                     action="verify",
@@ -715,12 +812,7 @@ def create_app(
                     role=principal.role,
                     case_id=case_id,
                     payload_hash=report["reproducibility_hash"],
-                    details={
-                        "verdict": report["verdict"],
-                        "profile": report["profile"],
-                        "via": "api",
-                        "attempt": attempt,
-                    },
+                    details=details,
                 )
             except (ValueError, OSError, journal.JournalKeyMissing) as exc:
                 with contextlib.suppress(Exception):
@@ -741,6 +833,7 @@ def create_app(
         if not committed:
             raise HTTPException(409, "запись вытеснена другой попыткой: повторите запрос")
         journal_evictions(evicted, principal.name, principal.role, case_id)
+        registry_after(case_id, report, principal)
         # Кейс без автоматического решения сразу встаёт в очередь разбора. При replace=true разбор начинается
         # заново по новому отчёту: прежний разбор уходит в «superseded» и в журнал (review_reset).
         # Сбой записи не отменяет кейс: разбор создастся при первом действии, но до того кейса нет в очереди,
@@ -750,6 +843,72 @@ def create_app(
         except Exception as exc:
             log.warning("review_seed_failed case_id=%s error=%s", case_id, type(exc).__name__)
         return report
+
+    operation_codes = frozenset(default_catalog().operations)
+
+    def actor_of(principal: Principal) -> lifecycle.Actor:
+        return lifecycle.Actor(principal.name, principal.role, principal.specialization)
+
+    def registry_rows(ogrn: str) -> list[conclusion_api.Row]:
+        """Заключения организации. Подменённая запись — ``SealError`` (500), недоступное хранилище — 503."""
+        try:
+            return shared.conclusion_list(ogrn)
+        except SealError:
+            raise
+        except Exception as exc:
+            raise ApiProblem(503, "хранилище недоступно", f"store: {type(exc).__name__}") from exc
+
+    def registry_for(case: Any) -> tuple[Conclusion, ...]:
+        """Заключения юриста для проверки кейса. Нечитаемая запись не применяется и называется в журнале сервера."""
+        ogrn = case.organization.ogrn
+        if not ogrn_ok(ogrn):
+            return ()
+        parsed, broken = conclusion_api.for_rules(registry_rows(ogrn))
+        for cid in broken:
+            log.warning("conclusion_unreadable id=%s", scrub(cid))
+        return parsed
+
+    def registry_after(case_id: str, report: dict[str, Any], principal: Principal) -> None:
+        """После публикации отчёта: счётчики применений и перепроверка заключений прежней редакции устава.
+
+        Отчёт уже опубликован, поэтому сбой здесь ответ не меняет, а уходит в журнал сервера. Перепроверку повторит
+        следующий кейс клиента с той же новой редакцией.
+        """
+        section = report.get("charter_conclusions")
+        if not section:
+            return
+        status = ((report.get("checks") or {}).get("charter") or {}).get("status")
+        cleared = status not in {"review", "not_verified", "refuted", "missing"}
+        for row in section.get("applied") or []:
+            try:
+                shared.conclusion_tally(str(row.get("id")), cleared)
+            except Exception as exc:  # noqa: BLE001 — счётчик для отчётности, не доказательство
+                log.warning("conclusion_tally_failed id=%s error=%s", scrub(str(row.get("id"))), type(exc).__name__)
+        charter = next((r.get("sha256") for r in report.get("inputs") or [] if r.get("kind") == "charter_text"), None)
+        for row in section.get("previous") or []:
+            if row.get("status") != "approved" or not charter:
+                continue
+            try:
+                recheck_one(str(row.get("id")), case_id, str(charter), principal)
+            except Exception as exc:  # noqa: BLE001 — перепроверку повторит следующий кейс с этой редакцией
+                log.warning("conclusion_recheck_failed id=%s error=%s", scrub(str(row.get("id"))), type(exc).__name__)
+
+    def recheck_one(conclusion_id: str, case_id: str, charter: str, principal: Principal) -> None:
+        found = shared.conclusion_get(conclusion_id)
+        if found is None or found[0].get("status") != "approved":
+            return
+        body, version = found
+        new = lifecycle.recheck(
+            body,
+            version,
+            actor=actor_of(principal),
+            case_id=case_id,
+            charter_sha256=charter,
+            now=datetime.now(UTC),
+            journal_path=audit_log,
+        )
+        with contextlib.suppress(ConclusionVersionConflict):
+            shared.conclusion_put(conclusion_id, new, version)
 
     def journal_evictions(evicted: list[str], actor: str, role: str, for_case: str) -> None:
         """Отчёты, вытесненные квотой владельца ради ``for_case``, — в журнал: кейс уходит из хранилища не молча.
@@ -1014,6 +1173,241 @@ def create_app(
             key=lambda i: (not i["overdue"], i["effective_priority"] or "P9", i["due_at"] or "9999", i["case_id"])
         )
         return {"items": items, "states": sorted(open_states), "auto_decided": ReviewState.AUTO_DECIDED.value}
+
+    # --- Реестр заключений юриста по уставам (docs/CONCLUSIONS.md) ----------------------------------------------
+
+    def conclusion_reader(principal: Principal = Depends(auth)) -> Principal:
+        """Читают реестр сотрудники и аудитор; учётная запись системы банка (dbo) — нет."""
+        if principal.role == "dbo":
+            raise ApiProblem(403, "учётная запись системы банка заключения юриста не читает", "conclusions: dbo")
+        return principal
+
+    def conclusion_journal() -> None:
+        if audit_log is None and protected():
+            raise HTTPException(503, "журнал аудита не настроен: задайте MANDAT_API_JOURNAL")
+
+    def conclusion_problem(exc: lifecycle.ConclusionError) -> Exception:
+        if isinstance(exc, lifecycle.ConclusionForbidden):
+            return HTTPException(403, str(exc))
+        if isinstance(exc, lifecycle.ConclusionConflict):
+            return HTTPException(409, str(exc))
+        if isinstance(exc, lifecycle.ConclusionInvalid):
+            return HTTPException(422, str(exc))
+        return ApiProblem(503, "журнал аудита недоступен, заключение не записано", f"journal: {exc}")
+
+    def found_conclusion(conclusion_id: str) -> tuple[dict[str, Any], int]:
+        if not CONCLUSION_ID.fullmatch(conclusion_id):
+            raise HTTPException(404, "заключение не найдено")
+        try:
+            found = shared.conclusion_get(conclusion_id)
+        except SealError:
+            raise
+        except Exception as exc:
+            raise ApiProblem(503, "хранилище недоступно", f"store: {type(exc).__name__}") from exc
+        if found is None:
+            raise HTTPException(404, "заключение не найдено")
+        return found
+
+    def conclusion_view(conclusion_id: str, body: dict[str, Any], version: int) -> dict[str, Any]:
+        rows = registry_rows(str(body.get("ogrn")))
+        try:
+            tally = shared.conclusion_tallies([conclusion_id]).get(conclusion_id, (0, 0))
+        except Exception as exc:
+            raise ApiProblem(503, "хранилище недоступно", f"store: {type(exc).__name__}") from exc
+        replaced = next((cid for cid, other, _ in rows if conclusion_id in (other.get("supersedes") or [])), None)
+        return conclusion_api.view(
+            conclusion_id, body, version, day=conclusion_api.today(), tally=tally, superseded_by=replaced
+        )
+
+    def keep_conclusion(conclusion_id: str, body: dict[str, Any], expected_version: int) -> dict[str, Any]:
+        """Записать заключение по ожидаемой версии и вернуть его вид. Журнал уже записан вызывающим."""
+        try:
+            version = shared.conclusion_put(conclusion_id, body, expected_version)
+        except ConclusionVersionConflict as exc:
+            raise HTTPException(409, f"версия {exc.expected} устарела, сейчас {exc.current}") from exc
+        except SealError:
+            raise
+        except Exception as exc:
+            raise ApiProblem(
+                503, "хранилище недоступно, заключение не сохранено", f"store: {type(exc).__name__}"
+            ) from exc
+        return conclusion_view(conclusion_id, body, version)
+
+    def room_for(ogrn: str) -> None:
+        if len(registry_rows(ogrn)) >= conclusion_api.MAX_PER_OGRN:
+            raise ApiProblem(
+                429,
+                f"в реестре организации уже {conclusion_api.MAX_PER_OGRN} заключений: прежние архивирует банк",
+                f"conclusions: quota {conclusion_api.MAX_PER_OGRN}",
+            )
+
+    @app.post("/v1/conclusions", dependencies=[Depends(strict_json_object)])
+    def create_conclusion(payload: ConclusionDraft, principal: Principal = Depends(writer)) -> dict[str, Any]:
+        """Черновик заключения по редакции устава. Пишет operator или reviewer, утверждает другой юрист.
+
+        403 — роль; 422 — поля вывода; 429 — реестр организации полон; 503 — журнал или хранилище.
+        """
+        conclusion_journal()
+        room_for(payload.ogrn)
+        cid = lifecycle.new_id()
+        try:
+            body = lifecycle.create(
+                payload.model_dump(),
+                actor=actor_of(principal),
+                conclusion_id=cid,
+                now=datetime.now(UTC),
+                operations=operation_codes,
+                journal_path=audit_log,
+            )
+        except lifecycle.ConclusionError as exc:
+            raise conclusion_problem(exc) from exc
+        except (ValueError, OSError, journal.JournalKeyMissing) as exc:
+            raise ApiProblem(503, "журнал аудита недоступен, заключение не записано", f"journal: {exc}") from exc
+        return keep_conclusion(cid, body, 0)
+
+    @app.get("/v1/conclusions")
+    def list_conclusions(ogrn: str, principal: Principal = Depends(conclusion_reader)) -> dict[str, Any]:
+        """Заключения организации по ОГРН, новые сверху: статус на сегодня, вывод, область, число применений."""
+        if not ogrn_ok(ogrn):
+            raise HTTPException(422, "ogrn: 13 цифр ОГРН юрлица с верным контрольным числом")
+        rows = registry_rows(ogrn)
+        try:
+            tallies = shared.conclusion_tallies([cid for cid, _, _ in rows])
+        except Exception as exc:
+            raise ApiProblem(503, "хранилище недоступно", f"store: {type(exc).__name__}") from exc
+        day = conclusion_api.today()
+        return {"ogrn": ogrn, "today": day.isoformat(), "items": conclusion_api.listing(rows, day=day, tallies=tallies)}
+
+    @app.get("/v1/conclusions/{conclusion_id}")
+    def get_conclusion(conclusion_id: str, principal: Principal = Depends(conclusion_reader)) -> dict[str, Any]:
+        body, version = found_conclusion(conclusion_id)
+        return conclusion_view(conclusion_id, body, version)
+
+    def conclusion_step(conclusion_id: str, step: Callable[[dict[str, Any], int], dict[str, Any]]) -> dict[str, Any]:
+        conclusion_journal()
+        body, version = found_conclusion(conclusion_id)
+        try:
+            new = step(body, version)
+        except lifecycle.ConclusionError as exc:
+            raise conclusion_problem(exc) from exc
+        except (ValueError, OSError, journal.JournalKeyMissing) as exc:
+            raise ApiProblem(503, "журнал аудита недоступен, заключение не записано", f"journal: {exc}") from exc
+        return keep_conclusion(conclusion_id, new, version)
+
+    @app.post("/v1/conclusions/{conclusion_id}/confirm", dependencies=[Depends(strict_json_object)])
+    def confirm_conclusion(
+        conclusion_id: str, payload: ConclusionEdit, principal: Principal = Depends(writer)
+    ) -> dict[str, Any]:
+        """Автор подтверждает черновик или исправляет его поля; без этого проект из кейса не утвердить."""
+        edits = payload.model_dump(include=payload.model_fields_set - {"expected_version"})
+        return conclusion_step(
+            conclusion_id,
+            lambda body, version: lifecycle.confirm(
+                body,
+                version,
+                fields=edits,
+                actor=actor_of(principal),
+                now=datetime.now(UTC),
+                operations=operation_codes,
+                journal_path=audit_log,
+                expected_version=payload.expected_version,
+            ),
+        )
+
+    @app.post("/v1/conclusions/{conclusion_id}/approve", dependencies=[Depends(strict_json_object)])
+    def approve_conclusion(
+        conclusion_id: str, payload: ConclusionAction, principal: Principal = Depends(writer)
+    ) -> dict[str, Any]:
+        """Второй юрист утверждает подтверждённый черновик: с этого момента строгий профиль его применяет."""
+        return conclusion_step(
+            conclusion_id,
+            lambda body, version: lifecycle.approve(
+                body,
+                version,
+                actor=actor_of(principal),
+                reason=payload.reason,
+                now=datetime.now(UTC),
+                operations=operation_codes,
+                journal_path=audit_log,
+                expected_version=payload.expected_version,
+            ),
+        )
+
+    @app.post("/v1/conclusions/{conclusion_id}/revoke", dependencies=[Depends(strict_json_object)])
+    def revoke_conclusion(
+        conclusion_id: str, payload: ConclusionAction, principal: Principal = Depends(writer)
+    ) -> dict[str, Any]:
+        """Юрист отзывает заключение с причиной: следующие проверки его не применяют."""
+        return conclusion_step(
+            conclusion_id,
+            lambda body, version: lifecycle.revoke(
+                body,
+                version,
+                actor=actor_of(principal),
+                reason=payload.reason,
+                now=datetime.now(UTC),
+                journal_path=audit_log,
+                expected_version=payload.expected_version,
+            ),
+        )
+
+    @app.post("/v1/cases/{case_id}/conclusion-draft", dependencies=[Depends(strict_json_object)])
+    def conclusion_from_case(
+        case_id: str, payload: ConclusionFromCase, principal: Principal = Depends(writer)
+    ) -> dict[str, Any]:
+        """Проект заключения по кейсу, который ушёл на разбор из-за устава (R-CHR-002). Готовит юрист.
+
+        С документами кейса и подключённой моделью банка проект заполняют факты устава, прошедшие шлюз цитаты;
+        без модели проект пуст. Прежнее заключение по другой редакции устава названо в проекте: разбор начинается
+        с него. Проект действует только после подтверждения автором и утверждения вторым юристом.
+        """
+        conclusion_journal()
+        actor = actor_of(principal)
+        if not actor.lawyer:
+            raise HTTPException(403, "проект заключения по кейсу готовит юрист: reviewer со специализацией lawyer")
+        report, _ = review_target(case_id, principal)
+        charter = next((r.get("sha256") for r in report.get("inputs") or [] if r.get("kind") == "charter_text"), None)
+        if not isinstance(charter, str):
+            raise HTTPException(409, "в кейсе нет устава: заключение не к чему привязать")
+        findings = report.get("findings") or []
+        if not any(f.get("rule_id") == "R-CHR-002" and f.get("effect") == "needs_review" for f in findings):
+            raise HTTPException(409, "кейс ушёл на разбор не из-за устава: R-CHR-002 его не останавливает")
+        ogrn = str((report.get("organization") or {}).get("ogrn") or "")
+        if not ogrn_ok(ogrn):
+            raise HTTPException(409, "у организации кейса нет верного ОГРН юрлица: заключение не к чему привязать")
+        room_for(ogrn)
+        proposal = advisory_draft.Proposal("case", (), "документы кейса не переданы: проект пуст, юрист заполняет его")
+        if payload.manifest is not None:
+            try:
+                case = load_case_inline(payload.manifest)
+            except CaseError as exc:
+                raise ApiProblem(422, "документы кейса не прошли проверку входных данных", f"CaseError: {exc}") from exc
+            if case.charter is None or case.charter.sha256 != charter or case.organization.ogrn != ogrn:
+                raise ApiProblem(
+                    422, "документы не этого кейса: устав или ОГРН не совпадают с отчётом", "conclusion-draft: mismatch"
+                )
+            proposal = advisory_draft.propose(case)
+        cid = lifecycle.new_id()
+        try:
+            body = lifecycle.draft_from_case(
+                ogrn=ogrn,
+                charter_sha256=charter,
+                operation=str((report.get("operation") or {}).get("code") or ""),
+                source_case=case_id,
+                proposals=list(proposal.proposals),
+                origin=proposal.origin,
+                note=proposal.note,
+                previous=conclusion_api.previous(registry_rows(ogrn), charter),
+                actor=actor,
+                conclusion_id=cid,
+                now=datetime.now(UTC),
+                journal_path=audit_log,
+            )
+        except lifecycle.ConclusionError as exc:
+            raise conclusion_problem(exc) from exc
+        except (ValueError, OSError, journal.JournalKeyMissing) as exc:
+            raise ApiProblem(503, "журнал аудита недоступен, заключение не записано", f"journal: {exc}") from exc
+        return {**keep_conclusion(cid, body, 0), "dropped": list(proposal.dropped)}
 
     @app.post("/v1/events", dependencies=[Depends(writer), Depends(strict_json_object)])
     def post_events(payload: dict[str, Any], window_hours: int = 72, notice_days: int = NOTICE_DAYS) -> dict[str, Any]:

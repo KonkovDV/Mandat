@@ -36,6 +36,10 @@ def initial(case_id: str, report: dict[str, Any], owner: str) -> dict[str, Any]:
     body = case.to_dict()
     body["queued_at"] = None if auto else report.get("generated_at") or now_iso()
     body["priority"] = (report.get("routing") or {}).get("priority")
+    # Устав клиента сменил редакцию: юрист видит, какое заключение действовало (номер, дата, вывод), и начинает с него.
+    previous = (report.get("charter_conclusions") or {}).get("previous")
+    if previous:
+        body["previous_conclusions"] = previous
     return body
 
 
@@ -88,6 +92,8 @@ def dump(case: ReviewCase, previous: dict[str, Any]) -> dict[str, Any]:
     body["queued_at"] = previous.get("queued_at")
     if previous.get("superseded"):
         body["superseded"] = previous["superseded"]
+    if previous.get("previous_conclusions"):
+        body["previous_conclusions"] = previous["previous_conclusions"]
     if case.state is ReviewState.QUEUED and previous.get("state") != ReviewState.QUEUED.value:
         body["queued_at"] = now_iso()
         body["priority"] = body["priority"] or APPEAL_PRIORITY
@@ -113,4 +119,5 @@ def view(case_id: str, body: dict[str, Any], version: int) -> dict[str, Any]:
         "required_specialization": body.get("required_specialization"),
         "history": body.get("history") or [],
         "superseded": body.get("superseded") or [],
+        **({"previous_conclusions": body["previous_conclusions"]} if body.get("previous_conclusions") else {}),
     }
