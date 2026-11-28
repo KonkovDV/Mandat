@@ -236,7 +236,7 @@ if (page) {
   renderFields();
   supported().then((ok) => {
     if (!ok) {
-      result(document.getElementById("sig-result"), false, "Этот браузер не умеет Ed25519 в WebCrypto. Подойдут Chrome 137+, Firefox 129+ или Safari 17+. Или командная строка: mandat attest-verify.");
+      result(document.getElementById("sig-result"), false, "Проверке подписи в браузере нужен Ed25519 в WebCrypto: подойдут Chrome 137+, Firefox 129+ или Safari 17+. Без браузера подпись проверяет командная строка: mandat attest-verify.");
       return;
     }
     for (const id of ["tamper", "moment", "journal-tamper"]) document.getElementById(id).hidden = false;
