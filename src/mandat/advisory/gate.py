@@ -49,8 +49,14 @@ def _amount(raw: object) -> int | None:
     return None
 
 
-def ground_candidates(raw: list[dict[str, Any]], doc: TextDocument, *, min_confidence: float = 0.5) -> GateResult:
-    """Оставляем только кандидатов с цитатой из документа и достаточной уверенностью."""
+def ground_candidates(
+    raw: list[dict[str, Any]], doc: TextDocument, *, min_confidence: float = 0.5, seen: str | None = None
+) -> GateResult:
+    """Оставляем только кандидатов с цитатой из документа и достаточной уверенностью.
+
+    ``seen`` — обезличенный текст, который получила модель: ФИО в нём заменены метками, и цитата с меткой
+    «[ФИО]» дословно стоит там, а не в исходном уставе. Такая цитата тоже считается найденной.
+    """
     if not (isinstance(min_confidence, (int, float)) and math.isfinite(min_confidence) and 0 <= min_confidence <= 1):
         # NaN в пороге сделал бы сравнение всегда ложным: факт с любой уверенностью прошёл бы.
         raise ValueError("min_confidence: конечное число от 0 до 1")
@@ -63,7 +69,7 @@ def ground_candidates(raw: list[dict[str, Any]], doc: TextDocument, *, min_confi
         if kind not in {"approval_threshold", "joint_signature", "large_deal_approval"}:
             dropped.append(f"неизвестный вид факта {kind!r}")
             continue
-        if not quote_is_grounded(quote, doc.text):
+        if not (quote_is_grounded(quote, doc.text) or (seen is not None and quote_is_grounded(quote, seen))):
             dropped.append("цитата не найдена в документе")
             continue
         if confidence is None:
