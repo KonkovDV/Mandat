@@ -54,6 +54,7 @@ const N = (() => {
     chains: ev.subdelegation_property.chains,
     medianMs: `≈${comma(ev.latency.median_ms)} мс`,
     p95Ms: `${comma(ev.latency.p95_ms)} мс`,
+    repeat: ev.repeat_clients,
   };
 })();
 const plural = (n, one, few, many) => {
@@ -1308,12 +1309,18 @@ const TERMINAL = {
     T(s, `возвращаются разовые затраты, ≈${Math.round(BANK.one_off[i])} млн ₽. Лицензия и сопровождение правил — ≈${Math.round(BANK.annual_cost[i])} млн ₽ в год. За три года — ${ROI} ₽ чистой отдачи на рубль затрат`, x3 + 0.25, TOP + 1.3, cw - 0.5, ch - 1.36, { size: 11, color: TINT.ice });
     // Три сценария модели и то, что уточнит пилот.
     const y2 = TOP + ch + GAP, h2 = BOTTOM - y2, tw = 7.9;
+    // Под таблицей — одна строка о повторных клиентах (evidence.json, C-27).
+    const lineH = 0.3, th = h2 - lineH - 0.06;
     table(s, ["Сценарий модели", ...EFFECT.names], [
       ["Проверок в год, тыс.", ...BANK.events.map((v) => String(Math.round(v)))],
       ["Ручная проверка, ставок", ...FTE.map(String)],
       ["Предотвращённый ущерб, млн ₽", ...LOSS.map(String)],
       ["Эффект банка в год, млн ₽", ...BANK.effect_cash.map((v) => String(Math.round(v)))],
-    ], L, y2, tw, [2.9, 1.7, 1.6, 1.7], { size: 12, highlight: 2, headH: 0.4, rowH: (h2 - 0.4) / 4, name: "Три сценария модели" });
+    ], L, y2, tw, [2.9, 1.7, 1.6, 1.7], { size: 12, highlight: 2, headH: 0.4, rowH: (th - 0.4) / 4, name: "Три сценария модели" });
+    T(s, [
+      { text: "Повторные клиенты: ", options: { bold: true, color: HEX.dk2 } },
+      { text: `с реестром заключений к человеку идут ${N.repeat.to_human_with} из ${N.repeat.payments} платежей вместо ${N.repeat.to_human_without}` },
+    ], L, y2 + th + 0.06, tw, lineH, { size: 10.5, color: C.text1, valign: "middle" });
     const px = L + tw + GAP, pw = R - px;
     card(s, px, y2, pw, h2, { fill: TINT.blue, line: TINT.blueLine, shadow: false });
     tile(s, px + 0.25, y2 + 0.2, 0.44, "ClipboardCheck", { fill: "FFFFFF" });
@@ -1443,7 +1450,10 @@ const TERMINAL = {
       bullets(s, items, x + 0.22, TOP + 1.45, cw - 0.36, ch - 1.5, { size: 12, psa: 6, color: hl ? C.background1 : C.text1 });
       if (i < 2) arrow(s, x + cw + 0.03, TOP + ch / 2, gap - 0.06, HEX.accent1, 2);
     });
-    band(s, L, TOP + ch + GAP, lw, BOTTOM - (TOP + ch + GAP), "Основа для этого уже есть: удостоверение «Мандата» привязано к операции, сумме, получателю и одноразовому номеру запроса и отзывается по событию", { icon: "BadgeCheck", size: 13 });
+    band(s, L, TOP + ch + GAP, lw, BOTTOM - (TOP + ch + GAP), [
+      { text: "Основа для этого уже есть: удостоверение «Мандата» привязано к операции, сумме, получателю и одноразовому номеру запроса и отзывается по событию", options: { breakLine: true } },
+      { text: "mandat mcp уже даёт ИИ-агентам банка ту же проверку, вердикт — от правил (docs/MCP.md)", options: { bold: true } },
+    ], { icon: "BadgeCheck", size: 13 });
     card(s, pxL, TOP, pw, BOTTOM - TOP, { line: null, r: 0.12 });
     s.addImage({ data: VISION, x: pxL, y: TOP, w: pw, h: BOTTOM - TOP, altText: "Анна у голограммы: много источников сходятся в один проверенный ответ", objectName: "Фото амбассадора" });
     s.addNotes("[4:34–4:44] Дальше один движок для троих. Сотрудник видит ответ сегодня. Клиент в «ВТБ Бизнес» увидит, кто вправе действовать за компанию. А ИИ-агент клиента платит только в пределах проверенного полномочия.");

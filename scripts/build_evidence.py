@@ -23,6 +23,7 @@ from pathlib import Path
 from bench import bench
 
 from mandat import ENGINE
+from mandat.eval import repeat
 from mandat.eval.run import HOLDOUT_SEED, run_corpus
 from mandat.examples import DEMO, OVERLAYS
 from mandat.intake.case_loader import load_case_dir
@@ -198,6 +199,21 @@ def main() -> int:
             "без СКЗИ подпись не проверена. Доля покрытия — в этом файле, не в старых слайдах"
         ),
     }
+    # Повторные клиенты (eval/repeat.py): сколько платежей идёт к человеку без реестра заключений юриста и с ним.
+    clients = repeat.run().as_dict()
+    if clients["false_confirmed_with_registry"] or clients["false_confirmed_without_registry"]:
+        raise SystemExit("повторные клиенты: платёж с ограничением устава подтверждён, evidence.json не собран")
+    repeat_summary = {
+        "command": "mandat eval",
+        "clients": clients["clients"],
+        "payments": clients["operations"],
+        "to_human_without": clients["to_human_without_registry"],
+        "to_human_with": clients["to_human_with_registry"],
+        "breakdown": clients["reasons_with_registry"],
+        "restricted_payments": clients["restricted_operations"],
+        "confirmed_restricted": clients["false_confirmed_with_registry"],
+        "boundary": clients["boundary"],
+    }
     evidence = {
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "engine": ENGINE,
@@ -213,6 +229,7 @@ def main() -> int:
         "synthetic_corpus": {"command": f"mandat eval --per-defect {args.per_defect}", **corpus},
         "synthetic_corpus_strict": strict_summary,
         "synthetic_corpus_holdout": holdout_summary,
+        "repeat_clients": repeat_summary,
         "subdelegation_property": {
             "command": "python -m pytest tests/test_properties.py tests/test_cedar.py",
             "chains": 384,
