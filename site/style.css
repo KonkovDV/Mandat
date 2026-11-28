@@ -551,6 +551,7 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space:
    на глазах (сдвиг вёрстки). Без JavaScript блок скрыт, как раньше. */
 .js #scenarios.seg[hidden] { display: block !important; visibility: hidden; min-height: 50px; }
 .js #calc.calc[hidden] { display: block !important; visibility: hidden; min-height: max(1320px, 100vh); }
+.js #lab-box.lab[hidden] { display: grid !important; visibility: hidden; }
 .result { margin-top: 14px; padding: 14px 16px; border-radius: 14px; font-weight: 600; }
 .result.ok { background: var(--ok-bg); color: var(--ok); }
 .result.no { background: var(--no-bg); color: var(--no); }
