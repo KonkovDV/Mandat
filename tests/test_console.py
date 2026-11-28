@@ -589,7 +589,11 @@ def test_analytics_numbers_come_from_evidence_model_and_counters(app):
     assert quality["evidence.json · stream_gate.cases"]["value"] == _ru(stream["cases"])
     assert stream["profile"] in quality["evidence.json · stream_gate.false_confirmed"]["label"]
     assert "stream_gate" in cards["quality"]["source"]
-    assert quality["evidence.json · tests.passed"]["value"] == _ru(evidence["tests"]["passed"])
+    tests_tile = quality.get("evidence.json · tests.passed")
+    if evidence["tests"] is None:  # внутри make evidence: итог pytest пишется после этого прогона
+        assert tests_tile is None
+    else:
+        assert tests_tile is not None and tests_tile["value"] == _ru(evidence["tests"]["passed"])
     values = json.loads((ROOT / "submission/analytics/out/model_values.json").read_text(encoding="utf-8"))
     base, unit = unit_economics(values)[1], _by_src(cards["unit"])
     assert unit["mandat.eval.economics · manual_check_rub"]["value"] == f"{_ru(base['manual_check_rub'])}\u00a0₽"
