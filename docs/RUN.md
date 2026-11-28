@@ -214,6 +214,7 @@ mandat incident-report --journal var/api/journal.jsonl --detected-at 2026-11-20T
 | `MANDAT_API_MAX_CONCURRENCY` | одновременных соединений у `mandat serve`; сверх них сразу 503, без очереди до таймаута | 64 |
 | `MANDAT_AUTHZEN_PDP` | идентификатор точки решений AuthZEN: адрес `https` без запроса и фрагмента, например `https://mandat.bank.local` | на стенде — адрес запроса; в `pilot` и `prod` без неё метаданные AuthZEN отвечают 503 |
 | `MANDAT_API_JOURNAL` | журнал аудита HTTP API: запись о проверке пишется до сохранения отчёта; журнал не цел или недоступен — 503, отчёт не сохраняется | на стенде не ведётся; в `pilot` и `prod` без него `POST /v1/cases` и действия разбора отвечают 503 |
+| `MANDAT_MCP_TOKEN` | токен учётной записи из `MANDAT_API_USERS` (на стенде — `MANDAT_API_TOKEN`), от имени которой `mandat mcp` отвечает ИИ-агентам: роль и `audiences` решают, как в HTTP ([MCP для агентов](MCP.md)) | пусто: `mandat mcp` не стартует |
 
 ### Режим, журнал и ключи
 
