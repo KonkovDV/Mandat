@@ -24,7 +24,7 @@ from bench import bench
 
 from mandat import ENGINE
 from mandat.eval import repeat
-from mandat.eval.run import HOLDOUT_SEED, run_corpus
+from mandat.eval.run import HOLDOUT_SEED, run_corpus, run_production
 from mandat.examples import DEMO, OVERLAYS
 from mandat.intake.case_loader import load_case_dir
 from mandat.rules.classifier import default_classifier
@@ -32,6 +32,9 @@ from mandat.rules.pack import default_catalog, default_pack
 from mandat.services.verify import verify_case
 
 ROOT = Path(__file__).resolve().parents[1]
+# Поток пакетов по профилю банка (eval/synth.py, docs/CAPACITY.md) на каждой сборке: seed закреплён,
+# поэтому сборки сравнимы между собой; прогон идёт на всех ядрах и занимает секунды.
+STREAM_MIX, STREAM_CASES, STREAM_SEED = "vtb_prod", 10_000, 2027
 
 
 try:
@@ -214,6 +217,20 @@ def main() -> int:
         "confirmed_restricted": clients["false_confirmed_with_registry"],
         "boundary": clients["boundary"],
     }
+    stream = run_production(STREAM_CASES, STREAM_MIX, seed=STREAM_SEED)
+    if stream["false_confirmed"]:
+        raise SystemExit(
+            f"поток {STREAM_MIX}: ложных «подтверждено» {stream['false_confirmed']}, evidence.json не собран; "
+            f"повтор первого: {stream['false_confirmed_cases'][0]['reproduce']}"
+        )
+    stream_gate = {
+        "command": f"python -m mandat.eval.run --mix {STREAM_MIX} --cases {STREAM_CASES} --seed {STREAM_SEED}",
+        "cases": stream["cases"],
+        "agreement": stream["agreement"],
+        "false_confirmed": stream["false_confirmed"],
+        "profile": stream["mix"],
+        "seed": stream["seed"],
+    }
     evidence = {
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "engine": ENGINE,
@@ -230,6 +247,7 @@ def main() -> int:
         "synthetic_corpus_strict": strict_summary,
         "synthetic_corpus_holdout": holdout_summary,
         "repeat_clients": repeat_summary,
+        "stream_gate": stream_gate,
         "subdelegation_property": {
             "command": "python -m pytest tests/test_properties.py tests/test_cedar.py",
             "chains": 384,

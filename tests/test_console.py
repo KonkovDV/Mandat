@@ -582,9 +582,13 @@ def test_analytics_numbers_come_from_evidence_model_and_counters(app):
     assert repeat["сессия · charter_conclusions.applied"]["value"] == "0"
     assert "repeat_clients" in cards["repeat"]["source"] and rc["boundary"] in cards["repeat"]["note"]
     quality = _by_src(cards["quality"])
-    for name in ("synthetic_corpus", "synthetic_corpus_strict", "synthetic_corpus_holdout"):
+    for name in ("synthetic_corpus", "synthetic_corpus_strict", "synthetic_corpus_holdout", "stream_gate"):
         tile = quality[f"evidence.json · {name}.false_confirmed"]
         assert tile["value"] == _ru(evidence[name]["false_confirmed"]) and tile["hero"] is True
+    stream = evidence["stream_gate"]
+    assert quality["evidence.json · stream_gate.cases"]["value"] == _ru(stream["cases"])
+    assert stream["profile"] in quality["evidence.json · stream_gate.false_confirmed"]["label"]
+    assert "stream_gate" in cards["quality"]["source"]
     assert quality["evidence.json · tests.passed"]["value"] == _ru(evidence["tests"]["passed"])
     values = json.loads((ROOT / "submission/analytics/out/model_values.json").read_text(encoding="utf-8"))
     base, unit = unit_economics(values)[1], _by_src(cards["unit"])

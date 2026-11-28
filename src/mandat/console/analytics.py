@@ -252,6 +252,15 @@ def _quality(evidence: Mapping[str, Any] | None) -> dict[str, Any] | None:
         _row("Кейсов в корпусе", _num(corpus["cases"]), "evidence.json · synthetic_corpus.cases"),
         _row("Совпало с ожидаемым вердиктом", _pct(corpus["agreement"]), "evidence.json · synthetic_corpus.agreement"),
     ]
+    stream = _section(evidence, "stream_gate")
+    if stream is not None:
+        wrong = stream["false_confirmed"]
+        label = f"то же на потоке {stream['profile']}, seed {stream['seed']}"
+        tiles.append(_tile(_num(wrong), label, "evidence.json · stream_gate.false_confirmed", hero=wrong == 0))
+        rows += [
+            _row("Пакетов в потоке", _num(stream["cases"]), "evidence.json · stream_gate.cases"),
+            _row("Совпало на потоке", _pct(stream["agreement"]), "evidence.json · stream_gate.agreement"),
+        ]
     tests = _section(evidence, "tests")
     if tests is not None:
         tiles.append(_tile(_num(tests["passed"]), "автотестов прошли", "evidence.json · tests.passed"))
@@ -266,7 +275,7 @@ def _quality(evidence: Mapping[str, Any] | None) -> dict[str, Any] | None:
     return _card(
         "quality",
         "Качество",
-        f"evidence.json · synthetic_corpus, synthetic_corpus_strict, synthetic_corpus_holdout, tests; "
+        "evidence.json · synthetic_corpus, synthetic_corpus_strict, synthetic_corpus_holdout, stream_gate, tests; "
         f"сборка {_day(stamp.get('generated_at'))}, {stamp.get('engine', 'движок')}",
         tiles=tiles,
         rows=rows,
