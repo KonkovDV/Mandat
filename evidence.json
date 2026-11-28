@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-11-28T15:53:59+00:00",
+  "generated_at": "2026-11-28T16:05:40+00:00",
   "engine": "mandat/0.4.0",
   "source": {
-    "base_commit": "c0b1f625f36bdd1d77e032d704097d9265d6d3b5",
+    "base_commit": "e4218d6967ad81988e728a8a8852c1a29281e2d3",
     "sources": [
       "src",
       "tests",
       "scripts",
       "examples"
     ],
-    "sha256": "7d38909e9bebd9c235ffe06dea23387a48cc1fd0f7d047a2065676014f8e9438",
+    "sha256": "68adac719f8c5570b611c178f35b1f8c683e97b1b330155c73e44dc6064d2a95",
     "check": "python scripts/build_evidence.py --verify-source"
   },
   "python": "3.13.18",
@@ -141,6 +141,22 @@
     "mismatches": 0,
     "boundary": "отложенный seed: те же шаблоны с другими значениями; подгонку под генератор не исключает"
   },
+  "repeat_clients": {
+    "command": "mandat eval",
+    "clients": 10,
+    "payments": 100,
+    "to_human_without": 100,
+    "to_human_with": 47,
+    "breakdown": {
+      "новая редакция устава": 1,
+      "ограничение устава из заключения": 25,
+      "первая операция редакции устава": 10,
+      "сумма выше предела заключения": 11
+    },
+    "restricted_payments": 28,
+    "confirmed_restricted": 0,
+    "boundary": "синтетика: строгий профиль в конфигурации пилота (правила утверждены ключом прогона, источники — данные кейса, подпись — заглушка «проверено»); доля на документах банка — на пилоте"
+  },
   "subdelegation_property": {
     "command": "python -m pytest tests/test_properties.py tests/test_cedar.py",
     "chains": 384,
@@ -157,18 +173,18 @@
   "latency": {
     "command": "python scripts/bench.py --rounds 20",
     "cases": 280,
-    "median_ms": 2.74,
-    "p95_ms": 4.0,
+    "median_ms": 2.58,
+    "p95_ms": 3.56,
     "machine": "x86_64, Python 3.13.18",
     "scope": "разбор XML и JSON, 39 правил, свёртка, отчёт; без сети и без модели"
   },
   "tests": {
     "command": "python -m pytest -q",
     "returncode": 0,
-    "summary": "2268 passed in 240.72s (0:04:00)",
-    "passed": 2268,
-    "collected": 2268,
-    "coverage_percent": 95.8
+    "summary": "2537 passed in 266.43s (0:04:26)",
+    "passed": 2537,
+    "collected": 2537,
+    "coverage_percent": 95.9
   },
   "pilot_readiness": {
     "command": "python -m pytest -rA tests/test_access_matrix.py tests/test_api_errors.py tests/test_attestation_request_binding.py tests/test_attestation_validation.py tests/test_erase_case.py tests/test_incident_and_access_review.py::test_access_review_names_what_to_remove_or_assign tests/test_incident_and_access_review.py::test_both_deadlines_run_from_detection_not_one_after_another tests/test_incident_and_access_review.py::test_report_lists_who_touched_which_cases_before_detection tests/test_journal_minimisation.py tests/test_keymaterial.py tests/test_llm_chokepoint.py tests/test_pii_minimisation.py tests/test_pilot_checklist.py::test_every_network_module_is_a_declared_route tests/test_pilot_checklist.py::test_every_personal_field_has_a_purpose tests/test_pilot_checklist.py::test_fields_without_a_purpose_do_not_reach_the_report tests/test_readyz_and_pilot_compose.py tests/test_restore_check.py tests/test_server_log_scrub.py tests/test_token_lifecycle.py",
