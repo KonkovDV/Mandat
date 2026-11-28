@@ -170,6 +170,61 @@ class AdmissionBody(BaseModel):
     )
 
 
+# Тела запросов OpenID AuthZEN 1.0 для схемы API. Профиль «Мандата» поверх них — в api/authzen.py.
+
+
+class _Open(BaseModel):
+    """Неизвестные поля игнорируются: так требует раздел 10.1.1 ради совместимости версий."""
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class Subject(_Open):
+    type: str = Field(description="representative")
+    id: str = Field(description="ИНН представителя: 10 или 12 цифр")
+    properties: dict[str, Any] | None = None
+
+
+class Resource(_Open):
+    type: str = Field(description="organization")
+    id: str = Field(description="ИНН организации: 10 или 12 цифр")
+    properties: dict[str, Any] | None = None
+
+
+class Action(_Open):
+    name: str = Field(description="код операции из каталога операций")
+    properties: dict[str, Any] | None = Field(
+        default=None, description="operation_date — день операции по Москве (ГГГГ-ММ-ДД), amount_rub — целые рубли"
+    )
+
+
+class EvaluationRequest(_Open):
+    """Раздел 6.1. ``context``: credential, nonce, audience и необязательный operation_risk."""
+
+    subject: Subject
+    action: Action
+    resource: Resource
+    context: dict[str, Any] | None = None
+
+
+class PartialEvaluation(_Open):
+    subject: Subject | None = None
+    action: Action | None = None
+    resource: Resource | None = None
+    context: dict[str, Any] | None = None
+
+
+class EvaluationsRequest(_Open):
+    """Раздел 7.1: верхние ``subject``, ``action``, ``resource`` и ``context`` — значения по умолчанию для оценок."""
+
+    subject: Subject | None = None
+    action: Action | None = None
+    resource: Resource | None = None
+    context: dict[str, Any] | None = None
+    evaluations: list[PartialEvaluation] | None = None
+    options: dict[str, Any] | None = None
+
+
 # Основания удаления кейса: закрытый список вместо свободного текста, чтобы в журнал не попали ПДн.
 ERASE_REASONS = {
     "unlawful_processing": "152-ФЗ, ст. 21, ч. 3: обработка неправомерна; уничтожить не позднее 10 рабочих дней",
@@ -1081,19 +1136,11 @@ def create_app(
 
     # --- OpenID AuthZEN Authorization API 1.0: тот же допуск в стандартном конверте (api/authzen.py) ---------
 
-    def authzen_admission(evaluation: authzen.EvaluationRequest, principal: Principal) -> dict[str, Any]:
+    def authzen_admission(evaluation: dict[str, Any], principal: Principal) -> dict[str, Any]:
         """Одна оценка AuthZEN: профиль «Мандата» → общий допуск → решение. Ошибка оценки — ``AuthzenError``."""
         request = authzen.admission_of(evaluation)
         try:
-            fields = AdmissionOperation(
-                organization_inn=request.organization_inn,
-                operation=request.operation,
-                operation_date=request.operation_date,
-                amount_rub=request.amount_rub,
-                representative_inn=request.representative_inn,
-                audience=request.audience,
-                nonce=request.nonce,
-            )
+            fields = AdmissionOperation(**request.fields())
         except ValueError as exc:
             raise authzen.AuthzenError(400, authzen.BAD_REQUEST, f"AdmissionOperation: {type(exc).__name__}") from exc
         try:
@@ -1117,22 +1164,20 @@ def create_app(
         return authzen.metadata(pdp_identifier or str(request.base_url).rstrip("/"))
 
     @app.post(authzen.EVALUATION_PATH, dependencies=[Depends(strict_json_authzen)])
-    def access_evaluation(body: authzen.EvaluationRequest, principal: Principal = Depends(admitter)) -> dict[str, Any]:
+    def access_evaluation(body: EvaluationRequest, principal: Principal = Depends(admitter)) -> dict[str, Any]:
         """Одна оценка (раздел 6). Отказ — 200 и ``decision: false``; ошибка запроса — 400 по разделу 10.1.2."""
         admission_ready()
         try:
-            return authzen_admission(body, principal)
+            return authzen_admission(body.model_dump(), principal)
         except authzen.AuthzenError as exc:
             raise ApiProblem(exc.status, exc.message, f"authzen: {exc.cause}") from exc
 
     @app.post(authzen.EVALUATIONS_PATH, dependencies=[Depends(strict_json_authzen)])
-    def access_evaluations(
-        body: authzen.EvaluationsRequest, principal: Principal = Depends(admitter)
-    ) -> dict[str, Any]:
+    def access_evaluations(body: EvaluationsRequest, principal: Principal = Depends(admitter)) -> dict[str, Any]:
         """Пакет оценок (раздел 7). Без ``evaluations`` — одна оценка с прежним ответом, как требует раздел 7.1."""
         admission_ready()
         try:
-            evaluations, semantic = authzen.expand(body)
+            evaluations, semantic = authzen.expand(body.model_dump())
         except authzen.AuthzenError as exc:
             raise ApiProblem(exc.status, exc.message, f"authzen: {exc.cause}") from exc
         if not body.evaluations:
