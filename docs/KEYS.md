@@ -63,7 +63,7 @@ mandat api-user --name <имя> --role <роль> --expires-in-days 90   # ст�
 | `vault` | HashiCorp Vault Transit, ключ типа `ed25519` | `VAULT_ADDR` (https), `VAULT_TOKEN`, `MANDAT_VAULT_KEY`, `MANDAT_VAULT_MOUNT`, `MANDAT_VAULT_KEY_VERSION` (по умолчанию последняя, закрепляется при старте) | нет (stdlib) |
 | `aws-kms` | AWS KMS, `ECC_NIST_EDWARDS25519`, `ED25519_SHA_512` с `MessageType=RAW` | `MANDAT_KMS_KEY_ID`, учётные данные AWS стандартной цепочкой | extra `[aws]` (boto3) |
 
-GCP Cloud KMS (`EC_SIGN_ED25519`) подключается так же, как AWS: по тому же интерфейсу из трёх методов; адаптер не входит в поставку. Yandex Cloud KMS Ed25519 не поддерживает (только RSA-PSS и ECDSA), поэтому для него нужна смена криптонабора удостоверений — не сделано.
+GCP Cloud KMS (`EC_SIGN_ED25519`) подключается так же, как AWS: по тому же интерфейсу из трёх методов; адаптер не входит в поставку. Yandex Cloud KMS Ed25519 не поддерживает (только RSA-PSS и ECDSA), поэтому он подключается вместе со сменой криптонабора удостоверений, если банк выберет его.
 
 ### Идентификатор ключа и связка
 

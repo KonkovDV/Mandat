@@ -38,7 +38,7 @@
 
 Виды документов: `emchd_xml`, `egrul_json`, `charter_text`, `paper_poa_text`. В API вместо `path` передаётся `content` (строка или JSON-объект). Пути не могут выходить за каталог кейса.
 
-`registry` — статусы для заглушки реестра: `active`, `revoked`, `expired`, `not_found`, `unavailable`. Нет записи — реестр считается недоступным.
+`registry` — статусы для реестра стенда: `active`, `revoked`, `expired`, `not_found`, `unavailable`. Нет записи — реестр считается недоступным.
 
 ## ЕГРЮЛ: внутренний нормализованный формат
 
