@@ -314,12 +314,15 @@ def test_consultant_tab_with_model_goes_through_the_gate(app, model):
         "note": reply["model"]["note"],
     }
     advice = reply["advice"]
+    calls = len(_Model.sent)
     assert advice["label"] == "справка, вердикт не меняет"
     assert advice["proposed"] == 2 and len(advice["accepted"]) == 1
     assert advice["accepted"][0]["method"] == "llm_advisory"
     assert advice["dropped"] == ["цитата не найдена в документе"]
     assert advice["verdict_before"] == advice["verdict_after"] == "НА РАЗБОР" and advice["verdict_unchanged"]
     assert "Лебедева" not in _Model.sent[-1] and "Петров" not in _Model.sent[-1]
+    again = client.post("/console/api/consult", json={"case_id": case_id, "use_model": True}).json()["advice"]
+    assert again["cached"] is True and len(_Model.sent) == calls
     director = client.post("/console/api/check", json={"demo": "02_director_without_poa"}).json()
     assert (
         client.post("/console/api/consult", json={"case_id": director["case_id"], "use_model": True}).status_code == 200
@@ -333,6 +336,11 @@ def test_consultant_reports_model_failure_without_changing_anything(app, monkeyp
     case_id = _check(client)["case_id"]
     advice = client.post("/console/api/consult", json={"case_id": case_id, "use_model": True}).json()["advice"]
     assert advice["error"].startswith("модель не ответила") and advice["sent"]
+    from mandat.console import routes
+
+    monkeypatch.setattr(routes, "MODEL_PER_MIN", 0)
+    busy = client.post("/console/api/consult", json={"case_id": case_id, "use_model": True}).json()["advice"]
+    assert busy["busy"] is True and "из фактов отчёта" in busy["error"]
     monkeypatch.setenv("MANDAT_LLM_BASE_URL", "http://model.example/v1")
     note = client.post("/console/api/consult", json={"case_id": case_id}).json()["model"]
     assert note["enabled"] is False and "не принят" in note["note"]

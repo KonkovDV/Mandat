@@ -76,7 +76,7 @@ EXTRA_HEADERS = [
 # Запросов в минуту с одного адреса: новые сессии, прогон корпуса, справка модели.
 SESSION_PER_MIN = 20
 EVAL_PER_MIN = 4
-MODEL_PER_MIN = 6
+MODEL_PER_MIN = 20
 EVAL_MAX_CASES = 50
 EVAL_CACHE_SECONDS = 600.0
 # Сколько ждать справку модели: дольше — пояснение из фактов отчёта, а не ожидание.
@@ -224,6 +224,7 @@ def mount(app: FastAPI, *, sessions: Sessions, store: Store, issuer: DemoIssuer,
     version = _version()
     index = _static_bytes("index.html").decode("utf-8").replace("{{version}}", version).encode("utf-8")
     evals = EvalState()
+    advice_cache: dict[str, tuple[float, dict[str, Any]]] = {}
     # Для эксплуатации и тестов: сессии и демо-издатель этого приложения.
     app.state.console_sessions, app.state.console_issuer, app.state.console_evals = sessions, issuer, evals
 
@@ -407,12 +408,26 @@ def mount(app: FastAPI, *, sessions: Sessions, store: Store, issuer: DemoIssuer,
         state, client = model_client()
         advice = None
         if body.get("use_model") is True and state.enabled and case is not None:
-            limited(request, "model", MODEL_PER_MIN)
-            try:
-                advice = await asyncio.wait_for(run_in_threadpool(model_advice, case, client), MODEL_DEADLINE_SECONDS)
-            except TimeoutError:
-                late = f"модель не ответила за {MODEL_DEADLINE_SECONDS:g} с: пояснение собрано из фактов отчёта"
-                advice = {"label": ADVICE_LABEL, "error": late, "late": True}
+            # Одинаковый устав модель читает один раз: ответ при температуре 0 тот же, а ключ API платный.
+            charter = case.charter.sha256 if case.charter is not None else ""
+            key = f"{state.model}:{state.host}:{charter}"
+            hit = advice_cache.get(key)
+            if hit is not None and time.monotonic() - hit[0] < EVAL_CACHE_SECONDS:
+                advice = {**hit[1], "cached": True}
+            elif not store.allow(f"console:model:{_client(request)}", MODEL_PER_MIN):
+                busy = "модель отвечает другим сотрудникам: пояснение собрано из фактов отчёта"
+                advice = {"label": ADVICE_LABEL, "error": busy, "busy": True}
+            else:
+                try:
+                    task = run_in_threadpool(model_advice, case, client)
+                    advice = await asyncio.wait_for(task, MODEL_DEADLINE_SECONDS)
+                except TimeoutError:
+                    late = f"модель не ответила за {MODEL_DEADLINE_SECONDS:g} с: пояснение собрано из фактов отчёта"
+                    advice = {"label": ADVICE_LABEL, "error": late, "late": True}
+                if "error" not in advice:
+                    advice_cache[key] = (time.monotonic(), advice)
+                    while len(advice_cache) > 128:
+                        advice_cache.pop(next(iter(advice_cache)))
         return JSONResponse(
             {
                 "case_id": case_id,
