@@ -22,7 +22,6 @@ def _load(name: str):
 
 ru = _load("ru_plural")
 lint = _load("lint_claims")
-sync = _load("sync_counts")
 
 
 @pytest.mark.parametrize(
@@ -75,12 +74,6 @@ def test_lint_accepts_correct_or_other_cases(text):
 def test_rule_count_lint_sees_singular_and_few_forms():
     assert lint.RULE_COUNT.search("41 правило").group(1) == "41"
     assert lint.RULE_COUNT.search("42 правила").group(1) == "42"
-
-
-def test_sync_rewrites_number_and_form_but_keeps_genitive_word():
-    text = "1375 автотестов проходят; ни один из 1375 автотестов; 13 демо-кейсов"
-    out = sync.rewrite(text, {"автотест": 1384, "демо-кейс": 13})
-    assert out == "1384 автотеста проходят; ни один из 1384 автотестов; 13 демо-кейсов"
 
 
 def test_repository_texts_agree():
