@@ -568,6 +568,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"ошибка: {exc}", file=sys.stderr)
         return 2
+    if args.workers == 0:
+        args.workers = os.cpu_count() or 1  # по числу процессоров: воркеры не делят GIL
     if args.workers > 1 and store.name == "memory":
         print(
             "ошибка: у нескольких воркеров память не общая, задайте MANDAT_API_STORE=sqlite:///… или redis://…",
@@ -595,14 +597,21 @@ def server_options() -> dict[str, Any]:
     """
     raw = os.environ.get("MANDAT_API_MAX_CONCURRENCY", "").strip()
     limit = int(raw) if raw.isdigit() and int(raw) > 0 else 64
-    return {
+    import importlib.util
+
+    # uvloop и httptools — если установлены (extra api-fast): цикл событий и разбор HTTP на C, ответы те же.
+    fast_http = importlib.util.find_spec("httptools") is not None
+    options: dict[str, Any] = {
         "limit_concurrency": limit,
         "timeout_keep_alive": 5,
         "server_header": False,
         "proxy_headers": False,
         # TCP_NODELAY и при --workers N: иначе +40 мс на запрос по keep-alive (api/nodelay.py).
-        "http": "mandat.api.nodelay:NoDelayH11Protocol",
+        "http": f"mandat.api.nodelay:NoDelay{'HttpTools' if fast_http else 'H11'}Protocol",
     }
+    if importlib.util.find_spec("uvloop") is not None:
+        options["loop"] = "uvloop"
+    return options
 
 
 def cmd_restore_check(args: argparse.Namespace) -> int:
@@ -852,7 +861,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("serve", help="запустить HTTP API")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8000)
-    s.add_argument("--workers", type=int, default=1, help="больше одного нужен MANDAT_API_STORE")
+    s.add_argument("--workers", type=int, default=1, help="больше одного нужен MANDAT_API_STORE; 0 — по числу ядер")
     s.set_defaults(func=cmd_serve)
     w = sub.add_parser("webhook-secret", help="новый секрет вебхука: whsec_ (HMAC) или пара whsk_/whpk_ (Ed25519)")
     w.add_argument("--asymmetric", action="store_true", help="пара ключей Ed25519 для подписи v1a")

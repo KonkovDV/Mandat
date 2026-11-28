@@ -27,3 +27,15 @@ class NoDelayH11Protocol(H11Protocol):
     def connection_made(self, transport: Any) -> None:
         set_nodelay(transport)
         super().connection_made(transport)
+
+
+try:  # httptools — необязательный быстрый разбор HTTP (extra api-fast); без него остаётся h11
+    from uvicorn.protocols.http.httptools_impl import HttpToolsProtocol
+except ImportError:  # pragma: no cover — зависит от установленных пакетов
+    pass
+else:
+
+    class NoDelayHttpToolsProtocol(HttpToolsProtocol):
+        def connection_made(self, transport: Any) -> None:
+            set_nodelay(transport)
+            super().connection_made(transport)
