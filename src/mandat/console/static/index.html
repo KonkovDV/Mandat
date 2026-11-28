@@ -95,6 +95,12 @@
       <div><button class="btn primary" type="button" id="consult-go">Спросить консультанта</button></div>
     </div>
     <div id="consult-result" class="results" aria-live="polite"></div>
+    <article class="card">
+      <h2 class="section-title">Шлюз на подставных ответах модели</h2>
+      <p class="note">Ловушки, которые модель могла бы вернуть: цитата не из устава, неверная сумма, «вправе подписать» при вердикте НА РАЗБОР, дата не из фактов. Решение считает тот же код шлюза, что работает с настоящей моделью.</p>
+      <div><button class="btn" type="button" id="gate-go">Проверить шлюз</button></div>
+      <div id="gate-result" class="gate"></div>
+    </article>
   </section>
 
   <section class="panel" id="review" role="tabpanel" aria-labelledby="tab-review" hidden>
@@ -139,13 +145,18 @@
       <img class="intro-face" src="/console/static/anna-timer-480.webp" alt="" aria-hidden="true" width="120" height="120">
       <p class="kicker">Прогон</p>
       <h1>Ноль ложных «подтверждено» на&nbsp;<span class="serif">корпусе</span></h1>
-      <p class="lead">Синтетический корпус покрывает каждый вид дефекта документов. Прогон идёт на сервере стенда за секунду: видно, где движок отвечает сам, а где отдаёт кейс человеку вместо «да». Точность на документах банка измеряет пилот.</p>
+      <p class="lead">Кейсы с ожидаемым вердиктом — демо, синтетический корпус или свои — проходят через тот же движок на сервере стенда за секунду. Видно, где движок отвечает сам, а где отдаёт кейс человеку вместо «да». Точность на документах банка измеряет пилот.</p>
     </div>
     <div class="card form">
-      <div class="grid2">
-        <div class="row"><label for="eval-n">Кейсов на вид дефекта</label><select id="eval-n"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></div>
-        <div class="row"><span class="label">&nbsp;</span><button class="btn primary" type="button" id="eval-go">Запустить прогон</button></div>
+      <div class="seg" role="group" aria-label="Что прогнать">
+        <button type="button" id="ev-demo" aria-pressed="true">Демо-кейсы</button>
+        <button type="button" id="ev-corpus" aria-pressed="false">Корпус: кейс на каждый вид дефекта</button>
+        <button type="button" id="ev-pasted" aria-pressed="false">Свои кейсы (JSON)</button>
       </div>
+      <div id="ev-demo-pane" class="cases-check"></div>
+      <p id="ev-corpus-pane" class="note" hidden>Синтетический генератор строит по одному кейсу на каждый вид дефекта документов — до 50 кейсов, ожидаемый вердикт задан генератором.</p>
+      <div id="ev-pasted-pane" class="row" hidden><label for="ev-json">Массив манифестов API с полем expected_verdict, до 50 кейсов</label><textarea id="ev-json" rows="6" placeholder='[{"case_id": "мой-кейс", "expected_verdict": "needs_review", "organization": {…}, "documents": […]}]'></textarea></div>
+      <div><button class="btn primary" type="button" id="eval-go">Запустить прогон</button></div>
     </div>
     <div id="eval-result" class="results" aria-live="polite"></div>
   </section>

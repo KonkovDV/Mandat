@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import secrets
@@ -28,7 +29,7 @@ from starlette.concurrency import run_in_threadpool
 from mandat.api.storage import Store
 from mandat.audit.attestation import NONCE_MIN_CHARS
 from mandat.console import secure_cookie
-from mandat.console.advisor import ADVICE_LABEL, deterministic, model_advice, model_client
+from mandat.console.advisor import ADVICE_LABEL, deterministic, gate_proof, model_advice, model_client
 from mandat.console.demo import DBO_CASE, UploadError, catalog, demo_manifest, operations, upload_manifest
 from mandat.console.inproc import AsgiApp, Reply, call
 from mandat.console.issuer import DemoIssuer, IssuerExhausted, bank_today, rebased_today
@@ -36,6 +37,7 @@ from mandat.console.sessions import AUDIENCE, LIFETIME_SECONDS, DboState, Sessio
 from mandat.domain.verdict import CHECK_LABEL_RU, VERDICT_LABEL_RU, Verdict
 from mandat.intake.case_loader import CaseError, load_case_inline
 from mandat.services.monitoring import evaluate, parse_events
+from mandat.services.verify import verify_case
 from mandat.strictjson import strict_loads
 
 PREFIX = "/console"
@@ -75,8 +77,10 @@ EXTRA_HEADERS = [
 SESSION_PER_MIN = 20
 EVAL_PER_MIN = 4
 MODEL_PER_MIN = 6
-EVAL_MAX_PER_DEFECT = 6
+EVAL_MAX_CASES = 50
 EVAL_CACHE_SECONDS = 600.0
+# Сколько ждать справку модели: дольше — пояснение из фактов отчёта, а не ожидание.
+MODEL_DEADLINE_SECONDS = 8.0
 # Удостоверений на одну сессию: каждое — запись в реестре статусов стенда.
 DBO_PER_SESSION = 20
 REVIEW_ACTIONS = {"open": "reviewer", "request_docs": "reviewer", "accept": "reviewer", "reject": "reviewer"}
@@ -132,7 +136,7 @@ class ConsoleProblem(Exception):
 @dataclass
 class EvalState:
     lock: threading.Lock = field(default_factory=threading.Lock)
-    cache: dict[int, tuple[float, dict[str, Any]]] = field(default_factory=dict)
+    cache: dict[str, tuple[float, dict[str, Any]]] = field(default_factory=dict)
 
 
 def _static_bytes(name: str) -> bytes:
@@ -215,7 +219,7 @@ def _credential_view(credential: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def mount(app: FastAPI, *, sessions: Sessions, store: Store, issuer: DemoIssuer) -> None:
+def mount(app: FastAPI, *, sessions: Sessions, store: Store, issuer: DemoIssuer, commit: str | None = None) -> None:
     """Маршруты консоли на приложении API. Вызывается из ``create_app`` только в режиме стенда."""
     version = _version()
     index = _static_bytes("index.html").decode("utf-8").replace("{{version}}", version).encode("utf-8")
@@ -330,6 +334,7 @@ def mount(app: FastAPI, *, sessions: Sessions, store: Store, issuer: DemoIssuer)
                 "advice_label": ADVICE_LABEL,
                 "today": bank_today(),
                 "dbo_ready": found.dbo is not None,
+                "commit": commit,
             }
         )
         if fresh:
@@ -403,7 +408,11 @@ def mount(app: FastAPI, *, sessions: Sessions, store: Store, issuer: DemoIssuer)
         advice = None
         if body.get("use_model") is True and state.enabled and case is not None:
             limited(request, "model", MODEL_PER_MIN)
-            advice = await run_in_threadpool(model_advice, case, client)
+            try:
+                advice = await asyncio.wait_for(run_in_threadpool(model_advice, case, client), MODEL_DEADLINE_SECONDS)
+            except TimeoutError:
+                late = f"модель не ответила за {MODEL_DEADLINE_SECONDS:g} с: пояснение собрано из фактов отчёта"
+                advice = {"label": ADVICE_LABEL, "error": late, "late": True}
         return JSONResponse(
             {
                 "case_id": case_id,
@@ -594,55 +603,91 @@ def mount(app: FastAPI, *, sessions: Sessions, store: Store, issuer: DemoIssuer)
             }
         )
 
+    @app.get(f"{PREFIX}/api/gate", include_in_schema=False)
+    async def gate(request: Request) -> JSONResponse:
+        """Шлюз на подставных ответах модели: результат считает настоящий код шлюза, а не таблица."""
+        session_of(request)
+        return JSONResponse(await run_in_threadpool(gate_proof))
+
     @app.post(f"{PREFIX}/api/eval", include_in_schema=False)
     async def eval_run(request: Request) -> JSONResponse:
         session_of(request)
         body = await json_body(request)
-        per_defect = body.get("per_defect", 3)
-        if (
-            isinstance(per_defect, bool)
-            or not isinstance(per_defect, int)
-            or not 1 <= per_defect <= EVAL_MAX_PER_DEFECT
-        ):
-            raise ConsoleProblem(422, f"кейсов на вид дефекта: от 1 до {EVAL_MAX_PER_DEFECT}")
-        cached = evals.cache.get(per_defect)
+        items = _eval_items(body)
+        key = json.dumps([body.get("source", "demo"), [label for label, _, _ in items]], ensure_ascii=False)
+        cached = evals.cache.get(key) if body.get("source", "demo") != "pasted" else None
         if cached is not None and time.monotonic() - cached[0] < EVAL_CACHE_SECONDS:
             return JSONResponse({**cached[1], "cached": True})
         limited(request, "eval", EVAL_PER_MIN)
         if not evals.lock.acquire(blocking=False):
             raise ConsoleProblem(429, "прогон уже идёт: результат будет через секунду", {"Retry-After": "5"})
         try:
-            result = await run_in_threadpool(_eval, per_defect)
+            result = await run_in_threadpool(_eval, items)
         finally:
             evals.lock.release()
-        evals.cache[per_defect] = (time.monotonic(), result)
+        evals.cache[key] = (time.monotonic(), result)
+        if len(evals.cache) > 64:
+            evals.cache.pop(next(iter(evals.cache)))
         return JSONResponse({**result, "cached": False})
 
 
-def _eval(per_defect: int) -> dict[str, Any]:
-    from mandat.eval.run import run_corpus
+def _eval_items(body: dict[str, Any]) -> list[tuple[str, dict[str, Any], str]]:
+    """Кейсы прогона с ожидаемым вердиктом: выбранные демо-кейсы, корпус по видам дефекта или свои, до 50."""
+    source = body.get("source", "demo")
+    items: list[tuple[str, dict[str, Any], str]] = []
+    if source == "demo":
+        names = body.get("names") or [row["name"] for row in catalog()]
+        expected = {row["name"]: row["expected"] for row in catalog()}
+        if not isinstance(names, list) or not all(isinstance(n, str) and n in expected for n in names):
+            raise ConsoleProblem(422, "names: имена демо-кейсов из списка")
+        items = [(name, demo_manifest(name), expected[name]) for name in dict.fromkeys(names)]
+    elif source == "corpus":
+        from mandat.eval.synth import DEFECTS, build
 
+        items = [(defect, build(defect, seed=7000).inline_manifest(), expected) for defect, expected in DEFECTS.items()]
+    elif source == "pasted":
+        cases = body.get("cases")
+        if not isinstance(cases, list) or not cases or not all(isinstance(c, dict) for c in cases):
+            raise ConsoleProblem(422, "cases: непустой список манифестов JSON с полем expected_verdict")
+        for n, manifest in enumerate(cases[: EVAL_MAX_CASES + 1], start=1):
+            want = manifest.get("expected_verdict")
+            if want not in {v.value for v in Verdict}:
+                raise ConsoleProblem(
+                    422, f"кейс {n}: expected_verdict — confirmed, refuted, needs_review или insufficient_data"
+                )
+            items.append((str(manifest.get("case_id") or f"кейс {n}")[:80], manifest, str(want)))
+    else:
+        raise ConsoleProblem(422, "source: demo, corpus или pasted")
+    if len(items) > EVAL_MAX_CASES:
+        raise ConsoleProblem(422, f"в одном прогоне не больше {EVAL_MAX_CASES} кейсов")
+    return items
+
+
+def _eval(items: list[tuple[str, dict[str, Any], str]]) -> dict[str, Any]:
+    """Прогон без записи кейсов: тот же движок, профиль demo; ложное ПОДТВЕРЖДЕНО считается отдельно."""
     started = time.perf_counter()
-    metrics = run_corpus(per_defect, seed=7, profile="demo")
-    confusion: dict[str, int] = metrics["confusion"]
-    by_verdict: dict[str, int] = {}
-    for pair, count in confusion.items():
-        predicted = pair.split("->", 1)[1]
-        label = VERDICT_LABEL_RU[Verdict(predicted)]
-        by_verdict[label] = by_verdict.get(label, 0) + count
+    rows = []
+    for label, manifest, expected in items:
+        try:
+            predicted: str = verify_case(load_case_inline(manifest), profile="demo").verdict.value
+        except CaseError:
+            predicted = "error"
+        rows.append({"case": label, "expected": expected, "predicted": predicted})
+    false_confirmed = sum(r["predicted"] == "confirmed" and r["expected"] != "confirmed" for r in rows)
+    for row in rows:
+        row["expected_label"] = VERDICT_LABEL_RU[Verdict(row["expected"])]
+        row["predicted_label"] = (
+            VERDICT_LABEL_RU[Verdict(row["predicted"])] if row["predicted"] != "error" else "ошибка входа"
+        )
     return {
-        "per_defect": per_defect,
-        "cases": metrics["cases"],
-        "defect_types": metrics["defect_types"],
-        "agreement": metrics["agreement"],
-        "false_confirmed": metrics["false_confirmed"],
-        "false_confirmed_label": f"ложных ПОДТВЕРЖДЕНО: {metrics['false_confirmed']}",
-        "false_confirmed_rate_upper95": metrics["false_confirmed_rate_upper95"],
-        "coverage": metrics["coverage"],
-        "abstention_rate": metrics["abstention_rate"],
-        "by_verdict": by_verdict,
-        "confusion": confusion,
-        "mismatches": len(metrics["mismatches"]),
+        "cases": len(rows),
+        "correct": sum(r["expected"] == r["predicted"] for r in rows),
+        "false_confirmed": false_confirmed,
+        "false_confirmed_label": f"ложных ПОДТВЕРЖДЕНО: {false_confirmed}",
+        "to_review": sum(r["predicted"] in {"needs_review", "insufficient_data"} for r in rows),
+        "refuted": sum(r["predicted"] == "refuted" for r in rows),
+        "errors": sum(r["predicted"] == "error" for r in rows),
+        "rows": rows,
         "seconds": round(time.perf_counter() - started, 3),
-        "boundary": metrics["boundary"],
+        "boundary": "демо-кейсы и синтетика проверяют логику правил; точность на документах банка измеряет пилот",
     }

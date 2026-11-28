@@ -163,6 +163,7 @@
     $("#foot-principals").textContent =
       "Стенд на вымышленных данных, профиль demo. Учётные записи вашей сессии: " + roles +
       " — оператор, юрист и система ДБО, без прав администратора и удаления.";
+    if (reply.data.commit) $("#foot-principals").textContent += " Сборка " + reply.data.commit.slice(0, 12) + ".";
     $("#consult-model").disabled = !reply.data.model.enabled;
     $("#consult-model").checked = reply.data.model.enabled;
     $("#consult-model-note").textContent = reply.data.model.enabled
@@ -261,6 +262,29 @@
     renderReport(target, reply.data, $("#check"));
     updateCaseSelect(reply.data.cases);
     target.scrollIntoView({ behavior: "smooth", block: "start" });
+    explainLater(target, reply.data.case_id);
+  }
+  // Вторая фаза: пояснение консультанта догружается после карточки вердикта.
+  async function explainLater(target, caseId) {
+    const card = el("article", "card");
+    card.append(el("h2", "section-title", "Пояснение консультанта"), el("p", "pending", "готовим пояснение…"));
+    const verdictCard = target.firstElementChild;
+    verdictCard.after(card);
+    const model = !!(state.session && state.session.model.enabled);
+    const reply = await call("POST", "/console/api/consult", { case_id: caseId, use_model: model });
+    clear(card).append(el("h2", "section-title", "Пояснение консультанта"));
+    if (!reply.ok) {
+      card.append(el("p", "note", "Пояснение не получено: " + problemText(reply) + ". Вердикт выше от него не зависит."));
+      return;
+    }
+    const d = reply.data;
+    const list = el("ul", "plain");
+    d.explanation.forEach((s) => list.append(el("li", "", s.text)));
+    card.append(list);
+    let source = "Модель не подключена: пояснение собрано из фактов отчёта, каждая фраза ссылается на свой факт.";
+    if (d.advice && d.advice.error) source = d.advice.error[0].toUpperCase() + d.advice.error.slice(1) + ".";
+    else if (d.advice) source = "Справка модели по уставу: шлюз принял фактов " + d.advice.accepted.length + " из " + d.advice.proposed + "; " + d.advice_label + ".";
+    card.append(el("p", "fine", source));
   }
   function pushHistory(item) {
     const box = $("#check-history");
@@ -521,6 +545,35 @@
     return card;
   }
 
+  $("#gate-go").addEventListener("click", async () => {
+    const button = $("#gate-go");
+    busy(button, true, "Проверяем шлюз…");
+    const reply = await call("GET", "/console/api/gate");
+    busy(button, false);
+    if (!reply.ok) {
+      notice("Шлюз не проверен: " + problemText(reply));
+      return;
+    }
+    const d = reply.data;
+    const box = clear($("#gate-result"));
+    const ok = d.rejected === d.planted && d.honest_passed === d.honest;
+    box.append(el("p", "label-big " + (ok ? "ok" : "no"), d.label));
+    const wrap = el("div", "scroll");
+    const table = el("table");
+    const head = el("tr");
+    ["Шлюз", "Ответ модели", "Ловушка или честный", "Итог"].forEach((h) => head.append(el("th", "", h)));
+    table.append(head);
+    d.rows.forEach((r) => {
+      const row = el("tr");
+      const verdict = el("td");
+      verdict.append(tag(r.passed ? "ok" : "no", r.passed ? "прошёл" : "отклонён"), el("div", "fine", r.reason));
+      row.append(el("td", "", r.gate), el("td", "", r.output), el("td", "", (r.honest ? "честный: " : "ловушка: ") + r.trap), verdict);
+      table.append(row);
+    });
+    wrap.append(table);
+    box.append(wrap, el("p", "fine", "Кейс " + d.case + ", вердикт правил " + d.verdict_label + ". Ответы подставлены, решения считает код шлюза."));
+  });
+
   // --- «Юрист» --------------------------------------------------------------------------------------------------
   $("#review-refresh").addEventListener("click", () => loadQueue());
   async function loadQueue() {
@@ -714,10 +767,46 @@
   });
 
   // --- «Прогон» -------------------------------------------------------------------------------------------------
+  let evalSource = "demo";
+  ["demo", "corpus", "pasted"].forEach((name) => {
+    $("#ev-" + name).addEventListener("click", () => {
+      evalSource = name;
+      ["demo", "corpus", "pasted"].forEach((other) => {
+        $("#ev-" + other).setAttribute("aria-pressed", other === name ? "true" : "false");
+        $("#ev-" + other + "-pane").hidden = other !== name;
+      });
+    });
+  });
+  function renderEvalChoice() {
+    const box = clear($("#ev-demo-pane"));
+    state.demo.forEach((c) => {
+      const label = el("label");
+      const box2 = el("input");
+      box2.type = "checkbox";
+      box2.value = c.name;
+      box2.checked = true;
+      label.append(box2, el("span", "", c.name + " · ожидается " + c.expected_label));
+      box.append(label);
+    });
+  }
   $("#eval-go").addEventListener("click", async () => {
+    const payload = { source: evalSource };
+    if (evalSource === "demo") payload.names = $$("#ev-demo-pane input:checked").map((i) => i.value);
+    if (evalSource === "demo" && !payload.names.length) {
+      notice("Отметьте хотя бы один демо-кейс");
+      return;
+    }
+    if (evalSource === "pasted") {
+      try {
+        payload.cases = JSON.parse($("#ev-json").value);
+      } catch (e) {
+        notice("Свои кейсы: нужен массив манифестов JSON");
+        return;
+      }
+    }
     const button = $("#eval-go");
     busy(button, true, "Прогон идёт…");
-    const reply = await call("POST", "/console/api/eval", { per_defect: parseInt($("#eval-n").value, 10) });
+    const reply = await call("POST", "/console/api/eval", payload);
     busy(button, false);
     if (!reply.ok) {
       notice("Прогон не запущен: " + problemText(reply));
@@ -730,32 +819,30 @@
     const tiles = el("div", "tiles");
     const tile = (value, label, hero) => {
       const node = el("div", "tile" + (hero ? " hero" : ""));
-      node.append(el("strong", "", value), el("span", "fine", label));
+      node.append(el("strong", "", NUM.format(value)), el("span", "fine", label));
       tiles.append(node);
     };
-    tile(NUM.format(d.false_confirmed), "ложных ПОДТВЕРЖДЕНО", true);
-    tile(NUM.format(d.cases), "кейсов в прогоне");
-    tile(NUM.format(d.defect_types), "видов дефекта");
-    tile(PCT.format(d.agreement), "совпало с ожиданием");
-    tile(PCT.format(d.coverage), "решено автоматически");
-    tile(PCT.format(d.abstention_rate), "отдано человеку");
+    tile(d.false_confirmed, "ложных ПОДТВЕРЖДЕНО", true);
+    tile(d.correct, "совпало с ожиданием из " + NUM.format(d.cases));
+    tile(d.to_review, "отдано человеку: на разбор и недостаточно данных");
+    tile(d.refuted, "опровергнуто");
     target.append(tiles);
     const card = el("article", "card");
     card.append(el("h2", "section-title", d.false_confirmed_label));
     const wrap = el("div", "scroll");
     const table = el("table");
     const head = el("tr");
-    ["Вердикт движка", "Кейсов"].forEach((h) => head.append(el("th", "", h)));
+    ["Кейс", "Ожидалось", "Вердикт движка", ""].forEach((h) => head.append(el("th", "", h)));
     table.append(head);
-    Object.entries(d.by_verdict).forEach(([label, count]) => {
+    d.rows.forEach((r) => {
       const row = el("tr");
-      row.append(el("td", "", label), el("td", "num", NUM.format(count)));
+      const mark = el("td");
+      mark.append(tag(r.expected === r.predicted ? "ok" : "review", r.expected === r.predicted ? "совпало" : "расхождение"));
+      row.append(el("td", "", r.case), el("td", "", r.expected_label), el("td", "", r.predicted_label), mark);
       table.append(row);
     });
     wrap.append(table);
-    card.append(wrap);
-    card.append(el("p", "fine", "Верхняя граница доли ложных «подтверждено» (Клоппер — Пирсон, 95 %): " + PCT.format(d.false_confirmed_rate_upper95) + ". Расхождений с ожиданием: " + d.mismatches + ". " + (d.cached ? "Результат последнего прогона, " : "Прогон занял ") + d.seconds + " с."));
-    card.append(el("p", "fine", d.boundary));
+    card.append(wrap, el("p", "fine", (d.cached ? "Результат последнего прогона этих кейсов, " : "Прогон занял ") + d.seconds + " с. " + d.boundary + "."));
     target.append(card);
   }
 
@@ -770,6 +857,7 @@
       state.operations = reply.data.operations;
       state.today = reply.data.today;
       renderDemo();
+      renderEvalChoice();
     }
   }
   start();

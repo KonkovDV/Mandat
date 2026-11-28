@@ -232,3 +232,11 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 .foot { display: grid; gap: 4px; padding-top: 14px; padding-bottom: 26px; border-top: 1px solid var(--line); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* Прогон: выбор демо-кейсов; шлюз: строки ловушек */
+.cases-check { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 6px 14px; }
+.cases-check label { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; min-height: 32px; }
+.cases-check input { margin-top: 3px; flex: none; }
+.gate { display: grid; gap: 10px; margin-top: 12px; }
+.pending { color: var(--muted); font-style: italic; }
+.label-big.ok { color: var(--ok); } .label-big.no { color: var(--no); }

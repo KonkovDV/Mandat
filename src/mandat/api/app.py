@@ -341,6 +341,22 @@ CREATE_CLAIM_SECONDS = 30.0
 IDEMPOTENCY_KEY = re.compile(r"[A-Za-z0-9._~-]{1,128}")
 
 
+COMMIT = re.compile(r"[0-9a-f]{7,40}")
+
+
+def build_stamp() -> str | None:
+    """Коммит, из которого собран сервер: ``MANDAT_COMMIT`` или файл ``BUILD`` в рабочем каталоге.
+
+    ``BUILD`` пишет scripts/deploy_stand.sh: по ``/health`` видно, какой коммит репозитория работает на стенде.
+    """
+    raw = os.environ.get("MANDAT_COMMIT", "").strip()
+    if not raw:
+        with contextlib.suppress(OSError, UnicodeDecodeError):
+            raw = Path("BUILD").read_text(encoding="utf-8").strip()
+    raw = raw[:40].lower()
+    return raw if COMMIT.fullmatch(raw) else None
+
+
 def readiness(store: Store, journal_path: Path | None) -> dict[str, str]:
     """Проверки для /readyz. Значения: ok | fail | not_configured (последнее только вне pilot/prod)."""
     from mandat.services.env_policy import key_problem
@@ -496,6 +512,8 @@ def create_app(
             raise HTTPException(404, "кейс не найден")
         return found[0]
 
+    commit = build_stamp()
+
     @app.get("/health")
     def health() -> dict[str, Any]:
         return {
@@ -504,6 +522,8 @@ def create_app(
             "auth_configured": directory.configured,
             "mode": "users" if directory.multi_user else "single-token",
             "store": shared.name,
+            "commit": commit,
+            "console": with_console,
         }
 
     @app.get("/readyz")
@@ -1142,5 +1162,5 @@ def create_app(
         from mandat.console.issuer import DemoIssuer
         from mandat.console.routes import mount
 
-        mount(app, sessions=sessions, store=shared, issuer=issuer or DemoIssuer())
+        mount(app, sessions=sessions, store=shared, issuer=issuer or DemoIssuer(), commit=commit)
     return app

@@ -168,10 +168,29 @@ def test_sessions_do_not_see_each_others_cases(app):
 def test_heavy_routes_are_rate_limited():
     app = create_app(console=True, store=MemoryStore(), rate_per_min=0)
     client = _client(app)
-    statuses = [client.post("/console/api/eval", json={"per_defect": n}).status_code for n in (1, 2, 3, 4, 5)]
+    names = [
+        "01_ok",
+        "02_director_without_poa",
+        "03_subdelegation_ok",
+        "04_subdelegation_forbidden",
+        "05_director_changed",
+    ]
+    statuses = [client.post("/console/api/eval", json={"names": [n]}).status_code for n in names]
     assert statuses[:4] == [200] * 4 and statuses[4] == 429
-    assert client.post("/console/api/eval", json={"per_defect": 1}).json()["cached"] is True
-    assert client.post("/console/api/eval", json={"per_defect": 7}).status_code == 422
+    assert client.post("/console/api/eval", json={"names": ["01_ok"]}).json()["cached"] is True
+
+
+def test_health_reports_the_build(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    assert TestClient(create_app(token="t" * 40)).get("/health").json()["commit"] is None
+    (tmp_path / "BUILD").write_text("15B52E9aaaa\n", encoding="utf-8")
+    health = TestClient(create_app(console=True, store=MemoryStore())).get("/health").json()
+    assert health["commit"] == "15b52e9aaaa" and health["console"] is True
+    monkeypatch.setenv("MANDAT_COMMIT", "not a commit")
+    assert TestClient(create_app(token="t" * 40)).get("/health").json()["commit"] is None
+    monkeypatch.setenv("MANDAT_COMMIT", "0123456789abcdef0123456789abcdef01234567")
+    client = _client(create_app(console=True, store=MemoryStore()))
+    assert client.post("/console/api/session", json={}).json()["commit"].startswith("0123456789ab")
 
 
 # --- вкладки ---------------------------------------------------------------------------------------------------
@@ -379,14 +398,54 @@ def test_dbo_tab_admits_the_payment_and_stops_the_rest(app):
 
 def test_eval_tab_counts_and_zero_false_confirmed(app):
     client = _client(app)
-    result = client.post("/console/api/eval", json={"per_defect": 1}).json()
-    assert result["false_confirmed"] == 0 and result["false_confirmed_label"] == "ложных ПОДТВЕРЖДЕНО: 0"
-    assert result["cases"] == result["defect_types"] and sum(result["by_verdict"].values()) == result["cases"]
+    demo = client.post("/console/api/eval", json={"source": "demo"}).json()
+    assert demo["cases"] >= 14 and demo["correct"] == demo["cases"] and demo["false_confirmed"] == 0
+    assert demo["false_confirmed_label"] == "ложных ПОДТВЕРЖДЕНО: 0"
+    assert demo["to_review"] + demo["refuted"] + 1 == demo["cases"]
+    corpus = client.post("/console/api/eval", json={"source": "corpus"}).json()
+    assert 40 <= corpus["cases"] <= 50 and corpus["false_confirmed"] == 0
+    mine = {**demo_manifest("07_revoked"), "expected_verdict": "confirmed"}
+    pasted = client.post(
+        "/console/api/eval", json={"source": "pasted", "cases": [mine, {"expected_verdict": "refuted"}]}
+    )
+    rows = pasted.json()["rows"]
+    assert rows[0]["predicted"] == "refuted" and rows[1]["predicted"] == "error" and pasted.json()["errors"] == 1
+    assert client.post("/console/api/eval", json={"source": "pasted", "cases": [mine] * 51}).status_code == 422
+    assert client.post("/console/api/eval", json={"source": "pasted", "cases": [{"x": 1}]}).status_code == 422
+    assert client.post("/console/api/eval", json={"source": "pasted", "cases": []}).status_code == 422
+    assert client.post("/console/api/eval", json={"source": "demo", "names": ["nope"]}).status_code == 422
+    assert client.post("/console/api/eval", json={"source": "web"}).status_code == 422
     app.state.console_evals.lock.acquire()
     try:
-        assert client.post("/console/api/eval", json={"per_defect": 2}).status_code == 429
+        assert client.post("/console/api/eval", json={"names": ["02_director_without_poa"]}).status_code == 429
     finally:
         app.state.console_evals.lock.release()
+
+
+def test_gate_rejects_planted_model_outputs_and_passes_honest_ones(app):
+    client = _client(app)
+    proof = client.get("/console/api/gate").json()
+    assert proof["label"] == f"отклонено {proof['planted']} из {proof['planted']}, честные прошли 2 из 2"
+    assert proof["planted"] >= 10 and proof["rejected"] == proof["planted"] and proof["honest_passed"] == 2
+    reasons = {row["reason"] for row in proof["rows"] if not row["honest"]}
+    assert {"цитата не найдена в документе", "язык разрешения шире вердикта"} <= reasons
+    assert "число или дата не из процитированных фактов" in reasons
+
+
+def test_slow_model_falls_back_to_report_facts(app, monkeypatch):
+    import time
+
+    from mandat.console import routes
+
+    monkeypatch.setenv("MANDAT_LLM_BASE_URL", "http://127.0.0.1:9/v1")
+    monkeypatch.setenv("MANDAT_LLM_ALLOWED_HOSTS", "127.0.0.1")
+    monkeypatch.setattr(routes, "MODEL_DEADLINE_SECONDS", 0.05)
+    monkeypatch.setattr(routes, "model_advice", lambda case, client: time.sleep(0.5) or {})
+    client = _client(app)
+    case_id = _check(client)["case_id"]
+    reply = client.post("/console/api/consult", json={"case_id": case_id, "use_model": True}).json()
+    assert reply["advice"]["late"] is True and "из фактов отчёта" in reply["advice"]["error"]
+    assert reply["explanation"]
 
 
 # --- части консоли ---------------------------------------------------------------------------------------------
