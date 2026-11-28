@@ -80,7 +80,7 @@
 
 | Маршрут | Кто | Что |
 |---|---|---|
-| `GET /v1/cases/{id}/review` | владелец кейса, любой `reviewer`, `auditor`, `admin` | состояние, `version`, приоритет, срок, история |
+| `GET /v1/cases/{id}/review` | владелец кейса, `auditor`, `admin`; `reviewer` — пока кейс в разборе или если уже действовал по нему | состояние, `version`, приоритет, срок, история |
 | `POST /v1/cases/{id}/review/{action}` | по таблице переходов; оператор — только по своим кейсам | `appeal`, `require`, `open`, `accept`, `reject`, `request_docs`, `close` |
 | `GET /v1/review/queue` | `reviewer`, `auditor`, `admin` — все; `operator` — свои | кейсы в `queued`, `in_review`, `docs_requested`: сначала просроченные, затем по поднятому приоритету и сроку |
 

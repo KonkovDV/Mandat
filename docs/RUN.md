@@ -70,7 +70,7 @@ Docker поднимает API только на localhost: `docker compose up --
 | `GET /v1/cases/{id}` | владелец кейса, `auditor`, `admin` | отчёт JSON; каждое чтение пишется в журнал (`read_case`) |
 | `GET /v1/cases/{id}/report.html` | то же | карточка сотрудника |
 | `POST /v1/cases/{id}/erase` | `admin` | удаление отчёта с ПДн по основанию из 152-ФЗ: тело `{"reason": "unlawful_processing" \| "purpose_achieved" \| "consent_withdrawn" \| "subject_request"}`; запись в журнал без данных ([защита данных](DATA_PROTECTION.md#удаление-кейса)) |
-| `GET /v1/cases/{id}/review` | то же и `reviewer` | состояние разбора и версия для `expected_version` |
+| `GET /v1/cases/{id}/review` | то же и `reviewer`: чужой кейс — пока он в разборе или если `reviewer` уже действовал по нему | состояние разбора и версия для `expected_version` |
 | `POST /v1/cases/{id}/review/{action}` | `operator`, `reviewer` | действие разбора: `appeal`, `open`, `accept`, `reject`, `request_docs`, `close`, `require` ([разбор](REVIEW.md)) |
 | `GET /v1/review/queue` | любая роль; `operator` видит свои кейсы | кейсы, ждущие человека, по сроку |
 | `POST /v1/events` | `operator`, `reviewer`, `admin` | оценка событий мониторинга и сроков МЧД: момент — `as_of` в теле или время сервера, `notice_days` — за сколько дней предупреждать (по умолчанию 30); повтор того же события тревоги не дублирует, ответ — до 1 000 000 связей «тревога — право», больше — 422; статусы удостоверений не меняет, их пишет `mandat monitor` |

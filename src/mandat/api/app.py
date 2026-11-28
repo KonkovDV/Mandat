@@ -847,11 +847,18 @@ def create_app(
         return {"case_id": case_id, "erased": True, "reason": body.reason, "basis": basis}
 
     def review_target(case_id: str, principal: Principal) -> tuple[dict[str, Any], str]:
-        # reviewer разбирает любые кейсы, остальные видят свои; auditor и admin — все (только чтение разбора).
+        # Свои кейсы видит каждый, auditor и admin — все (только чтение разбора). reviewer видит чужой кейс, пока тот
+        # в разборе, или если уже действовал по нему (docs/RUN.md): автоматическое решение чужого кейса ему не видно.
         found = shared.get(case_id)
-        if found is None or not (principal.sees_all or principal.role == "reviewer" or found[1] == principal.name):
-            raise HTTPException(404, "кейс не найден")
-        return found
+        if found is not None and (principal.sees_all or found[1] == principal.name):
+            return found
+        if found is not None and principal.role == "reviewer":
+            body, _ = review_state(case_id, *found)
+            runs = [body, *(body.get("superseded") or [])]
+            acted = any(h.get("actor") == principal.name for run in runs for h in run.get("history") or [])
+            if acted or body.get("state") in {s.value for s in review_api.OPEN_STATES}:
+                return found
+        raise HTTPException(404, "кейс не найден")
 
     def review_state(case_id: str, report: dict[str, Any], owner: str) -> tuple[dict[str, Any], int]:
         try:
