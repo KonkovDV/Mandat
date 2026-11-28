@@ -306,10 +306,9 @@ def mount(app: FastAPI, *, sessions: Sessions, store: Store, issuer: DemoIssuer,
     def robots() -> Response:
         return Response("User-agent: *\nDisallow: /\n", media_type="text/plain; charset=utf-8")
 
+    # Страница отвечает и без завершающего слеша: HTTPS-прокси вроде API Gateway отбрасывают его при пересылке,
+    # и переадресация на /console/ зациклилась бы. Пути к файлам в странице абсолютные, адрес без слеша безопасен.
     @app.api_route(PREFIX, methods=["GET", "HEAD"], include_in_schema=False)
-    def console_bare() -> RedirectResponse:
-        return RedirectResponse(f"{PREFIX}/", status_code=307)
-
     @app.api_route(f"{PREFIX}/", methods=["GET", "HEAD"], include_in_schema=False)
     def page() -> HTMLResponse:
         return HTMLResponse(index, headers={"Content-Security-Policy": PAGE_CSP})

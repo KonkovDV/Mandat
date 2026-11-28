@@ -110,6 +110,10 @@ def test_pages_have_security_headers_and_strict_csp(app):
     assert client.get("/robots.txt").text == "User-agent: *\nDisallow: /\n"
     root = client.get("/", follow_redirects=False)
     assert root.status_code == 307 and root.headers["location"] == "/console/"
+    # Без завершающего слеша — та же страница, а не переадресация: прокси с HTTPS отбрасывают слеш при пересылке.
+    bare = client.get("/console", follow_redirects=False)
+    assert bare.status_code == 200 and bare.text == client.get("/console/").text
+    assert bare.headers["content-security-policy"] == client.get("/console/").headers["content-security-policy"]
 
 
 def test_head_only_on_safe_routes(app):
