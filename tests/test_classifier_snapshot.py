@@ -185,6 +185,25 @@ def test_code_without_start_date_is_not_in_force():
     assert all(f'"{code}"' not in policy for code in _codes(case))
 
 
+def test_cedar_export_without_a_date_takes_the_moscow_day(monkeypatch):
+    """30.06.2030 21:30 UTC — уже 01.07.2030 по Москве: код, действующий с 1-го, в политике есть."""
+    from datetime import UTC, datetime
+
+    import mandat.rules.cedar_export
+
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2030, 6, 30, 21, 30, tzinfo=UTC).astimezone(tz)
+
+    monkeypatch.setattr(mandat.rules.cedar_export, "datetime", Frozen)
+    payload = copy.deepcopy(load_json("authority_classifier.json"))
+    next(e for e in payload["entries"] if e["code"] == "SYN-BANK-PAY-SIGN")["started"] = "2030-07-01"
+    classifier = from_payload(payload)
+    assert '"SYN-BANK-PAY-SIGN"' in export_policies(classifier=classifier)
+    assert '"SYN-BANK-PAY-SIGN"' not in export_policies(classifier=classifier, on=date(2030, 6, 30))
+
+
 def test_unknown_and_outdated_codes_need_review():
     case = _ok_case()
     payload = copy.deepcopy(load_json("authority_classifier.json"))

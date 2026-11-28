@@ -18,8 +18,9 @@ Cedar (CNCF Sandbox, спецификация проверена в Lean) отв
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
+from mandat.audit.attestation import bank_date
 from mandat.rules.classifier import Classifier, default_classifier
 from mandat.rules.pack import OperationCatalog, default_catalog
 
@@ -109,10 +110,13 @@ def export_policies(
     *,
     on: date | None = None,
 ) -> str:
-    """Политики Cedar из каталога операций: код без даты начала и код, не действующий на дату, не попадают."""
+    """Политики Cedar из каталога операций: код без даты начала и код, не действующий на дату, не попадают.
+
+    Без ``on`` — сегодняшний день банка по Москве, а не день часового пояса сервера.
+    """
     catalog = catalog or default_catalog()
     classifier = classifier or default_classifier()
-    on = on or date.today()
+    on = on or bank_date(datetime.now(UTC))
     blocks = [f"// Сгенерировано из каталога операций {catalog.catalog_id} {catalog.version}. Не править вручную.\n"]
     for op in sorted(catalog.operations.values(), key=lambda o: o.code):
         codes = sorted(

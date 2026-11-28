@@ -274,13 +274,14 @@ def cmd_law_calendar(args: argparse.Namespace) -> int:
     """Календарь норм пакета: какие акты вступают в силу или утрачивают её в окне и какие правила на них стоят.
 
     Код возврата 1 — на дату ``--on`` уже есть акт, утративший силу, а правила на нём не пересверены.
+    Без ``--on`` — сегодняшний день банка по Москве, а не день часового пояса сервера.
     """
     from datetime import date, timedelta
 
     from mandat.rules.pack import default_pack
 
     try:
-        on = date.fromisoformat(args.on) if args.on else date.today()
+        on = date.fromisoformat(args.on) if args.on else attestation.bank_date(datetime.now(UTC))
     except ValueError:
         print(f"--on: ожидалась дата ГГГГ-ММ-ДД, получено {args.on!r}", file=sys.stderr)
         return 2
@@ -835,7 +836,7 @@ def build_parser() -> argparse.ArgumentParser:
     f.set_defaults(func=cmd_formats)
 
     lc = sub.add_parser("law-calendar", help="нормы пакета правил: что вступает в силу и что утрачивает её")
-    lc.add_argument("--on", help="дата отсчёта ГГГГ-ММ-ДД (по умолчанию сегодня)")
+    lc.add_argument("--on", help="дата отсчёта ГГГГ-ММ-ДД (по умолчанию сегодня по Москве)")
     lc.add_argument("--days", type=int, default=365, help="окно вперёд, дней (365)")
     lc.set_defaults(func=cmd_law_calendar)
 

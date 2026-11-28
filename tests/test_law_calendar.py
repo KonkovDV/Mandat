@@ -178,6 +178,24 @@ def test_law_calendar_lists_coming_changes_and_flags_a_stale_pack(capsys):
     assert main(["law-calendar", "--on", "01.03.2028"]) == 2
 
 
+def test_law_calendar_without_on_takes_the_moscow_day(capsys, monkeypatch):
+    """29.02.2028 21:30 UTC — уже 01.03.2028 по Москве: приказы Минцифры утратили силу, хотя по UTC ещё 29-е."""
+    from datetime import UTC, datetime
+
+    import mandat.cli
+
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2028, 2, 29, 21, 30, tzinfo=UTC).astimezone(tz)
+
+    monkeypatch.setattr(mandat.cli, "datetime", Frozen)
+    assert main(["law-calendar"]) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["on"] == "2028-03-01"
+    assert set(report["stale"]) == {"MINC-857", "MINC-1001", "MINC-856"}
+
+
 # --------------------------------------------------------------------------- 253-ФЗ: реструктуризация юрлица
 
 
