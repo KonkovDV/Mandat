@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import copy
 import json
+from datetime import UTC, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from mandat.data import load_json
 from mandat.eval import run, synth
 from mandat.intake.case_loader import load_case_inline
+from mandat.rules.pack import default_pack
 from mandat.services.verify import verify_case
 
 PROFILES = synth.load_mixes()
@@ -99,6 +102,30 @@ def test_registry_moment_age_is_counted_in_moscow_days():
     assert _verdict(stale) == "insufficient_data" and _verdict(fresh) == "confirmed" and _verdict(revoked) == "refuted"
     entry = next(iter(stale.manifest["registry"].values()))
     assert entry == {"status": "active", "observed_at": "2026-10-18T23:30:00+03:00"}
+
+
+def test_registry_snapshot_day_is_the_moscow_day_in_any_offset():
+    """R-REG-001 датирует снимок реестра днём по Москве: тот же момент в +03:00, +10:00, -05:00 и Z — тот же вердикт.
+
+    Регрессия потока на 100 000 кейсов: день брался в поясе записи, и запрос в 06:53 по Владивостоку 19.10
+    (23:53 по Москве 18.10) делал снимок на день моложе: «действует» двухдневной давности давал «подтверждено».
+    """
+    repro = {"kind": "ok_charter_cleared", "seed": 1733186119, "org_seed": 834765904}
+    case = synth.make_case({**repro, "registry_moment": "2026-10-19T06:53:52+10:00"})
+    assert case.expected == "insufficient_data" == _verdict(case)
+
+    moscow, max_age = ZoneInfo("Europe/Moscow"), int(default_pack().get("R-REG-001").param("max_snapshot_age_days"))
+    zones = [timezone(timedelta(hours=h)) for h in (3, 10, -5, 0)]
+    start = datetime(2026, 10, 17, 20, 53, 52, tzinfo=UTC)
+    for step in range(0, 72, 4):
+        instant = start + timedelta(hours=step)
+        written = [instant.astimezone(zone).isoformat().replace("+00:00", "Z") for zone in zones]
+        age = (synth.OP_DATE - instant.astimezone(moscow).date()).days
+        for kind in ("ok_charter_cleared", "revoked"):
+            verdicts = {_verdict(synth.make_case({"kind": kind, "seed": 3, "registry_moment": m})) for m in written}
+            assert len(verdicts) == 1, (kind, written, verdicts)
+            if kind == "ok_charter_cleared":
+                assert verdicts == {"confirmed" if age <= max_age else "insufficient_data"}, (written, age)
 
 
 def test_term_on_the_last_day_holds_and_a_day_later_refutes():

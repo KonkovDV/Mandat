@@ -10,8 +10,9 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from mandat.data import load_json, sha256_json
 from mandat.domain.conclusion import Conclusion
@@ -607,8 +608,17 @@ def id_principal_name(ctx: RuleContext) -> list[Finding]:
 # --- реестр и срок ----------------------------------------------------------
 
 
-# Дата выписки — календарный день по Москве (UTC+3, без перехода на летнее время).
-_MOSCOW = timezone(timedelta(hours=3), "MSK")
+# Даты банка — календарные дни по Москве: дата выписки, день снимка реестра, день операции.
+_MOSCOW = ZoneInfo("Europe/Moscow")
+
+
+def _moscow_day(moment: datetime) -> date:
+    """День момента по Москве. Тот же момент, записанный в +03:00, +10:00, -05:00 или Z, — тот же день.
+
+    День в поясе записи сдвигал снимок на сутки: запрос в 06:53 по Владивостоку — ещё вчера по Москве.
+    Момент без пояса берётся как записан: загрузчик кейса такой не пропускает.
+    """
+    return moment.astimezone(_MOSCOW).date() if moment.tzinfo is not None else moment.date()
 
 
 def _from_future(moment: datetime | None, now: datetime | None) -> bool:
@@ -628,7 +638,7 @@ def _status_not_shown_on(obs: RegistryObservation, on: date) -> bool:
     if obs.event_date is not None:
         return obs.event_date > on
     if obs.observed_at is not None:
-        return obs.observed_at.date() > on
+        return _moscow_day(obs.observed_at) > on
     return False
 
 
@@ -657,7 +667,7 @@ def registry_status(ctx: RuleContext) -> list[Finding]:
             f"registry:{number}",
             quote=status.value,
         )
-        seen = obs.observed_at.date() if obs.observed_at else None
+        seen = _moscow_day(obs.observed_at) if obs.observed_at else None
         if _from_future(obs.observed_at, ctx.now):
             text = f"МЧД {number}: момент запроса к реестру {obs.observed_at:%d.%m.%Y %H:%M} позже момента проверки"
             out.append(ctx.emit("R-REG-001", E.NOT_VERIFIED, text, [ref]))
@@ -685,7 +695,7 @@ def registry_status(ctx: RuleContext) -> list[Finding]:
                     )
                 else:
                     assert obs.observed_at is not None
-                    seen_on = obs.observed_at.date()
+                    seen_on = _moscow_day(obs.observed_at)
                     text = (
                         f"МЧД {number} {word} по снимку от {seen_on:%d.%m.%Y}, дата события не указана, "
                         f"а операция была {on:%d.%m.%Y}: прекращение к дате операции снимок не показывает"
