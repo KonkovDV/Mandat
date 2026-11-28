@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import Any
 
 from mandat.data import load_json, sha256_json
@@ -600,6 +600,10 @@ def id_principal_name(ctx: RuleContext) -> list[Finding]:
 # --- реестр и срок ----------------------------------------------------------
 
 
+# Дата выписки — календарный день по Москве (UTC+3, без перехода на летнее время).
+_MOSCOW = timezone(timedelta(hours=3), "MSK")
+
+
 def _from_future(moment: datetime | None, now: datetime | None) -> bool:
     """Снимок с отметкой позже момента проверки (допуск 5 минут на расхождение часов)."""
     if moment is None or now is None:
@@ -1135,6 +1139,9 @@ def egrul_fresh(ctx: RuleContext) -> list[Finding]:
     ref = _egrul_ref(ctx, "$.extracted_at")
     if eg.extracted_at is None:
         return [ctx.emit("R-EIO-006", E.NOT_VERIFIED, "У сведений ЕГРЮЛ нет даты выписки", [ref])]
+    if _from_future(datetime.combine(eg.extracted_at, time.min, tzinfo=_MOSCOW), ctx.now):
+        text = f"Выписка ЕГРЮЛ датирована {eg.extracted_at:%d.%m.%Y}: это позже момента проверки"
+        return [ctx.emit("R-EIO-006", E.NOT_VERIFIED, text, [ref])]
     age = (on - eg.extracted_at).days
     if age > max_age:
         return [

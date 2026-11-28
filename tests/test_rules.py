@@ -161,6 +161,24 @@ def test_r_id_003_unparsed_poa_makes_absence_not_verified():
     assert run("wrong_representative").verdict.value == "refuted", "без сбоя разбора отказ остаётся отказом"
 
 
+def test_r_eio_006_extract_dated_after_the_check_is_not_verified():
+    """С часами сервера (pilot, prod) выписка «из будущего» — не доказательство, как и такой же снимок реестра."""
+    from datetime import UTC, datetime, time
+
+    from mandat.eval.synth import OP_DATE, build
+    from mandat.intake.case_loader import load_case_inline
+    from mandat.services.verify import verify_case
+
+    clock = datetime.combine(OP_DATE, time(9), tzinfo=UTC)
+    manifest = build("ok_charter_cleared", 1).inline_manifest()
+    egrul = next(d for d in manifest["documents"] if d["kind"] == "egrul_json")
+    assert verify_case(load_case_inline(manifest), now=clock).verdict.value == "confirmed"
+    egrul["content"]["extracted_at"] = "2030-01-01"
+    report = verify_case(load_case_inline(manifest), now=clock)
+    assert rule_effects(report, "R-EIO-006") == {"not_verified"}
+    assert report.verdict.value == "insufficient_data"
+
+
 def test_r_reg_001_revoked_refutes():
     report = run("revoked")
     assert "refutes" in rule_effects(report, "R-REG-001")
