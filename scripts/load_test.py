@@ -36,6 +36,7 @@ import random
 import re
 import secrets
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -147,7 +148,11 @@ def _api_user(name: str, role: str, audience: str | None = None) -> tuple[str, d
     cmd = [sys.executable, "-m", "mandat.cli", "api-user", "--name", name, "--role", role, "--expires-in-days", "2"]
     if audience:
         cmd += ["--audience", audience]
-    env = {**os.environ, "MANDAT_ENV": "pilot", "PYTHONPATH": str(ROOT / "src")}
+    env = {
+        **os.environ,
+        "MANDAT_ENV": "pilot",
+        "PYTHONPATH": os.pathsep.join(filter(None, [str(ROOT / "src"), os.environ.get("PYTHONPATH")])),
+    }
     out = subprocess.run(cmd, env=env, capture_output=True, text=True, check=True).stdout  # noqa: S603
     token = re.search(r"\(показывается один раз\): (\S+)", out)
     if token is None:
@@ -181,7 +186,10 @@ class Admission:
         # Отчёты настоящих проверок синтетических клиентов; день операции — сегодня, профиль — strict, как в пилоте.
         reports = []
         for seed in range(1, 201):
-            report = verify_case(load_case_inline(build("ok_charter_cleared", seed).inline_manifest())).as_dict()
+            case = load_case_inline(build("ok_charter_cleared", seed).inline_manifest())
+            report = verify_case(case, profile="demo").as_dict()
+            if report["verdict"] != "confirmed":
+                raise RuntimeError(f"стенд: отчёт для удостоверения не confirmed, а {report['verdict']}")
             reports.append({**report, "profile": "strict", "operation": {**report["operation"], "date": today}})
         self.registry = StatusRegistry.open(directory / "status")
         self.bodies: list[bytes] = []
@@ -235,7 +243,7 @@ class Server:
         self.port = _free_port()
         env = {
             **os.environ,
-            "PYTHONPATH": str(ROOT / "src"),
+            "PYTHONPATH": os.pathsep.join(filter(None, [str(ROOT / "src"), os.environ.get("PYTHONPATH")])),
             "MANDAT_ENV": "pilot",
             "MANDAT_API_USERS": str(users),
             # Лимит частоты включён, как в банке, но не ограничивает: весь поток идёт с одного адреса.
@@ -314,6 +322,7 @@ async def _drive(job: dict[str, Any]) -> dict[str, Any]:
     lat: list[float] = []
     codes: Counter[str] = Counter()
     allowed = Counter[str]()
+    samples: list[str] = []
     t0 = time.monotonic() + (job["start_at"] - time.time())
     stop_at = t0 + job["seconds"]
 
@@ -323,6 +332,8 @@ async def _drive(job: dict[str, Any]) -> dict[str, Any]:
             try:
                 r = await client.post(job["path"], content=body)
                 code = str(r.status_code)
+                if r.status_code != 200 and len(samples) < 5:
+                    samples.append(f"{code} {r.text[:160]}")
                 if job["authorize"] and r.status_code == 200:
                     allowed["allowed" if r.json().get("allowed") else "denied"] += 1
             except httpx.HTTPError as exc:
@@ -353,7 +364,7 @@ async def _drive(job: dict[str, Any]) -> dict[str, Any]:
             for task in pending:
                 task.cancel()
             codes["not_served"] += len(pending)
-    return {"lat": lat, "codes": dict(codes), "allowed": dict(allowed), "end": time.time()}
+    return {"lat": lat, "codes": dict(codes), "allowed": dict(allowed), "samples": samples, "end": time.time()}
 
 
 def _client_proc(job: dict[str, Any]) -> dict[str, Any]:
@@ -437,6 +448,9 @@ def run_load(
     }
     if allowed:
         result["admission"] = dict(allowed)
+    samples = sorted({text for part in parts for text in part["samples"]})[:5]
+    if samples:
+        result["error_samples"] = samples
     return result
 
 
@@ -587,6 +601,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--token", help="токен operator для --base-url")
     p.add_argument("--out", type=Path, help="JSON с результатами")
     args = p.parse_args(argv)
+    # kill и Ctrl+C проходят через finally: сервер и Redis стенда не остаются висеть.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     args.stores = [s for s in args.stores.split(",") if s]
     args.workers_list = [int(x) for x in args.workers_list.split(",") if x]
     if args.matrix:
