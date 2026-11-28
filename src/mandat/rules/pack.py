@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 from urllib.parse import urlparse
@@ -226,8 +226,19 @@ def _validate_norms(rows: Any, rules: dict[str, RuleSpec]) -> tuple[NormSpec, ..
     return tuple(out)
 
 
+_DEFAULT_PACKS: dict[int, tuple[dict[str, Any], RulePack]] = {}
+
+
 def default_pack() -> RulePack:
-    return validate_pack(load_json("rules.json"))
+    """Пакет правил из rules.json. Разбор файла уже кэширован (``load_json``), проверка пакета — тоже:
+    она была на каждом ``verify_case`` и стоила около миллисекунды. Ключ — сам объект данных пакета.
+    Каждый вызов, как и раньше, получает свой словарь правил: замена правила в нём не видна другим."""
+    payload = load_json("rules.json")
+    hit = _DEFAULT_PACKS.get(id(payload))
+    if hit is None or hit[0] is not payload:
+        _DEFAULT_PACKS.clear()
+        hit = _DEFAULT_PACKS[id(payload)] = (payload, validate_pack(payload))
+    return replace(hit[1], rules=dict(hit[1].rules))
 
 
 @dataclass(frozen=True)

@@ -101,11 +101,8 @@ class CaseReport:
         return sha256_json(self.body())
 
     def as_dict(self) -> dict[str, Any]:
-        return {
-            **self.body(),
-            "generated_at": self.generated_at,
-            "reproducibility_hash": self.reproducibility_hash,
-        }
+        body = self.body()  # тело строится один раз: хеш воспроизводимости — от того же тела
+        return {**body, "generated_at": self.generated_at, "reproducibility_hash": sha256_json(body)}
 
 
 def _iso(value: date | None) -> str | None:
