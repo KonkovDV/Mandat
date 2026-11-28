@@ -123,6 +123,9 @@ def _registry_entries(value: Any) -> dict[str, str | dict[str, str]]:
 
     ``event_date`` — дата отмены или истечения по реестру (ГГГГ-ММ-ДД), ``observed_at`` — момент запроса
     с часовым поясом. Неразборчивое значение — ошибка кейса, а не «нет сведений».
+
+    Номер приводится к одному виду (``normalize_poa_number``): два ключа одной МЧД, которые различаются регистром,
+    пробелами или скобками, — ошибка кейса. Иначе ответ реестра выбирал бы порядок ключей в JSON.
     """
     out: dict[str, str | dict[str, str]] = {}
     if value is None:
@@ -130,8 +133,11 @@ def _registry_entries(value: Any) -> dict[str, str | dict[str, str]]:
     if not isinstance(value, dict):
         raise CaseError("registry должен быть объектом")
     for number, entry in value.items():
+        poa_key = normalize_poa_number(number) or ""
+        if poa_key in out:
+            raise CaseError("registry: одна МЧД записана несколькими ключами, которые различаются только написанием")
         if not isinstance(entry, dict):
-            out[str(number)] = str(entry)
+            out[poa_key] = str(entry)
             continue
         if set(entry) - _REGISTRY_KEYS or not isinstance(entry.get("status"), str):
             raise CaseError(
@@ -159,7 +165,7 @@ def _registry_entries(value: Any) -> dict[str, str | dict[str, str]]:
                 if not isinstance(inn, str) or not _INN.fullmatch(inn):
                     raise CaseError(f"registry[{number}].{key}: 10 или 12 цифр")
                 clean[key] = inn
-        out[str(number)] = clean
+        out[poa_key] = clean
     return out
 
 
@@ -184,6 +190,8 @@ def _subdelegation_forms(value: Any) -> dict[str, str]:
         key = normalize_poa_number(number)
         if key is None or form not in SUBDELEGATION_FORMS:
             raise CaseError("subdelegation_forms: форма " + ", ".join(SUBDELEGATION_FORMS))
+        if key in out:
+            raise CaseError("subdelegation_forms: одна МЧД записана несколькими ключами разного написания")
         out[key] = form
     return out
 
