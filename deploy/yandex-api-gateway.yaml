@@ -19,6 +19,20 @@ paths:
         timeouts:
           connect: 5
           read: 30
+  # Отдельный маршрут: при подстановке {path} шлюз отбрасывает завершающий слеш, а консоль живёт по /console/.
+  /console/:
+    x-yc-apigateway-any-method:
+      x-yc-apigateway-integration:
+        type: http
+        url: http://<IP>/console/
+        headers:
+          '*': '*'
+          Host: <HOST>
+        query:
+          '*': '*'
+        timeouts:
+          connect: 5
+          read: 30
   /{path+}:
     x-yc-apigateway-any-method:
       parameters:
