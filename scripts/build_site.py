@@ -733,7 +733,7 @@ def _criteria_html(criteria: dict[str, Any]) -> dict[str, str]:
     def scored(rows: list[dict[str, Any]]) -> str:
         items = []
         for row in rows:
-            lack = f'<p class="lack"><b>Чего нет:</b> {row["lack"]}</p>' if row["lack"] else ""
+            lack = f'<p class="lack"><b>Что решает пилот:</b> {row["lack"]}</p>' if row["lack"] else ""
             head = f'<b>{_esc(row["name"])}</b><span class="pts">{_esc(row["points"])} баллов</span>'
             items.append(f'<li><div class="head">{head}</div><p class="where">{row["answer"]}</p>{lack}</li>')
         return "\n".join(items)
