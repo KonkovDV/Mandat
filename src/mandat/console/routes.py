@@ -28,7 +28,7 @@ from starlette.concurrency import run_in_threadpool
 
 from mandat.api.storage import Store
 from mandat.audit.attestation import NONCE_MIN_CHARS
-from mandat.console import secure_cookie
+from mandat.console import analytics, secure_cookie
 from mandat.console.advisor import (
     ADVICE_LABEL,
     cached_advice,
@@ -64,11 +64,18 @@ STATIC: dict[str, str] = {
     "CormorantGaramond-SemiBoldItalic-cyrillic.woff2": "font/woff2",
     **{f"anna-{name}-480.webp": "image/webp" for name in ("hello", "explain", "lawyer", "phone", "timer")},
     **{f"anna-{name}-160.webp": "image/webp" for name in ("ok", "stop", "think", "docs")},
+    "anna-full-chart-640.webp": "image/webp",
 }
 PAGE_PATHS = {"/", "/robots.txt", f"{PREFIX}/"}
 # HEAD — только там, где GET ничего не меняет и не пишет в журнал: страница, её файлы и список демо-кейсов.
 HEAD_OK = PAGE_PATHS | {f"{PREFIX}/static/{name}" for name in STATIC} | {f"{PREFIX}/api/cases"}
-GET_API = (f"{PREFIX}/api/cases", f"{PREFIX}/api/review", f"{PREFIX}/api/report/", f"{PREFIX}/api/stats")
+GET_API = (
+    f"{PREFIX}/api/cases",
+    f"{PREFIX}/api/review",
+    f"{PREFIX}/api/report/",
+    f"{PREFIX}/api/stats",
+    f"{PREFIX}/api/analytics",
+)
 MAX_BODY = 512 * 1024
 PAGE_CSP = (
     "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; "
@@ -734,6 +741,11 @@ def mount(app: FastAPI, *, sessions: Sessions, store: Store, issuer: DemoIssuer,
         """Блок «Расход модели»: счётчики консультанта с запуска службы — без ключа, запросов и ПДн."""
         session_of(request)
         return JSONResponse(usage_view())
+
+    @app.get(f"{PREFIX}/api/analytics", include_in_schema=False)
+    def analytics_tab(request: Request) -> JSONResponse:
+        """Вкладка «Аналитика»: только чтение — счётчики сессии, evidence.json, модель и расход; без ПДн."""
+        return JSONResponse(analytics.view(session_of(request), store))
 
     @app.post(f"{PREFIX}/api/eval", include_in_schema=False)
     async def eval_run(request: Request) -> JSONResponse:

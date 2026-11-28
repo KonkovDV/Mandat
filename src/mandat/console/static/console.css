@@ -86,11 +86,12 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg-alt);
 .brand-sub { font-size: 13px; color: var(--muted); font-weight: 600; white-space: nowrap; }
 .logo .lg-n { fill: var(--logo-navy); } .logo .lg-d { fill: var(--logo-deep); } .logo .lg-b { fill: var(--logo-blue); } .logo .lg-w { fill: var(--logo-word); }
 .nav { display: flex; gap: 2px; flex-wrap: nowrap; }
-.nav button { min-height: 40px; padding: 8px 12px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-weight: 600; font-size: 15px; cursor: pointer; white-space: nowrap; transition: color .2s, background-color .2s; }
+.nav button { min-height: 40px; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-weight: 600; font-size: 15px; cursor: pointer; white-space: nowrap; transition: color .2s, background-color .2s; }
 .nav button:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .nav button[aria-selected="true"] { color: var(--accent); background: var(--accent-soft); }
-.state { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
-.pill { display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 3px 11px; border: 1px solid var(--line-2); border-radius: 999px; font-size: 12.5px; color: var(--muted); white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+/* Пилюли сжимаются с многоточием, а не уводят переключатель темы на вторую строку */
+.state { display: flex; gap: 6px; flex: 1 1 0; min-width: 0; justify-content: flex-end; margin-left: auto; }
+.pill { min-width: 0; display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 3px 11px; border: 1px solid var(--line-2); border-radius: 999px; font-size: 12.5px; color: var(--muted); white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--gap-mark); flex: none; }
 .pill.on::before { background: var(--ok-mark); }
 .theme { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
@@ -102,7 +103,7 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg-alt);
   :root:where(:not([data-theme="light"])) .theme .sun { display: none; }
   :root:where(:not([data-theme="light"])) .theme .moon { display: inline; }
 }
-@media (max-width: 1020px) {
+@media (max-width: 1180px) {
   .nav { order: 3; width: 100%; overflow-x: auto; scrollbar-width: none; gap: 6px; padding-bottom: 2px; }
   .nav::-webkit-scrollbar { display: none; }
   .nav button { background: var(--bg-alt); border: 1px solid var(--line); border-radius: 999px; font-size: 14px; padding: 8px 14px; }
@@ -118,8 +119,11 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg-alt);
 main { flex: 1; padding-top: 22px; padding-bottom: 40px; }
 .panel { display: grid; gap: 18px; }
 .intro { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: clamp(14px, 2.4vw, 26px); row-gap: 8px; align-items: center; }
-.intro > :not(.intro-face) { grid-column: 2; }
+.intro > :not(.intro-face, .intro-figure) { grid-column: 2; }
 .intro-face { grid-row: 1 / span 3; width: clamp(72px, 10vw, 120px); height: auto; aspect-ratio: 1; border-radius: 50%; object-fit: cover; background: var(--navy);
+  box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--ring), 0 12px 30px rgb(26 89 234 / 26%); }
+/* Анна в полный рост («Аналитика»): кадр целиком, 2:3, без обрезки; стоит во вступлении и карточек не касается */
+.intro-figure { grid-row: 1 / span 3; width: clamp(84px, 10vw, 128px); height: auto; aspect-ratio: 2 / 3; object-fit: contain; border-radius: 14px; background: var(--navy);
   box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--ring), 0 12px 30px rgb(26 89 234 / 26%); }
 .intro h1 { font-size: clamp(24px, 3.3vw, 38px); line-height: 1.1; letter-spacing: -0.025em; }
 .intro .lead { color: var(--muted); font-size: clamp(15.5px, 1.4vw, 17.5px); max-width: 78ch; }
@@ -127,7 +131,7 @@ main { flex: 1; padding-top: 22px; padding-bottom: 40px; }
   .intro { align-items: start; }
   .intro > .kicker { align-self: end; }
   .intro .lead { grid-column: 1 / -1; }
-  .intro-face { grid-row: 1 / span 2; }
+  .intro-face, .intro-figure { grid-row: 1 / span 2; }
 }
 
 /* Кнопки, формы, карточки */
@@ -240,3 +244,13 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .gate { display: grid; gap: 10px; margin-top: 12px; }
 .pending { color: var(--muted); font-style: italic; }
 .label-big.ok { color: var(--ok); } .label-big.no { color: var(--no); }
+
+/* Аналитика: карточки с источником у каждого числа */
+.an-cards { display: grid; gap: 18px; }
+.an-cards .card { display: grid; gap: 12px; align-content: start; }
+.an-cards .section-title { margin-bottom: 0; }
+.an-cards .tile .tag { justify-self: start; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.an-session .tiles { grid-template-columns: repeat(auto-fit, minmax(min(100%, 132px), 1fr)); }
+.an-key { font: 11.5px/1.35 var(--mono); color: var(--faint); overflow-wrap: anywhere; }
+.an-cards .kv dd .an-key { display: block; }
+.an-source { border-top: 1px solid var(--line); padding-top: 10px; }

@@ -5,19 +5,23 @@ from __future__ import annotations
 
 import http.server
 import json
+import re
 import threading
 
 import pytest
+from conftest import ROOT
 from fastapi.testclient import TestClient
 
 from mandat import cli
 from mandat import console as stand
+from mandat.advisory import llm
 from mandat.api.app import create_app
 from mandat.api.storage import MemoryStore
-from mandat.console import inproc
+from mandat.console import analytics, inproc
 from mandat.console.demo import UploadError, demo_manifest, upload_manifest
 from mandat.console.issuer import DemoIssuer, IssuerExhausted, bank_today, rebased_today
 from mandat.console.sessions import Sessions
+from mandat.eval.economics import unit_economics
 
 SECURITY = {
     "x-content-type-options": "nosniff",
@@ -539,3 +543,127 @@ def test_lawyer_tab_registry_draft_approve_apply_and_revoke(app):
     )
     session.drafts = 10
     assert client.post("/console/api/conclusions", json={"reading": "threshold", "basis": "порог"}).status_code == 429
+
+
+# --- «Аналитика» ----------------------------------------------------------------------------------------------------
+
+
+def _ru(value: int) -> str:
+    return f"{value:,}".replace(",", "\u00a0")
+
+
+def _cards(client: TestClient) -> dict[str, dict]:
+    reply = client.get("/console/api/analytics")
+    assert reply.status_code == 200, reply.text
+    return {card["id"]: card for card in reply.json()["cards"]}
+
+
+def _by_src(card: dict) -> dict[str, dict]:
+    return {item["src"]: item for item in card["tiles"] + card["rows"]}
+
+
+def test_analytics_numbers_come_from_evidence_model_and_counters(app):
+    client = _client(app)
+    reply = client.get("/console/api/analytics").json()
+    assert reply["missing"] == []
+    cards = {card["id"]: card for card in reply["cards"]}
+    assert list(cards) == ["session", "repeat", "unit", "quality", "spend"]
+    for card in cards.values():
+        assert card["title"] and card["source"] and (card["tiles"] or card["rows"])
+        assert all(item["value"] and item["label"] and item["src"] for item in card["tiles"] + card["rows"])
+    session = _by_src(cards["session"])
+    assert [t["value"] for t in cards["session"]["tiles"]] == ["0"] * 4
+    assert session["сессия · needs_review и insufficient_data"]["value"] == "проверок пока нет"
+    evidence = json.loads((ROOT / "evidence.json").read_text(encoding="utf-8"))
+    repeat, rc = _by_src(cards["repeat"]), evidence["repeat_clients"]
+    key = "evidence.json · repeat_clients."
+    assert repeat[key + "to_human_with"]["value"] == f"{_ru(rc['to_human_with'])} из {_ru(rc['payments'])}"
+    assert repeat[key + "confirmed_restricted"]["value"] == _ru(rc["confirmed_restricted"])
+    assert repeat["сессия · charter_conclusions.applied"]["value"] == "0"
+    assert "repeat_clients" in cards["repeat"]["source"] and rc["boundary"] in cards["repeat"]["note"]
+    quality = _by_src(cards["quality"])
+    for name in ("synthetic_corpus", "synthetic_corpus_strict", "synthetic_corpus_holdout"):
+        tile = quality[f"evidence.json · {name}.false_confirmed"]
+        assert tile["value"] == _ru(evidence[name]["false_confirmed"]) and tile["hero"] is True
+    assert quality["evidence.json · tests.passed"]["value"] == _ru(evidence["tests"]["passed"])
+    values = json.loads((ROOT / "submission/analytics/out/model_values.json").read_text(encoding="utf-8"))
+    base, unit = unit_economics(values)[1], _by_src(cards["unit"])
+    assert unit["mandat.eval.economics · manual_check_rub"]["value"] == f"{_ru(base['manual_check_rub'])}\u00a0₽"
+    assert unit["mandat.eval.economics · mandat_cost_per_check_rub"]["value"].startswith(
+        _ru(base["mandat_cost_per_check_rub"])
+    )
+    months = values["bank"]["payback_cash"][1]
+    payback = f"{months:.{1 if months < 12 else 0}f}".replace(".", ",")
+    assert unit["model_values.json · bank.payback_cash"]["value"] == f"{payback}\u00a0мес."
+    assert values["version"] in cards["unit"]["source"] and "mandat.eval.economics" in cards["unit"]["source"]
+    spend = _by_src(cards["spend"])
+    assert spend["счётчики модели · cache_hits"]["value"] == _ru(llm.shared_economy().snapshot()["cache_hits"])
+    assert "Модель не подключена" in cards["spend"]["note"]
+
+
+def test_analytics_counts_this_session_without_personal_data():
+    store = MemoryStore()
+    app = create_app(console=True, store=store, rate_per_min=0)
+    client = _client(app)
+    session = _session(app, client)
+    verdicts = [_check(client, demo)["verdict"] for demo in ("09_charter_limit", "07_revoked", "01_ok")]
+    draft = client.post("/console/api/conclusions", json={"reading": "no_restriction", "basis": "устав прочитан"})
+    client.post(f"/console/api/conclusions/{draft.json()['id']}/approve", json={"expected_version": 1})
+    verdicts.append(client.post("/console/api/conclusions/check", json={}).json()["verdict"])
+    cases = list(session.cases)
+    other = _client(app)
+    _check(other, "07_revoked")
+    reply = client.get("/console/api/analytics")
+    cards = {card["id"]: card for card in reply.json()["cards"]}
+    tiles = {t["verdict"]: t["value"] for t in cards["session"]["tiles"]}
+    assert tiles == {v: str(verdicts.count(v)) for v in ("confirmed", "refuted", "needs_review", "insufficient_data")}
+    to_person = sum(v in {"needs_review", "insufficient_data"} for v in verdicts)
+    share = _by_src(cards["session"])["сессия · needs_review и insufficient_data"]["value"]
+    assert share.startswith(f"{to_person} из {len(verdicts)}, ")
+    assert (
+        _by_src(cards["repeat"])["сессия · charter_conclusions.applied"]["value"] == "1 из 1 с применённым заключением"
+    )
+    assert session.cases == cases, "вкладка только читает"
+    text = reply.text
+    found = [store.get(c["case_id"]) for c in cases]
+    private = {session.tag, *(session.principal_name(r) for r in ("operator", "reviewer", "dbo"))}
+    private |= {c["case_id"] for c in cases} | {c["title"] for c in cases}
+    for report, _ in filter(None, found):
+        private |= {
+            str(report["organization"].get(k)) for k in ("inn", "ogrn", "name") if report["organization"].get(k)
+        }
+    assert not [value for value in private if value in text]
+    assert re.search(r"\d{10,}", text) is None, "ИНН, ОГРН и номера не попадают на вкладку"
+
+
+def test_analytics_without_sources_names_what_is_missing(app, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(analytics, "CHECKOUT", tmp_path)
+    client = _client(app)
+    reply = client.get("/console/api/analytics").json()
+    assert reply["missing"] == ["evidence.json", "submission/analytics/out/model_values.json"]
+    cards = {card["id"]: card for card in reply["cards"]}
+    assert list(cards) == ["session", "repeat", "spend"]
+    assert cards["repeat"]["tiles"] == [] and [r["src"] for r in cards["repeat"]["rows"]] == [
+        "сессия · charter_conclusions.applied"
+    ]
+
+
+def test_analytics_tab_markup_is_read_only_with_its_own_anna(app):
+    client = _client(app)
+    page = client.get("/console/").text
+    assert '<button type="button" role="tab" id="tab-analytics" aria-controls="analytics"' in page
+    panel = page.split('<section class="panel" id="analytics"', 1)[1].split("</section>", 1)[0]
+    assert 'role="tabpanel" aria-labelledby="tab-analytics" hidden' in panel
+    image = re.search(r'<img class="intro-figure" src="/console/static/([^"]+)"[^>]*>', panel)
+    assert image is not None and 'width="640" height="960"' in image.group(0)
+    assert page.count(image.group(1)) == 1, "кадр Анны этой вкладки больше нигде в консоли"
+    served = client.get(f"/console/static/{image.group(1)}")
+    assert served.status_code == 200 and served.headers["content-type"] == "image/webp"
+    assert re.search(r"\d", re.sub(r"<[^>]+>", "", panel)) is None, "числа приходят с сервера, в разметке их нет"
+    script = client.get("/console/static/console.js").text
+    assert '"/console/api/analytics"' in script and '"eval", "analytics"]' in script
+    assert image.group(1) not in script
+    assert client.head("/console/api/analytics").headers["allow"] == "GET"
+    assert client.post("/console/api/analytics", json={}).status_code == 405
+    assert TestClient(app).get("/console/api/analytics").status_code == 401

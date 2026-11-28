@@ -88,6 +88,12 @@ def listing(rows: Sequence[Row], *, day: date, tallies: Mapping[str, tuple[int, 
     return items
 
 
+def cleared(report: Mapping[str, Any]) -> bool:
+    """Устав в отчёте закрыт и кейс не ушёл к юристу: так реестр считает операции, закрытые заключением."""
+    status = ((report.get("checks") or {}).get("charter") or {}).get("status")
+    return status not in {"review", "not_verified", "refuted", "missing"}
+
+
 def for_rules(rows: Sequence[Row]) -> tuple[tuple[Conclusion, ...], list[str]]:
     """Записи для проверки кейса и номера записей, которые не читаются: такие не применяются."""
     parsed: list[Conclusion] = []

@@ -25,6 +25,7 @@
       <button type="button" role="tab" id="tab-review" aria-controls="review" aria-selected="false" tabindex="-1">Юрист</button>
       <button type="button" role="tab" id="tab-dbo" aria-controls="dbo" aria-selected="false" tabindex="-1">ДБО</button>
       <button type="button" role="tab" id="tab-eval" aria-controls="eval" aria-selected="false" tabindex="-1">Прогон</button>
+      <button type="button" role="tab" id="tab-analytics" aria-controls="analytics" aria-selected="false" tabindex="-1">Аналитика</button>
     </nav>
     <div class="state" aria-live="polite">
       <span class="pill" id="pill-session">сессия…</span>
@@ -175,6 +176,17 @@
       <dl class="kv" id="usage-rows"></dl>
       <p class="fine" id="usage-note">Счётчики консультанта появятся, когда откроется сессия.</p>
     </article>
+  </section>
+
+  <section class="panel" id="analytics" role="tabpanel" aria-labelledby="tab-analytics" hidden>
+    <div class="intro">
+      <img class="intro-figure" src="/console/static/anna-full-chart-640.webp" alt="" aria-hidden="true" width="640" height="960" loading="lazy" decoding="async">
+      <p class="kicker">Аналитика</p>
+      <h1>Эффект для банка: у&nbsp;каждого числа <span class="serif">источник</span></h1>
+      <p class="lead">Проверки этой сессии, реестр заключений для повторных клиентов, стоимость проверки, качество и расход модели. Числа считает сервер стенда из отчётов сессии, evidence.json, финансовой модели и счётчиков консультанта; под каждым числом указано, откуда оно. Вкладка только читает: ничего не записывает и персональных данных не показывает.</p>
+    </div>
+    <div class="an-cards" id="an-cards"><p class="fine">Карточки появятся, когда откроется сессия.</p></div>
+    <p class="fine" id="an-missing" hidden></p>
   </section>
 </main>
 
