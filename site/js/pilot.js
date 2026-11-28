@@ -35,7 +35,7 @@ function mondays() {
 
 function plan(start) {
   return [
-    { name: "Неделя 1", from: start, to: plus(start, 4), what: "протокол, регламент, пороги, правила утверждены" },
+    { name: "Неделя 1", from: start, to: plus(start, 4), what: "старт теневой проверки, хронометраж ручной" },
     { name: "Недели 2–5", from: plus(start, 7), to: plus(start, 32), what: "параллельная проверка, журнал расхождений" },
     { name: "Неделя 6", from: plus(start, 35), to: plus(start, 39), what: "независимая разметка и замер" },
     { name: "Решение G2", from: plus(start, 39), to: null, what: "акт: продолжать или остановить", goal: true },

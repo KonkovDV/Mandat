@@ -42,7 +42,7 @@ const SLIDERS = [
   { key: "salary_ops", name: "Зарплата сотрудника, тыс. ₽ в месяц", min: 60, max: 160, step: 5, unit: "тыс. ₽", hint: "плюс взносы 30,2 % и накладные расходы сценария" },
   { key: "vtb_share", name: "Доля ВТБ в операциях против юрлиц", min: 0.1, max: 0.35, step: 0.01, pct: true, hint: "допущение команды по доле банка в расчётах бизнеса" },
   { key: "authority_share", name: "Случаев, где виновато полномочие", min: 0.05, max: 0.5, step: 0.01, pct: true, hint: "доля операций без согласия, которые начинаются с подложного представителя" },
-  { key: "realization", name: "Высвобожденного времени становится деньгами", min: 0.2, max: 0.8, step: 0.05, pct: true, hint: "остальное — ёмкость под рост без найма" },
+  { key: "realization", name: "Ручной работы становится экономией", min: 0.2, max: 0.8, step: 0.05, pct: true, hint: "сколько работы снимает «Мандат» и банк переводит в деньги; остальное — ёмкость под рост" },
 ];
 
 let scenario = 1;
@@ -129,7 +129,7 @@ function summaryText(r) {
     `«Мандат», расчёт эффекта для ВТБ (${NAMES[scenario].toLowerCase()} сценарий${mine ? ", свои допущения" : ""})`,
     `Окупаемость разовых затрат: ${months(r.payback_cash)}`,
     `Проверка полномочий: вручную ≈${num(Math.round(r.manual / 10) * 10)} ₽, с «Мандатом» ≈${num(Math.round(r.mandat))} ₽`,
-    `Высвобождается ставок в год: ${num(Math.round(r.fte))}; предотвращённый ущерб: ${num(r.prevented, 0)} млн ₽ в год`,
+    `Ручная проверка сегодня, ставок в год: ${num(Math.round(r.fte))}; предотвращённый ущерб: ${num(r.prevented, 0)} млн ₽ в год`,
     `Отдача за три года: ${num(r.roi_cash, 1)}× на рубль затрат`,
     ...SLIDERS.map((s) => `${s.name}: ${show(s, params[s.key])}`),
     `Расчёт: ${location.href}`,
@@ -142,7 +142,7 @@ function update() {
   const outs = document.getElementById("outs");
   outs.replaceChildren(
     el("li", { class: "key" }, el("b", { text: months(r.payback_cash) }), el("span", { text: "окупаются разовые затраты ВТБ" })),
-    el("li", {}, el("b", { text: num(Math.round(r.fte)) }), el("span", { text: `${plural(Math.round(r.fte), "ставка высвобождается", "ставки высвобождаются", "ставок высвобождается")} в год` })),
+    el("li", {}, el("b", { text: num(Math.round(r.fte)) }), el("span", { text: `${plural(Math.round(r.fte), "ставка", "ставки", "ставок")} в год — ручная проверка сегодня` })),
     el("li", {}, el("b", { text: `${num(r.prevented, 0)} млн ₽` }), el("span", { text: "предотвращённого ущерба клиентов в год" })),
     el("li", {}, el("b", { text: `${num(r.y2_cash, 1)} млн ₽` }), el("span", { text: "чистый денежный эффект банка в год со второго года" })),
     el("li", {}, el("b", { text: `${num(r.roi_cash, 1)}×` }), el("span", { text: "отдача за три года на рубль затрат" })),

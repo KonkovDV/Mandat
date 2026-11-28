@@ -594,7 +594,7 @@ def _econ_rows(model: dict[str, Any]) -> str:
     """Таблица трёх сценариев: она видна и без скриптов, и рядом с калькулятором как его табличный двойник."""
     bank = model["bank"]
     rows = (
-        ("Высвобождается ставок в год", [_num(v) for v in bank["fte_round"]]),
+        ("Ручная проверка сегодня, ставок в год", [_num(v) for v in bank["fte_round"]]),
         ("Предотвращённый ущерб, млн ₽ в год", [_num(v) for v in bank["prevented_round"]]),
         ("Разовые затраты банка, млн ₽", [_num(v, 1) for v in bank["one_off"]]),
         ("Ежегодные затраты банка, млн ₽", [_num(v, 1) for v in bank["annual_cost"]]),
