@@ -1,4 +1,4 @@
-"""Контракт HTTP API и защита каждого маршрута (перенесено из KonkovDV/Kontur, scripts/check_contracts.py)."""
+"""Контракт HTTP API и защита каждого маршрута."""
 
 from __future__ import annotations
 

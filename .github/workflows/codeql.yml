@@ -1,5 +1,5 @@
-# Статический анализ CodeQL для Python (SAST). Схема перенесена из нашего SynAPS-RepairFlow; действие закреплено тем же
-# коммитом github/codeql-action, что и загрузка SARIF в scorecard.yml.
+# Статический анализ CodeQL для Python (SAST). Действие закреплено тем же коммитом github/codeql-action,
+# что и загрузка SARIF в scorecard.yml.
 name: codeql
 
 on:

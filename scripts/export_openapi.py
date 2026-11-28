@@ -1,4 +1,4 @@
-"""Записать контракт HTTP API в docs/api/openapi.json (идея из KonkovDV/Kontur: contracts/ + проверка дрейфа).
+"""Записать контракт HTTP API в docs/api/openapi.json: расхождение кода с записанным контрактом видно в ревью.
 
 Запуск: ``python scripts/export_openapi.py``; ``--check`` — только сравнить, код 1 при расхождении.
 """
