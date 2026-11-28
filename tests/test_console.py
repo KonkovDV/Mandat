@@ -312,6 +312,7 @@ def test_consultant_tab_with_model_goes_through_the_gate(app, model):
         "model": "stand-model",
         "host": "127.0.0.1",
         "note": reply["model"]["note"],
+        "paused": None,
     }
     advice = reply["advice"]
     calls = len(_Model.sent)
@@ -321,8 +322,9 @@ def test_consultant_tab_with_model_goes_through_the_gate(app, model):
     assert advice["dropped"] == ["цитата не найдена в документе"]
     assert advice["verdict_before"] == advice["verdict_after"] == "НА РАЗБОР" and advice["verdict_unchanged"]
     assert "Лебедева" not in _Model.sent[-1] and "Петров" not in _Model.sent[-1]
+    # Ответ с выдуманной цитатой шлюз принял не целиком: в кэш он не попал, повтор снова спрашивает модель.
     again = client.post("/console/api/consult", json={"case_id": case_id, "use_model": True}).json()["advice"]
-    assert again["cached"] is True and len(_Model.sent) == calls
+    assert "cached" not in again and len(_Model.sent) == calls + 1
     director = client.post("/console/api/check", json={"demo": "02_director_without_poa"}).json()
     assert (
         client.post("/console/api/consult", json={"case_id": director["case_id"], "use_model": True}).status_code == 200
@@ -448,7 +450,7 @@ def test_slow_model_falls_back_to_report_facts(app, monkeypatch):
     monkeypatch.setenv("MANDAT_LLM_BASE_URL", "http://127.0.0.1:9/v1")
     monkeypatch.setenv("MANDAT_LLM_ALLOWED_HOSTS", "127.0.0.1")
     monkeypatch.setattr(routes, "MODEL_DEADLINE_SECONDS", 0.05)
-    monkeypatch.setattr(routes, "model_advice", lambda case, client: time.sleep(0.5) or {})
+    monkeypatch.setattr(routes, "model_advice", lambda case, client, deadline=None: time.sleep(0.5) or {})
     client = _client(app)
     case_id = _check(client)["case_id"]
     reply = client.post("/console/api/consult", json={"case_id": case_id, "use_model": True}).json()

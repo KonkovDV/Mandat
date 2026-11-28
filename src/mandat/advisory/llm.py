@@ -9,20 +9,27 @@
 открытые модели с российскими лицензиями (GigaChat Lightning, T-Pro и др.),
 и с Yandex AI Studio, если банк разрешит этот хост явно.
 Паттерн allowlist и маркеров данных — из AeroBIM (``openai_compat_llm_provider``).
+
+Клиент из ``from_env`` ведёт учёт на процесс (``advisory/economy.py``): до вызова — дневной бюджет и
+предохранитель, после — токены и стоимость из ``usage`` ответа; кэш принятых ответов — по ``request_key``.
+Пороги — ``MANDAT_LLM_BREAKER_*``, ``MANDAT_LLM_BUDGET_USD_PER_DAY``, ``MANDAT_LLM_CACHE_*`` (``economy_settings``).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 import os
 import re
 import urllib.error
 import urllib.request
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
+from mandat.advisory.economy import Economy, Settings, Usage
 from mandat.domain.model import Case
 from mandat.privacy.names import KnownPerson, known_people, mask_names
 from mandat.privacy.pii import for_model
@@ -79,6 +86,62 @@ def allowed_hosts() -> set[str]:
     return {h.strip().lower() for h in raw.split(",") if h.strip()}
 
 
+def _env_int(name: str, default: int, *, low: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    try:
+        value = int(raw) if raw else default
+    except ValueError:
+        return default
+    return value if value >= low else default
+
+
+def _env_float(name: str, default: float, *, low: float, strict: bool = False) -> float:
+    raw = os.environ.get(name, "").strip()
+    try:
+        value = float(raw) if raw else default
+    except ValueError:
+        return default
+    fits = math.isfinite(value) and (value > low if strict else value >= low)
+    return value if fits else default
+
+
+def economy_settings() -> Settings:
+    """Пороги учёта модели из окружения. Пустое или испорченное значение — значение по умолчанию.
+
+    ``MANDAT_LLM_BREAKER_FAILURES`` (3) неудач подряд открывают предохранитель на ``MANDAT_LLM_BREAKER_SECONDS``
+    (120 с). ``MANDAT_LLM_BUDGET_USD_PER_DAY`` (1) — потолок расхода в долларах за день по Москве, 0 выключает
+    модель. Кэш принятых ответов: ``MANDAT_LLM_CACHE_ENTRIES`` записей (256, 0 выключает кэш), каждая живёт
+    ``MANDAT_LLM_CACHE_SECONDS`` (86400 с).
+    """
+    base = Settings()
+    return Settings(
+        breaker_failures=_env_int("MANDAT_LLM_BREAKER_FAILURES", base.breaker_failures, low=1),
+        breaker_seconds=_env_float("MANDAT_LLM_BREAKER_SECONDS", base.breaker_seconds, low=0, strict=True),
+        budget_usd_per_day=_env_float("MANDAT_LLM_BUDGET_USD_PER_DAY", base.budget_usd_per_day, low=0),
+        cache_entries=_env_int("MANDAT_LLM_CACHE_ENTRIES", base.cache_entries, low=0),
+        cache_seconds=_env_float("MANDAT_LLM_CACHE_SECONDS", base.cache_seconds, low=0, strict=True),
+    )
+
+
+# Учёт модели на процесс: предохранитель, бюджет дня, кэш принятых ответов и счётчики.
+_SHARED = Economy()
+
+
+def shared_economy() -> Economy:
+    """Общий на процесс учёт модели; пороги берутся из окружения при каждом обращении, счётчики сохраняются."""
+    _SHARED.configure(economy_settings())
+    return _SHARED
+
+
+def failure_kind(exc: BaseException) -> str:
+    """Вид неудачи вызова для учёта: ``http``, ``timeout``, ``network`` или ``format`` (ответ не по формату API)."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return "http"
+    if isinstance(exc, TimeoutError) or isinstance(getattr(exc, "reason", None), TimeoutError):
+        return "timeout"
+    return "network" if isinstance(exc, OSError) else "format"
+
+
 _SEAL = object()
 
 
@@ -126,6 +189,8 @@ class OpenAICompatClient:
     model: str
     api_key: str | None = None
     timeout: float = 60.0
+    # Учёт вызовов: ``from_env`` подключает общий на процесс; клиент, собранный вручную, работает без учёта.
+    economy: Economy | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         parsed = urlparse(self.base_url)
@@ -153,26 +218,54 @@ class OpenAICompatClient:
         base = os.environ.get("MANDAT_LLM_BASE_URL", "").strip()
         if not base:
             raise LlmDisabled("модель выключена: MANDAT_LLM_BASE_URL не задан")
-        return cls(base, os.environ.get("MANDAT_LLM_MODEL", "local-model"), os.environ.get("MANDAT_LLM_API_KEY"))
+        model, key = os.environ.get("MANDAT_LLM_MODEL", "local-model"), os.environ.get("MANDAT_LLM_API_KEY")
+        return cls(base, model, key, economy=shared_economy())
 
     def body(self, messages: RedactedMessages) -> dict[str, Any]:
         sealed = _require_redacted(messages)
         return {**extra_fields(), "model": self.model, "temperature": 0, "seed": 7, "messages": sealed.messages}
 
-    def complete(self, messages: RedactedMessages) -> str:
+    def request_key(self, messages: RedactedMessages) -> str:
+        """Ключ кэша ответов: SHA-256 модели и точных сообщений запроса — уже обезличенных."""
+        sealed = _require_redacted(messages)
+        exact = {"model": self.model, "messages": sealed.messages}
+        canonical = json.dumps(exact, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def complete(self, messages: RedactedMessages, *, timeout: float | None = None) -> str:
+        """Ответ модели на обезличенный запрос; ``timeout`` — срок соединения этого вызова вместо ``self.timeout``.
+
+        С учётом (``economy``): до сети — бюджет дня и предохранитель (``economy.ModelPaused``, в сеть ничего не
+        уходит), после — токены и стоимость из ``usage`` ответа, даже если ответ потом окажется негодным. Сбой сети,
+        тайм-аут и ответ не по формату API — неудача предохранителя. Удачу и неудачу по содержанию ответа записывает
+        тот, кто проверил его шлюзом: клиент не знает, прошли ли факты.
+        """
         _require_redacted(messages)
+        meter = self.economy
+        if meter is not None:
+            meter.admit()
+        try:
+            body = self._post(messages, self.timeout if timeout is None else timeout)
+            if meter is not None and isinstance(body, dict):
+                meter.charge(Usage.of(body.get("usage")))
+            return str(body["choices"][0]["message"]["content"])
+        except Exception as exc:
+            if meter is not None:
+                meter.failed(failure_kind(exc))
+            raise
+
+    def _post(self, messages: RedactedMessages, timeout: float) -> Any:
         payload = json.dumps(self.body(messages), ensure_ascii=False).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         url = self.base_url.rstrip("/") + "/chat/completions"
         request = urllib.request.Request(url, data=payload, headers=headers, method="POST")  # noqa: S310
-        with _opener().open(request, timeout=self.timeout) as response:
+        with _opener().open(request, timeout=timeout) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
         if len(raw) > MAX_RESPONSE_BYTES:
             raise ValueError(f"ответ модели больше {MAX_RESPONSE_BYTES} байт")
-        body = strict_loads(raw)
-        return str(body["choices"][0]["message"]["content"])
+        return strict_loads(raw)
 
 
 def eval_complete(
@@ -300,14 +393,32 @@ def case_charter_messages(case: Case) -> RedactedMessages:
     return RedactedMessages(charter_messages(case.charter.text, known_people(case)), _seal=_SEAL)
 
 
-def parse_facts(raw: str) -> list[dict[str, Any]]:
+def _answer(raw: str) -> Any:
+    """JSON ответа модели от первой «{» до последней «}»; не JSON — ``None``."""
     start, end = raw.find("{"), raw.rfind("}")
     if start < 0 or end <= start:
-        return []
+        return None
     try:
-        payload = strict_loads(raw[start : end + 1])
+        return strict_loads(raw[start : end + 1])
     except (json.JSONDecodeError, RecursionError):
         # Ответ модели — недоверенный ввод: сверхглубокий JSON значит «фактов нет», а не падение.
-        return []
+        return None
+
+
+def parse_facts(raw: str) -> list[dict[str, Any]]:
+    payload = _answer(raw)
     facts = payload.get("facts") if isinstance(payload, dict) else None
     return [f for f in facts if isinstance(f, dict)] if isinstance(facts, list) else []
+
+
+def read_facts(raw: str) -> list[dict[str, Any]] | None:
+    """Факты строго по формату ответа: объект с массивом объектов ``facts``. Иначе ``None`` — ответ не по формату.
+
+    ``parse_facts`` берёт из того же ответа всё, что похоже на факт; ``read_facts`` решает, годен ли ответ целиком:
+    по нему предохранитель считает неудачу, а кэш отказывается хранить ответ.
+    """
+    payload = _answer(raw)
+    facts = payload.get("facts") if isinstance(payload, dict) else None
+    if not isinstance(facts, list) or not all(isinstance(f, dict) for f in facts):
+        return None
+    return facts

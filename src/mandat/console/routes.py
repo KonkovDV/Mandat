@@ -29,7 +29,15 @@ from starlette.concurrency import run_in_threadpool
 from mandat.api.storage import Store
 from mandat.audit.attestation import NONCE_MIN_CHARS
 from mandat.console import secure_cookie
-from mandat.console.advisor import ADVICE_LABEL, deterministic, gate_proof, model_advice, model_client
+from mandat.console.advisor import (
+    ADVICE_LABEL,
+    cached_advice,
+    deterministic,
+    gate_proof,
+    model_advice,
+    model_client,
+    usage_view,
+)
 from mandat.console.demo import DBO_CASE, UploadError, catalog, demo_manifest, operations, upload_manifest
 from mandat.console.inproc import AsgiApp, Reply, call
 from mandat.console.issuer import DemoIssuer, IssuerExhausted, bank_today, rebased_today
@@ -60,7 +68,7 @@ STATIC: dict[str, str] = {
 PAGE_PATHS = {"/", "/robots.txt", f"{PREFIX}/"}
 # HEAD — только там, где GET ничего не меняет и не пишет в журнал: страница, её файлы и список демо-кейсов.
 HEAD_OK = PAGE_PATHS | {f"{PREFIX}/static/{name}" for name in STATIC} | {f"{PREFIX}/api/cases"}
-GET_API = (f"{PREFIX}/api/cases", f"{PREFIX}/api/review", f"{PREFIX}/api/report/")
+GET_API = (f"{PREFIX}/api/cases", f"{PREFIX}/api/review", f"{PREFIX}/api/report/", f"{PREFIX}/api/stats")
 MAX_BODY = 512 * 1024
 PAGE_CSP = (
     "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; "
@@ -224,7 +232,6 @@ def mount(app: FastAPI, *, sessions: Sessions, store: Store, issuer: DemoIssuer,
     version = _version()
     index = _static_bytes("index.html").decode("utf-8").replace("{{version}}", version).encode("utf-8")
     evals = EvalState()
-    advice_cache: dict[str, tuple[float, dict[str, Any]]] = {}
     # Для эксплуатации и тестов: сессии и демо-издатель этого приложения.
     app.state.console_sessions, app.state.console_issuer, app.state.console_evals = sessions, issuer, evals
 
@@ -408,26 +415,18 @@ def mount(app: FastAPI, *, sessions: Sessions, store: Store, issuer: DemoIssuer,
         state, client = model_client()
         advice = None
         if body.get("use_model") is True and state.enabled and case is not None:
-            # Одинаковый устав модель читает один раз: ответ при температуре 0 тот же, а ключ API платный.
-            charter = case.charter.sha256 if case.charter is not None else ""
-            key = f"{state.model}:{state.host}:{charter}"
-            hit = advice_cache.get(key)
-            if hit is not None and time.monotonic() - hit[0] < EVAL_CACHE_SECONDS:
-                advice = {**hit[1], "cached": True}
-            elif not store.allow(f"console:model:{_client(request)}", MODEL_PER_MIN):
+            # Тот же обезличенный запрос модель читает один раз: принятый ответ берётся из кэша без лимита и слота.
+            advice = await run_in_threadpool(cached_advice, case, client)
+            if advice is None and not store.allow(f"console:model:{_client(request)}", MODEL_PER_MIN):
                 busy = "модель отвечает другим сотрудникам: пояснение собрано из фактов отчёта"
                 advice = {"label": ADVICE_LABEL, "error": busy, "busy": True}
-            else:
+            elif advice is None:
                 try:
-                    task = run_in_threadpool(model_advice, case, client)
+                    task = run_in_threadpool(model_advice, case, client, MODEL_DEADLINE_SECONDS)
                     advice = await asyncio.wait_for(task, MODEL_DEADLINE_SECONDS)
                 except TimeoutError:
                     late = f"модель не ответила за {MODEL_DEADLINE_SECONDS:g} с: пояснение собрано из фактов отчёта"
                     advice = {"label": ADVICE_LABEL, "error": late, "late": True}
-                if "error" not in advice:
-                    advice_cache[key] = (time.monotonic(), advice)
-                    while len(advice_cache) > 128:
-                        advice_cache.pop(next(iter(advice_cache)))
         return JSONResponse(
             {
                 "case_id": case_id,
@@ -623,6 +622,12 @@ def mount(app: FastAPI, *, sessions: Sessions, store: Store, issuer: DemoIssuer,
         """Шлюз на подставных ответах модели: результат считает настоящий код шлюза, а не таблица."""
         session_of(request)
         return JSONResponse(await run_in_threadpool(gate_proof))
+
+    @app.get(f"{PREFIX}/api/stats", include_in_schema=False)
+    def stats(request: Request) -> JSONResponse:
+        """Блок «Расход модели»: счётчики консультанта с запуска службы — без ключа, запросов и ПДн."""
+        session_of(request)
+        return JSONResponse(usage_view())
 
     @app.post(f"{PREFIX}/api/eval", include_in_schema=False)
     async def eval_run(request: Request) -> JSONResponse:

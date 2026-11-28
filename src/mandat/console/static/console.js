@@ -157,7 +157,9 @@
     pill.classList.add("on");
     const model = $("#pill-model");
     model.classList.toggle("on", reply.data.model.enabled);
-    model.textContent = reply.data.model.enabled ? "модель: " + reply.data.model.model : "модель: не подключена";
+    model.textContent = reply.data.model.enabled
+      ? "модель: " + reply.data.model.model + (reply.data.model.paused ? " · пауза" : "")
+      : "модель: не подключена";
     model.title = reply.data.model.note || "";
     const roles = reply.data.principals.map((p) => p.name).join(", ");
     $("#foot-principals").textContent =
@@ -283,7 +285,7 @@
     card.append(list);
     let source = "Модель не подключена: пояснение собрано из фактов отчёта, каждая фраза ссылается на свой факт.";
     if (d.advice && d.advice.error) source = d.advice.error[0].toUpperCase() + d.advice.error.slice(1) + ".";
-    else if (d.advice) source = "Справка модели по уставу: шлюз принял фактов " + d.advice.accepted.length + " из " + d.advice.proposed + "; " + d.advice_label + ".";
+    else if (d.advice) source = "Справка модели по уставу" + (d.advice.cached ? " из кэша" : "") + ": шлюз принял фактов " + d.advice.accepted.length + " из " + d.advice.proposed + "; " + d.advice_label + ".";
     card.append(el("p", "fine", source));
   }
   function pushHistory(item) {
@@ -468,8 +470,9 @@
     const head = el("article", "card");
     const chips = el("div", "chips");
     chips.append(tag("info", "вердикт правил: " + d.verdict_label), tag("gap", "кейс " + d.case_id));
+    const paused = d.model.paused ? " Сейчас " + d.model.note + "." : "";
     head.append(chips, el("p", "note", d.model.enabled
-      ? "Модель " + d.model.model + " (" + d.model.host + ") подключена: её ответ — " + d.advice_label + "."
+      ? "Модель " + d.model.model + " (" + d.model.host + ") подключена: её ответ — " + d.advice_label + "." + paused
       : "Модель не подключена: ответ собран из фактов отчёта и разбора устава. На пилоте банк подключает свою модель адресом OpenAI-совместимого API."));
     target.append(head);
 
@@ -541,7 +544,9 @@
     const verdict = el("div", "chips");
     verdict.append(tag("info", "вердикт без справки: " + a.verdict_before), tag("info", "со справкой: " + a.verdict_after));
     verdict.append(tag(a.verdict_unchanged ? "ok" : "no", a.verdict_unchanged ? "вердикт не изменился" : "вердикт изменился"));
-    card.append(verdict, el("p", "fine", "Ответ модели за " + a.seconds + " с."));
+    card.append(verdict, el("p", "fine", a.cached
+      ? "Ответ из кэша: этот обезличенный запрос модель уже читала, шлюз проверил её ответ заново."
+      : "Ответ модели за " + a.seconds + " с."));
     return card;
   }
 
@@ -845,6 +850,24 @@
     card.append(wrap, el("p", "fine", (d.cached ? "Результат последнего прогона этих кейсов, " : "Прогон занял ") + d.seconds + " с. " + d.boundary + "."));
     target.append(card);
   }
+
+  // «Расход модели»: счётчики консультанта с запуска службы. Блок обновляется, пока вкладка «Прогон» открыта.
+  async function loadUsage(tries) {
+    if ($("#eval").hidden) return;
+    if (!state.session) {
+      if ((tries || 0) < 20) setTimeout(() => loadUsage((tries || 0) + 1), 500);
+      return;
+    }
+    const reply = await call("GET", "/console/api/stats");
+    if (reply.ok) renderUsage(reply.data);
+  }
+  function renderUsage(d) {
+    const rows = clear($("#usage-rows"));
+    d.rows.forEach((r) => rows.append(el("dt", "", r.label), el("dd", "", r.value)));
+    $("#usage-note").textContent = d.note;
+  }
+  new MutationObserver(() => loadUsage()).observe($("#eval"), { attributes: true, attributeFilter: ["hidden"] });
+  setInterval(() => { if (!document.hidden) loadUsage(); }, 30000);
 
   // --- старт ----------------------------------------------------------------------------------------------------
   async function start() {
