@@ -41,7 +41,7 @@ from mandat.api import authzen
 from mandat.api import review as review_api
 from mandat.api.principals import Directory, Principal, load_users
 from mandat.api.sealing import SealError, sealed
-from mandat.api.storage import Idem, Pending, ReviewVersionConflict, Store, open_store
+from mandat.api.storage import Idem, Pending, ReportQuotaExceeded, ReviewVersionConflict, Store, open_store
 from mandat.audit import journal
 from mandat.audit.attestation import NONCE_MIN_CHARS, OperationRequest
 from mandat.audit.status_list import known_risk
@@ -316,8 +316,10 @@ class Guard:
         await self.app(scope, replay, secured)
 
 
-# Отчёты живут в памяти процесса. Без потолка поток POST /v1/cases съедает память (OWASP API4:2023).
+# Квота отчётов одного пользователя в хранилище. Без потолка поток POST /v1/cases съедает память (OWASP API4:2023);
+# потолок на владельца, а не общий, иначе один пользователь вытеснял бы чужие кейсы и опустошал очередь разбора.
 MAX_REPORTS = 1000
+QUOTA_DETAIL = "квота кейсов пользователя исчерпана: все кейсы в ней ждут разбора, новый кейс не сохранён"
 
 
 def _env_flag(name: str) -> bool:
@@ -509,7 +511,13 @@ def create_app(
             except (ValueError, OSError, journal.JournalKeyMissing, journal.JournalError):
                 return "skipped"
             if recorded:
-                return "committed" if shared.commit(pend.case_id, pend.attempt, MAX_REPORTS) else "superseded"
+                evicted: list[str] = []
+                try:
+                    done = shared.commit(pend.case_id, pend.attempt, MAX_REPORTS, evicted=evicted)
+                except ReportQuotaExceeded:
+                    return "over_quota"  # ожидающая запись снята: опубликовать её некуда
+                journal_evictions(evicted, pend.owner, "reconcile", pend.case_id)
+                return "committed" if done else "superseded"
         return "discarded" if shared.discard(pend.case_id, pend.attempt) else "superseded"
 
     def reconcile_all() -> dict[str, int]:
@@ -577,6 +585,13 @@ def create_app(
             case = load_case_inline(manifest)
         except CaseError as exc:
             raise ApiProblem(422, "кейс не прошёл проверку входных данных", f"CaseError: {exc}") from exc
+        # Квота владельца проверяется до проверки кейса и записи в журнал; окончательно её держит commit.
+        try:
+            has_room = shared.room(principal.name, case.case_id, MAX_REPORTS)
+        except Exception as exc:
+            raise ApiProblem(503, "хранилище недоступно, кейс не сохранён", f"store: {type(exc).__name__}") from exc
+        if not has_room:
+            raise ApiProblem(429, QUOTA_DETAIL, f"quota: {MAX_REPORTS}")
         # В pilot и prod снимки источников сверяются с часами сервера: снимок «из будущего» не доказательство.
         if protected():
             report = verify_case(case, profile=profile, now=datetime.now(UTC)).as_dict()
@@ -647,8 +662,12 @@ def create_app(
                     shared.discard(case_id, attempt)
                 cause = f"journal: {type(exc).__name__}: {exc}"
                 raise ApiProblem(503, "журнал аудита недоступен, кейс не сохранён", cause) from exc
+        evicted: list[str] = []
         try:
-            committed = shared.commit(case_id, attempt, MAX_REPORTS)
+            committed = shared.commit(case_id, attempt, MAX_REPORTS, evicted=evicted)
+        except ReportQuotaExceeded as exc:
+            # Место заняли между проверкой и записью: попытка снята, в журнале остаётся только запись verify.
+            raise ApiProblem(429, QUOTA_DETAIL, f"quota: {MAX_REPORTS}, at commit") from exc
         except Exception as exc:
             # Запись в журнале уже есть, отчёт ждёт подтверждения: клиенту не 200, сверка завершит позже.
             raise ApiProblem(
@@ -656,6 +675,7 @@ def create_app(
             ) from exc
         if not committed:
             raise HTTPException(409, "запись вытеснена другой попыткой: повторите запрос")
+        journal_evictions(evicted, principal.name, principal.role, case_id)
         # Кейс без автоматического решения сразу встаёт в очередь разбора. При replace=true разбор начинается
         # заново по новому отчёту: прежний разбор уходит в «superseded» и в журнал (review_reset).
         # Сбой записи не отменяет кейс: разбор создастся при первом действии, но до того кейса нет в очереди,
@@ -665,6 +685,28 @@ def create_app(
         except Exception as exc:
             log.warning("review_seed_failed case_id=%s error=%s", case_id, type(exc).__name__)
         return report
+
+    def journal_evictions(evicted: list[str], actor: str, role: str, for_case: str) -> None:
+        """Отчёты, вытесненные квотой владельца ради ``for_case``, — в журнал: кейс уходит из хранилища не молча.
+
+        Отчёт уже опубликован, поэтому сбой этой записи ответ не меняет, а уходит в журнал сервера.
+        """
+        for gone in evicted:
+            if audit_log is None:
+                log.warning("report_evicted case_id=%s", scrub(gone))
+                continue
+            try:
+                journal.append(
+                    audit_log,
+                    action="evict_case",
+                    actor=actor,
+                    role=role,
+                    case_id=gone,
+                    reason="квота отчётов владельца: вытеснен самый старый кейс с закрытым разбором",
+                    details={"via": "api", "quota": MAX_REPORTS, "for_case": for_case},
+                )
+            except (ValueError, OSError, journal.JournalKeyMissing) as exc:
+                log.warning("evict_journal_failed case_id=%s error=%s", scrub(gone), type(exc).__name__)
 
     def seed_review(case_id: str, report: dict[str, Any], principal: Principal) -> None:
         fresh = review_api.initial(case_id, report, principal.name)
@@ -888,11 +930,12 @@ def create_app(
                 continue
             if not (principal.sees_all or principal.role == "reviewer" or body.get("created_by") == principal.name):
                 continue
-            if shared.get(case_id) is None:  # отчёт вытеснен из хранилища
-                continue
             item = review_api.view(case_id, body, version)
             item.pop("history")
             item.pop("superseded")
+            # Кейс в разборе квота не вытесняет. Если отчёта всё же нет (копия, сбой), кейс не прячется из очереди.
+            if shared.get(case_id) is None:
+                item["report_missing"] = True
             items.append(item)
         # Просроченные выше, внутри — по поднятому приоритету, затем по сроку.
         items.sort(

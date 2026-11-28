@@ -170,27 +170,37 @@ def test_rules_doc_profile_table_matches_the_profiles(root: Path):
 
 
 def test_api_keeps_a_bounded_number_of_reports(monkeypatch):
+    from types import SimpleNamespace
+
     import fastapi  # noqa: F401  # защитный тест не пропускается без зависимости
     from fastapi.testclient import TestClient
 
     import mandat.api.app as api
 
     class Stub:
-        def __init__(self, case_id):
-            self.case_id = case_id
+        def __init__(self, case):
+            self.case = case
 
         def as_dict(self):
-            return {"case_id": self.case_id}
+            # «auto_recommendation» — кейс без человека: его отчёт квота может вытеснить, «queued» — нет.
+            return {"case_id": self.case.case_id, "routing": {"queue": self.case.queue}}
 
     monkeypatch.setattr(api, "MAX_REPORTS", 3)
-    monkeypatch.setattr(api, "load_case_inline", lambda manifest: manifest["case_id"])
+    monkeypatch.setattr(api, "load_case_inline", lambda m: SimpleNamespace(case_id=m["case_id"], queue=m["queue"]))
     monkeypatch.setattr(api, "verify_case", lambda case, profile: Stub(case))
     client = TestClient(api.create_app(token="secret"))
     auth = {"Authorization": "Bearer secret"}
     for n in range(5):
-        assert client.post("/v1/cases", json={"case_id": f"c{n}"}, headers=auth).status_code == 200
+        body = {"case_id": f"c{n}", "queue": "auto_recommendation"}
+        assert client.post("/v1/cases", json=body, headers=auth).status_code == 200
     assert client.get("/v1/cases/c0", headers=auth).status_code == 404
     assert client.get("/v1/cases/c4", headers=auth).status_code == 200
+    for n in range(5, 8):
+        body = {"case_id": f"c{n}", "queue": "exceptions"}
+        assert client.post("/v1/cases", json=body, headers=auth).status_code == 200
+    # Квота заполнена кейсами в разборе: вытеснить нечего, новый кейс — 429, а очередь цела.
+    assert client.post("/v1/cases", json={"case_id": "c8", "queue": "exceptions"}, headers=auth).status_code == 429
+    assert {i["case_id"] for i in client.get("/v1/review/queue", headers=auth).json()["items"]} == {"c5", "c6", "c7"}
 
 
 def test_lint_claims_reads_presentation_text(tmp_path):

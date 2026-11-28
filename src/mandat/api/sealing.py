@@ -33,7 +33,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-from mandat.api.storage import Pending, Store
+from mandat.api.storage import Pending, Store, review_holds
 
 MIN_KEY_BYTES = 32
 # v2: привязка отчёта включает владельца. v1 его не включал, и такие записи не читаются.
@@ -169,6 +169,9 @@ class SealedStore:
     def put(self, case_id: str, report: dict[str, Any], owner: str, max_reports: int) -> None:
         self.inner.put(case_id, self.sealer.seal(report, report_aad(case_id, owner)), owner, max_reports)
 
+    def room(self, owner: str, case_id: str, max_reports: int) -> bool:
+        return self.inner.room(owner, case_id, max_reports)
+
     def stage(
         self,
         case_id: str,
@@ -194,8 +197,15 @@ class SealedStore:
     def pending_for_idem(self, owner: str, key: str) -> Pending | None:
         return self._opened(self.inner.pending_for_idem(owner, key))
 
-    def commit(self, case_id: str, attempt: str, max_reports: int, now: float | None = None) -> bool:
-        return self.inner.commit(case_id, attempt, max_reports, now)
+    def commit(
+        self,
+        case_id: str,
+        attempt: str,
+        max_reports: int,
+        now: float | None = None,
+        evicted: list[str] | None = None,
+    ) -> bool:
+        return self.inner.commit(case_id, attempt, max_reports, now, evicted)
 
     def discard(self, case_id: str, attempt: str) -> bool:
         return self.inner.discard(case_id, attempt)
@@ -209,17 +219,25 @@ class SealedStore:
         if found is None:
             return None
         body, version = found
-        return self.sealer.open(body, review_aad(case_id, version)), version
+        return self._review(case_id, body, version), version
 
     def review_put(self, case_id: str, state: dict[str, Any], expected_version: int) -> int:
         sealed = self.sealer.seal(state, review_aad(case_id, expected_version + 1))
+        # Открыт ли разбор — рядом с шифром, без ПДн: по признаку квота хранилища не вытесняет кейс в разборе.
+        sealed["open"] = review_holds(state)
         return self.inner.review_put(case_id, sealed, expected_version)
 
     def review_list(self) -> list[tuple[str, dict[str, Any], int]]:
         return [
-            (case_id, self.sealer.open(body, review_aad(case_id, version)), version)
+            (case_id, self._review(case_id, body, version), version)
             for case_id, body, version in self.inner.review_list()
         ]
+
+    def _review(self, case_id: str, body: Any, version: int) -> dict[str, Any]:
+        opened = self.sealer.open(body, review_aad(case_id, version))
+        if isinstance(body.get("open"), bool) and body["open"] != review_holds(opened):
+            raise SealError("признак открытого разбора рядом с шифром изменён")
+        return opened
 
     # --- без ПДн ---
     def allow(self, client: str, limit: int, now: float | None = None) -> bool:

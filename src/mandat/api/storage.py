@@ -10,6 +10,11 @@
 Окно лимита скользящее: запрос старше 60 секунд уже не считается, ровно 60 — ещё
 считается. Время берётся настенное (``time.time``): монотонные часы у
 разных процессов не сравнимы.
+
+Отчёты считаются по владельцу: ``max_reports`` — квота одного пользователя, а не общий потолок, поэтому поток
+кейсов одного пользователя не вытесняет чужие. Сверх квоты уходят самые старые отчёты того же владельца, у которых
+разбор закрыт (``auto_decided``, ``accepted``, ``rejected``, ``closed``). Кейс в разборе или без прочитанного
+разбора не вытесняется: если места нет, новый отчёт не сохраняется (``ReportQuotaExceeded``).
 """
 
 from __future__ import annotations
@@ -57,6 +62,30 @@ class ReviewVersionConflict(RuntimeError):
         self.current = current
 
 
+class ReportQuotaExceeded(RuntimeError):
+    """У владельца ``limit`` отчётов, и вытеснить нечего: все они в разборе. Новый отчёт не сохранён."""
+
+    def __init__(self, owner: str, limit: int) -> None:
+        super().__init__(f"квота отчётов владельца {owner}: {limit}, вытеснить нечего")
+        self.owner = owner
+        self.limit = limit
+
+
+# Состояния, в которых кейс ждёт человека (``api/review.OPEN_STATES``): отчёт такого кейса не вытесняется.
+OPEN_REVIEW_STATES = frozenset({"queued", "in_review", "docs_requested"})
+
+
+def review_holds(body: dict[str, Any]) -> bool:
+    """Разбор держит отчёт в хранилище: он открыт или его состояние не прочитать.
+
+    Зашифрованный разбор (``api/sealing.py``) несёт рядом с шифром признак ``open`` без ПДн; запись без признака
+    держит отчёт, как и открытый разбор.
+    """
+    if body.get("sealed"):
+        return body.get("open") is not False
+    return body.get("state") in OPEN_REVIEW_STATES
+
+
 class Store(Protocol):
     name: str
 
@@ -67,7 +96,11 @@ class Store(Protocol):
         """Отчёт и имя владельца или None."""
 
     def put(self, case_id: str, report: dict[str, Any], owner: str, max_reports: int) -> None:
-        """Сохранить отчёт последним по порядку и вытеснить самые старые сверх ``max_reports``."""
+        """Сохранить отчёт последним по порядку. Сверх ``max_reports`` у владельца вытесняются самые старые его отчёты
+        с закрытым разбором; вытеснить нечего — ``ReportQuotaExceeded``, отчёт не сохраняется."""
+
+    def room(self, owner: str, case_id: str, max_reports: int) -> bool:
+        """Хватит ли места отчёту ``case_id`` владельца: квота не выбрана или есть что вытеснить. Только чтение."""
 
     def first_seen(self, key: str, ttl: float, now: float | None = None) -> bool:
         """True ровно один раз за ``ttl`` секунд для данного ключа (защита от повтора вебхука)."""
@@ -98,8 +131,19 @@ class Store(Protocol):
     ) -> None:
         """Положить отчёт в «ожидающие» под номером попытки; новая попытка вытесняет прежнюю (fencing)."""
 
-    def commit(self, case_id: str, attempt: str, max_reports: int, now: float | None = None) -> bool:
-        """Атомарно сделать ожидающий отчёт видимым, если номер попытки совпал; False — попытку вытеснили."""
+    def commit(
+        self,
+        case_id: str,
+        attempt: str,
+        max_reports: int,
+        now: float | None = None,
+        evicted: list[str] | None = None,
+    ) -> bool:
+        """Атомарно сделать ожидающий отчёт видимым, если номер попытки совпал; False — попытку вытеснили.
+
+        Квота владельца — как у ``put``; вытесненные ради отчёта кейсы дописываются в ``evicted``. Вытеснить нечего —
+        ожидающая запись снимается и поднимается ``ReportQuotaExceeded``: сверка не опубликует её позже.
+        """
 
     def discard(self, case_id: str, attempt: str) -> bool:
         """Убрать ожидающий отчёт, если номер попытки совпал."""
@@ -186,10 +230,31 @@ class MemoryStore:
 
     def put(self, case_id: str, report: dict[str, Any], owner: str, max_reports: int) -> None:
         with self._lock:
+            if self._room(case_id, owner, max_reports, evict=True) is None:
+                raise ReportQuotaExceeded(owner, max_reports)
             self._reports.pop(case_id, None)
             self._reports[case_id] = (report, owner)
-            while len(self._reports) > max_reports:
-                self._reports.popitem(last=False)
+
+    def room(self, owner: str, case_id: str, max_reports: int) -> bool:
+        with self._lock:
+            return self._room(case_id, owner, max_reports, evict=False) is not None
+
+    def _room(self, case_id: str, owner: str, limit: int, *, evict: bool) -> list[str] | None:
+        """Под блокировкой: самые старые отчёты владельца с закрытым разбором, которые уступают место ``case_id``.
+
+        ``None`` — столько вытеснить нельзя. С ``evict`` они удаляются.
+        """
+        mine = [cid for cid, (_, who) in self._reports.items() if who == owner and cid != case_id]
+        extra = len(mine) + 1 - limit
+        if extra <= 0:
+            return []
+        gone = [cid for cid in mine if cid in self._reviews and not review_holds(self._reviews[cid][0])][:extra]
+        if len(gone) < extra:
+            return None
+        if evict:
+            for cid in gone:
+                del self._reports[cid]
+        return gone
 
     def first_seen(self, key: str, ttl: float, now: float | None = None) -> bool:
         now = time.time() if now is None else now
@@ -234,17 +299,27 @@ class MemoryStore:
         with self._lock:
             self._pending[case_id] = Pending(case_id, report, owner, attempt, idem, time.time() if now is None else now)
 
-    def commit(self, case_id: str, attempt: str, max_reports: int, now: float | None = None) -> bool:
+    def commit(
+        self,
+        case_id: str,
+        attempt: str,
+        max_reports: int,
+        now: float | None = None,
+        evicted: list[str] | None = None,
+    ) -> bool:
         now = time.time() if now is None else now
         with self._lock:
             pend = self._pending.get(case_id)
             if pend is None or pend.attempt != attempt:
                 return False
             del self._pending[case_id]
+            gone = self._room(case_id, pend.owner, max_reports, evict=True)
+            if gone is None:
+                raise ReportQuotaExceeded(pend.owner, max_reports)
             self._reports.pop(case_id, None)
             self._reports[case_id] = (pend.report, pend.owner)
-            while len(self._reports) > max_reports:
-                self._reports.popitem(last=False)
+            if evicted is not None:
+                evicted.extend(gone)
             if pend.idem is not None:
                 for k in [k for k, v in self._idem.items() if now - v[2] > IDEM_TTL_SECONDS]:
                     del self._idem[k]
@@ -325,6 +400,7 @@ class SQLiteStore:
                 owner TEXT NOT NULL,
                 body TEXT NOT NULL
             );
+            CREATE INDEX IF NOT EXISTS reports_owner_seq ON reports (owner, seq);
             CREATE TABLE IF NOT EXISTS seen (key TEXT PRIMARY KEY, until REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS pending (
                 case_id TEXT PRIMARY KEY,
@@ -341,7 +417,8 @@ class SQLiteStore:
                 PRIMARY KEY (owner, key)
             );
             CREATE TABLE IF NOT EXISTS reviews (
-                case_id TEXT PRIMARY KEY, version INTEGER NOT NULL, body TEXT NOT NULL
+                case_id TEXT PRIMARY KEY, version INTEGER NOT NULL, body TEXT NOT NULL,
+                held INTEGER NOT NULL DEFAULT 1
             );
             CREATE TABLE IF NOT EXISTS watermarks (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
             """
@@ -350,6 +427,23 @@ class SQLiteStore:
         columns = {row[1] for row in self._db().execute("PRAGMA table_info(seen)")}
         if "value" not in columns:
             self._db().execute("ALTER TABLE seen ADD COLUMN value TEXT")
+        if "held" not in self._columns("reviews"):
+            self._add_held()
+
+    def _columns(self, table: str) -> set[str]:
+        return {str(row[1]) for row in self._db().execute(f"PRAGMA table_info({table})")}
+
+    def _add_held(self) -> None:
+        """Старый файл: признак «разбор держит отчёт» считается по телу разбора один раз, под блокировкой записи."""
+        with self._tx() as db:
+            if "held" in self._columns("reviews"):
+                return  # другой процесс уже добавил столбец
+            db.execute("ALTER TABLE reviews ADD COLUMN held INTEGER NOT NULL DEFAULT 1")
+            rows = db.execute("SELECT case_id, body FROM reviews").fetchall()
+            db.executemany(
+                "UPDATE reviews SET held = ? WHERE case_id = ?",
+                [(int(review_holds(json.loads(body))), case_id) for case_id, body in rows],
+            )
 
     def ping(self) -> None:
         self._db().execute("SELECT 1 FROM reports LIMIT 1").fetchall()
@@ -410,12 +504,30 @@ class SQLiteStore:
     def put(self, case_id: str, report: dict[str, Any], owner: str, max_reports: int) -> None:
         body = json.dumps(report, ensure_ascii=False)
         with self._tx() as db:
+            gone = self._room(db, case_id, owner, max_reports)
+            if gone is None:
+                raise ReportQuotaExceeded(owner, max_reports)
+            db.executemany("DELETE FROM reports WHERE case_id = ?", [(c,) for c in gone])
             db.execute("DELETE FROM reports WHERE case_id = ?", (case_id,))
             db.execute("INSERT INTO reports (case_id, owner, body) VALUES (?, ?, ?)", (case_id, owner, body))
-            db.execute(
-                "DELETE FROM reports WHERE seq NOT IN (SELECT seq FROM reports ORDER BY seq DESC LIMIT ?)",
-                (max_reports,),
-            )
+
+    def room(self, owner: str, case_id: str, max_reports: int) -> bool:
+        return self._room(self._db(), case_id, owner, max_reports) is not None
+
+    @staticmethod
+    def _room(db: sqlite3.Connection, case_id: str, owner: str, limit: int) -> list[str] | None:
+        """Самые старые отчёты владельца с закрытым разбором, которые уступают место ``case_id``; ``None`` — нельзя."""
+        count_sql = "SELECT COUNT(*) FROM reports WHERE owner = ? AND case_id != ?"
+        (count,) = db.execute(count_sql, (owner, case_id)).fetchone()
+        extra = int(count) + 1 - limit
+        if extra <= 0:
+            return []
+        rows = db.execute(
+            "SELECT r.case_id FROM reports r JOIN reviews v ON v.case_id = r.case_id"
+            " WHERE r.owner = ? AND r.case_id != ? AND v.held = 0 ORDER BY r.seq LIMIT ?",
+            (owner, case_id, extra),
+        ).fetchall()
+        return [str(r[0]) for r in rows] if len(rows) == extra else None
 
     def first_seen(self, key: str, ttl: float, now: float | None = None) -> bool:
         now = time.time() if now is None else now
@@ -457,8 +569,16 @@ class SQLiteStore:
                 (case_id, owner, attempt, body, i_owner, i_key, fp, now),
             )
 
-    def commit(self, case_id: str, attempt: str, max_reports: int, now: float | None = None) -> bool:
+    def commit(
+        self,
+        case_id: str,
+        attempt: str,
+        max_reports: int,
+        now: float | None = None,
+        evicted: list[str] | None = None,
+    ) -> bool:
         now = time.time() if now is None else now
+        refused: str | None = None
         with self._tx() as db:
             row = db.execute(
                 "SELECT owner, body, idem_owner, idem_key, fp FROM pending WHERE case_id = ? AND attempt = ?",
@@ -467,19 +587,24 @@ class SQLiteStore:
             if row is None:
                 return False
             db.execute("DELETE FROM pending WHERE case_id = ?", (case_id,))
-            db.execute("DELETE FROM reports WHERE case_id = ?", (case_id,))
-            db.execute("INSERT INTO reports (case_id, owner, body) VALUES (?, ?, ?)", (case_id, row[0], row[1]))
-            db.execute(
-                "DELETE FROM reports WHERE seq NOT IN (SELECT seq FROM reports ORDER BY seq DESC LIMIT ?)",
-                (max_reports,),
-            )
-            if row[3]:
-                db.execute("DELETE FROM idem WHERE at < ?", (now - IDEM_TTL_SECONDS,))
-                db.execute(
-                    "INSERT OR REPLACE INTO idem (owner, key, case_id, fp, at) VALUES (?, ?, ?, ?, ?)",
-                    (row[2], row[3], case_id, row[4], now),
-                )
-            return True
+            gone = self._room(db, case_id, row[0], max_reports)
+            if gone is None:
+                refused = row[0]  # ожидающая запись снимается в той же транзакции
+            else:
+                db.executemany("DELETE FROM reports WHERE case_id = ?", [(c,) for c in gone])
+                db.execute("DELETE FROM reports WHERE case_id = ?", (case_id,))
+                db.execute("INSERT INTO reports (case_id, owner, body) VALUES (?, ?, ?)", (case_id, row[0], row[1]))
+                if row[3]:
+                    db.execute("DELETE FROM idem WHERE at < ?", (now - IDEM_TTL_SECONDS,))
+                    db.execute(
+                        "INSERT OR REPLACE INTO idem (owner, key, case_id, fp, at) VALUES (?, ?, ?, ?, ?)",
+                        (row[2], row[3], case_id, row[4], now),
+                    )
+                if evicted is not None:
+                    evicted.extend(gone)
+        if refused is not None:
+            raise ReportQuotaExceeded(refused, max_reports)
+        return True
 
     def discard(self, case_id: str, attempt: str) -> bool:
         with self._tx() as db:
@@ -559,9 +684,9 @@ class SQLiteStore:
             if current != expected_version:
                 raise ReviewVersionConflict(case_id, expected_version, current)
             db.execute(
-                "INSERT INTO reviews (case_id, version, body) VALUES (?, ?, ?) "
-                "ON CONFLICT(case_id) DO UPDATE SET version = excluded.version, body = excluded.body",
-                (case_id, current + 1, body),
+                "INSERT INTO reviews (case_id, version, body, held) VALUES (?, ?, ?, ?) ON CONFLICT(case_id) "
+                "DO UPDATE SET version = excluded.version, body = excluded.body, held = excluded.held",
+                (case_id, current + 1, body, int(review_holds(state))),
             )
             return current + 1
 
@@ -584,49 +709,88 @@ class RedisStore:
     return 1
     """
 
-    # Порядок задаёт счётчик, а не часы: у двух записей в одну миллисекунду он всё равно разный.
-    _PUT = """
-    local p = KEYS[1]
-    local seq = redis.call('INCR', p .. 'seq')
-    redis.call('SET', p .. 'report:' .. ARGV[1], ARGV[2])
-    redis.call('ZADD', p .. 'reports', seq, ARGV[1])
-    local extra = redis.call('ZCARD', p .. 'reports') - tonumber(ARGV[3])
-    if extra > 0 then
-        for _, old in ipairs(redis.call('ZRANGE', p .. 'reports', 0, extra - 1)) do
-            redis.call('DEL', p .. 'report:' .. old)
-            redis.call('ZREM', p .. 'reports', old)
+    # Квота владельца: отчёты владельца — сортированное множество owned:<владелец>, порядок задаёт счётчик, а не часы
+    # (у двух записей в одну миллисекунду он всё равно разный). Вытесняются самые старые отчёты с закрытым разбором
+    # (поле held = 0 у разбора); nil — вытеснить нечего.
+    _QUOTA = """
+    local function room(p, case_id, owner, limit, evict)
+        local owned = p .. 'owned:' .. owner
+        local count = redis.call('ZCARD', owned)
+        if redis.call('ZSCORE', owned, case_id) then count = count - 1 end
+        local extra = count + 1 - limit
+        local gone = {}
+        if extra <= 0 then return gone end
+        for _, old in ipairs(redis.call('ZRANGE', owned, 0, -1)) do
+            if #gone >= extra then break end
+            if old ~= case_id and redis.call('HGET', p .. 'review:' .. old, 'held') == '0' then
+                gone[#gone + 1] = old
+            end
         end
+        if #gone < extra then return nil end
+        if evict then
+            for _, old in ipairs(gone) do
+                redis.call('DEL', p .. 'report:' .. old)
+                redis.call('ZREM', owned, old)
+                redis.call('HDEL', p .. 'owners', old)
+            end
+        end
+        return gone
     end
-    return 1
+    local function publish(p, case_id, owner, body)
+        local prior = redis.call('HGET', p .. 'owners', case_id)
+        if prior and prior ~= owner then redis.call('ZREM', p .. 'owned:' .. prior, case_id) end
+        redis.call('SET', p .. 'report:' .. case_id, body)
+        redis.call('ZADD', p .. 'owned:' .. owner, redis.call('INCR', p .. 'seq'), case_id)
+        redis.call('HSET', p .. 'owners', case_id, owner)
+    end
     """
 
-    # Подтверждение ожидающей записи: проверка номера попытки и публикация отчёта в одном скрипте.
-    _COMMIT = """
+    _ROOM = (
+        _QUOTA
+        + """
+    if room(KEYS[1], ARGV[1], ARGV[2], tonumber(ARGV[3]), false) then return 1 end
+    return 0
+    """
+    )
+
+    _PUT = (
+        _QUOTA
+        + """
+    local gone = room(KEYS[1], ARGV[1], ARGV[3], tonumber(ARGV[4]), true)
+    if not gone then return {-1} end
+    publish(KEYS[1], ARGV[1], ARGV[3], ARGV[2])
+    return {1, unpack(gone)}
+    """
+    )
+
+    # Подтверждение ожидающей записи: проверка номера попытки, квота и публикация отчёта в одном скрипте.
+    # Вытеснить нечего — ожидающая запись снимается, ответ {-1, владелец}.
+    _COMMIT = (
+        _QUOTA
+        + """
     local p = KEYS[1]
     local pk = p .. 'pending:' .. ARGV[1]
     local raw = redis.call('GET', pk)
-    if not raw then return 0 end
+    if not raw then return {0} end
     local pend = cjson.decode(raw)
-    if pend.attempt ~= ARGV[2] then return 0 end
-    local seq = redis.call('INCR', p .. 'seq')
-    redis.call('SET', p .. 'report:' .. ARGV[1], pend.body)
-    redis.call('ZADD', p .. 'reports', seq, ARGV[1])
-    local extra = redis.call('ZCARD', p .. 'reports') - tonumber(ARGV[3])
-    if extra > 0 then
-        for _, old in ipairs(redis.call('ZRANGE', p .. 'reports', 0, extra - 1)) do
-            redis.call('DEL', p .. 'report:' .. old)
-            redis.call('ZREM', p .. 'reports', old)
-        end
-    end
+    if pend.attempt ~= ARGV[2] then return {0} end
+    local owner = pend.owner or cjson.decode(pend.body).owner
+    local gone = room(p, ARGV[1], owner, tonumber(ARGV[3]), true)
     redis.call('DEL', pk)
     redis.call('SREM', p .. 'pendingset', ARGV[1])
+    if not gone then
+        if pend.idem_key ~= '' then redis.call('DEL', p .. 'pendidem:' .. pend.idem_owner .. ':' .. pend.idem_key) end
+        return {-1, owner}
+    end
+    publish(p, ARGV[1], owner, pend.body)
     if pend.idem_key ~= '' then
         local ik = pend.idem_owner .. ':' .. pend.idem_key
         redis.call('SET', p .. 'idem:' .. ik, cjson.encode({case_id = ARGV[1], fp = pend.fp}), 'EX', tonumber(ARGV[4]))
         redis.call('DEL', p .. 'pendidem:' .. ik)
     end
-    return 1
+    return {1, unpack(gone)}
     """
+    )
 
     _DISCARD = """
     local p = KEYS[1]
@@ -655,16 +819,21 @@ class RedisStore:
             redis.call('DEL', p .. 'pendidem:' .. pend.idem_owner .. ':' .. pend.idem_key)
         end
     end
-    redis.call('ZREM', p .. 'reports', ARGV[1])
+    local owner = redis.call('HGET', p .. 'owners', ARGV[1])
+    if owner then
+        redis.call('ZREM', p .. 'owned:' .. owner, ARGV[1])
+        redis.call('HDEL', p .. 'owners', ARGV[1])
+    end
     return redis.call('DEL', p .. 'report:' .. ARGV[1])
     """
 
     # CAS по версии разбора: сравнение и запись в одном скрипте. -1 — версия не совпала.
+    # held — держит ли разбор отчёт в хранилище (review_holds): по нему квота не вытесняет кейс в разборе.
     _REVIEW_PUT = """
     local k = KEYS[1]
     local cur = tonumber(redis.call('HGET', k, 'version') or '0')
     if cur ~= tonumber(ARGV[1]) then return {-1, cur} end
-    redis.call('HSET', k, 'version', cur + 1, 'body', ARGV[2])
+    redis.call('HSET', k, 'version', cur + 1, 'body', ARGV[2], 'held', ARGV[4])
     redis.call('SADD', KEYS[2], ARGV[3])
     return {cur + 1, cur}
     """
@@ -692,6 +861,7 @@ class RedisStore:
         self._watermark = client.register_script(self._WATERMARK)
         self._allow = client.register_script(self._ALLOW)
         self._put = client.register_script(self._PUT)
+        self._room = client.register_script(self._ROOM)
         self._commit = client.register_script(self._COMMIT)
         self._discard = client.register_script(self._DISCARD)
         self._erase = client.register_script(self._ERASE)
@@ -712,7 +882,11 @@ class RedisStore:
 
     def put(self, case_id: str, report: dict[str, Any], owner: str, max_reports: int) -> None:
         body = json.dumps({"report": report, "owner": owner}, ensure_ascii=False)
-        self._put(keys=[self.prefix], args=[case_id, body, max_reports])
+        if int(self._put(keys=[self.prefix], args=[case_id, body, owner, max_reports])[0]) < 0:
+            raise ReportQuotaExceeded(owner, max_reports)
+
+    def room(self, owner: str, case_id: str, max_reports: int) -> bool:
+        return bool(self._room(keys=[self.prefix], args=[case_id, owner, max_reports]))
 
     def first_seen(self, key: str, ttl: float, now: float | None = None) -> bool:
         return bool(self.r.set(f"{self.prefix}seen:{key}", "1", nx=True, ex=max(1, int(ttl))))
@@ -750,6 +924,7 @@ class RedisStore:
         pend = {
             "attempt": attempt,
             "body": body,
+            "owner": owner,
             "idem_owner": idem.owner if idem else "",
             "idem_key": idem.key if idem else "",
             "fp": idem.fingerprint if idem else "",
@@ -762,8 +937,20 @@ class RedisStore:
             pipe.set(f"{self.prefix}pendidem:{idem.owner}:{idem.key}", case_id)
         pipe.execute()
 
-    def commit(self, case_id: str, attempt: str, max_reports: int, now: float | None = None) -> bool:
-        return bool(self._commit(keys=[self.prefix], args=[case_id, attempt, max_reports, int(IDEM_TTL_SECONDS)]))
+    def commit(
+        self,
+        case_id: str,
+        attempt: str,
+        max_reports: int,
+        now: float | None = None,
+        evicted: list[str] | None = None,
+    ) -> bool:
+        code, *rest = self._commit(keys=[self.prefix], args=[case_id, attempt, max_reports, int(IDEM_TTL_SECONDS)])
+        if int(code) < 0:
+            raise ReportQuotaExceeded(self._text(rest[0]), max_reports)  # отказ несёт владельца попытки
+        if evicted is not None:
+            evicted.extend(self._text(g) for g in rest)
+        return int(code) == 1
 
     def discard(self, case_id: str, attempt: str) -> bool:
         return bool(self._discard(keys=[self.prefix], args=[case_id, attempt]))
@@ -810,7 +997,8 @@ class RedisStore:
     def review_put(self, case_id: str, state: dict[str, Any], expected_version: int) -> int:
         body = json.dumps(state, ensure_ascii=False)
         new, current = self._review_put(
-            keys=[f"{self.prefix}review:{case_id}", f"{self.prefix}reviews"], args=[expected_version, body, case_id]
+            keys=[f"{self.prefix}review:{case_id}", f"{self.prefix}reviews"],
+            args=[expected_version, body, case_id, int(review_holds(state))],
         )
         if int(new) < 0:
             raise ReviewVersionConflict(case_id, expected_version, int(current))

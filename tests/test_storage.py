@@ -32,14 +32,19 @@ def test_window_boundary_is_the_same_everywhere(store):
 
 
 def test_reports_owner_replace_and_eviction(store):
+    """Квота — на владельца: отчёты anna вытесняют только её же кейсы с закрытым разбором, кейс boris остаётся."""
+    for cid in ("c1", "c2", "c3", "c4"):
+        store.review_put(cid, {"state": "closed"}, 0)
     store.put("c1", {"v": 1}, "anna", 2)
     store.put("c2", {"v": 2}, "boris", 2)
+    store.put("c3", {"v": 3}, "anna", 2)
     assert store.get("c1") == ({"v": 1}, "anna")
-    store.put("c1", {"v": 3}, "anna", 2)  # перезапись делает кейс самым свежим
-    store.put("c3", {"v": 4}, "anna", 2)
-    assert store.get("c2") is None
-    assert store.get("c1") == ({"v": 3}, "anna")
-    assert store.get("c3") == ({"v": 4}, "anna")
+    store.put("c1", {"v": 4}, "anna", 2)  # перезапись делает кейс самым свежим и места не занимает
+    store.put("c4", {"v": 5}, "anna", 2)
+    assert store.get("c3") is None
+    assert store.get("c1") == ({"v": 4}, "anna")
+    assert store.get("c4") == ({"v": 5}, "anna")
+    assert store.get("c2") == ({"v": 2}, "boris")
     assert store.get("missing") is None
 
 

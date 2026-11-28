@@ -103,6 +103,7 @@ def test_discard_only_matching_attempt(store):
 
 def test_commit_replaces_existing_report_and_evicts_oldest(store):
     for i, cid in enumerate(["a", "b", "c"]):
+        store.review_put(cid, {"state": "closed"}, 0)  # вытесняется только кейс с закрытым разбором
         store.stage(cid, {"n": i}, "o", "x", None)
         assert store.commit(cid, "x", 2)
     assert store.get("a") is None and store.get("b") is not None and store.get("c") is not None
@@ -407,9 +408,13 @@ def test_key_is_scoped_per_user(tmp_path):
 
 def test_key_replay_after_report_eviction_is_409(tmp_path, monkeypatch):
     monkeypatch.setattr(app_module, "MAX_REPORTS", 1)
-    client = _client(MemoryStore(), tmp_path / "j.jsonl")
+    store = MemoryStore()
+    client = _client(store, tmp_path / "j.jsonl")
     h = {**AUTH, "Idempotency-Key": "k1"}
-    assert client.post("/v1/cases", json=_manifest(1), headers=h).status_code == 200
+    first = client.post("/v1/cases", json=_manifest(1), headers=h)
+    assert first.status_code == 200
+    body, version = store.review_get(first.json()["case_id"])
+    store.review_put(first.json()["case_id"], {**body, "state": "closed"}, version)  # разбор закрыт: можно вытеснить
     assert client.post("/v1/cases", json=_manifest(2), headers=AUTH).status_code == 200
     assert client.post("/v1/cases", json=_manifest(1), headers=h).status_code == 409
 
