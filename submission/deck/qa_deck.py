@@ -3,7 +3,7 @@
 
     python submission/deck/qa_deck.py submission/slides/Mandat_VTB.pdf
 
-Перенесено из InvaRadar (presentation/qa/check_collisions.py): слова сравниваются по рамкам из
+Слова сравниваются по рамкам из
 ``pdftotext -bbox-layout`` (poppler), а не строки целиком, поэтому число слева и подпись справа в одной строке
 таблицы не считаются наложением. Шрифты — по ``pdffonts``: колода набрана Manrope, Golos Text и Cormorant Garamond;
 если в них нет знака, LibreOffice наберёт его другим шрифтом, и он появится в списке. OpenSymbol допускается:
