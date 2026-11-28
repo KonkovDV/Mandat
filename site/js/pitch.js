@@ -20,6 +20,22 @@ function fromHash() {
   return n >= 1 && n <= slides.length ? n - 1 : -1;
 }
 
+/** Миниатюра текущего слайда — в видимой части ленты. Листается только лента: scrollIntoView прокрутил бы
+ *  и окно, и при открытии страницы заголовок уехал бы вверх. Лента прилипает к началу миниатюры (scroll-snap),
+ *  поэтому к левому краю ставится та миниатюра, при которой нужная видна целиком. */
+function reveal(a) {
+  const strip = thumbs.getBoundingClientRect();
+  const box = a.getBoundingClientRect();
+  if (box.left >= strip.left && box.right <= strip.right) return;
+  let first = a;
+  if (box.right > strip.right) {
+    while (first.previousElementSibling && box.right - first.previousElementSibling.getBoundingClientRect().left <= thumbs.clientWidth) {
+      first = first.previousElementSibling;
+    }
+  }
+  thumbs.scrollLeft += first.getBoundingClientRect().left - strip.left;
+}
+
 function go(i, push = true) {
   i = Math.max(0, Math.min(slides.length - 1, i));
   if (i === cur) return;
@@ -31,7 +47,7 @@ function go(i, push = true) {
   pg.style.width = `${(100 * (i + 1)) / slides.length}%`;
   for (const [k, a] of [...thumbs.children].entries()) {
     a.setAttribute("aria-current", String(k === i));
-    if (k === i) a.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (k === i) reveal(a);
   }
   const section = s.n <= deck.pitch ? `Питч · ${s.time || ""}`.replace(/ · $/, "") : "Приложение";
   const parts = [
