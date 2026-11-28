@@ -9,11 +9,15 @@
 from __future__ import annotations
 
 import hashlib
+import heapq
 import json
 import random
+import re
 import uuid
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 from mandat.domain.identifiers import make_inn10, make_inn12, make_ogrn, make_snils
@@ -148,7 +152,8 @@ class World:
     clerk2: Person
 
     @classmethod
-    def make(cls, seed: int) -> World:
+    def make(cls, seed: int, org_seed: int | None = None) -> World:
+        """Мир кейса. ``org_seed`` — общий клиент: одна организация и один руководитель на много кейсов."""
         rng = random.Random(seed)  # noqa: S311 — синтетика, не криптография
 
         def person(female: bool, position: str | None = None) -> Person:
@@ -168,7 +173,7 @@ class World:
             kpp=f"77{rng.randrange(10, 99)}01001",
             name=f"ООО «{rng.choice(ORG_NAMES)}»",
         )
-        return cls(
+        world = cls(
             rng=rng,
             org=org,
             director=person(False, "Генеральный директор"),
@@ -180,6 +185,12 @@ class World:
             clerk1=person(True, "Специалист"),
             clerk2=person(False, "Специалист"),
         )
+        if org_seed is not None:
+            # Реквизиты и руководитель — из seed клиента, остальные люди и номера МЧД — из seed кейса:
+            # последовательность rng та же, что без org_seed, и кейсы одного клиента различаются представителями.
+            company = cls.make(org_seed)
+            world.org, world.director = company.org, company.director
+        return world
 
     @property
     def org_full_name(self) -> str:
@@ -193,6 +204,8 @@ class Scenario:
     expected: str
     manifest: dict[str, Any]
     files: dict[str, bytes] = field(default_factory=dict)
+    # Как кейс получен в потоке make_case: вид, seed и условия. Пусто у кейсов build().
+    recipe: dict[str, Any] = field(default_factory=dict)
 
     def inline_manifest(self) -> dict[str, Any]:
         docs = []
@@ -247,12 +260,12 @@ def _egrul(
     }
 
 
-def build(defect: str, seed: int = 1) -> Scenario:
+def build(defect: str, seed: int = 1, *, org_seed: int | None = None) -> Scenario:
     if defect not in DEFECTS:
         raise ValueError(f"неизвестный дефект {defect!r}")
     if defect in DERIVED:
-        return _derive(defect, build(DERIVED[defect], seed), World.make(seed))
-    w = World.make(seed)
+        return _derive(defect, build(DERIVED[defect], seed, org_seed=org_seed), World.make(seed, org_seed))
+    w = World.make(seed, org_seed)
     # Номера МЧД зависят и от вида дефекта: у демо-кейсов одной организации разные доверенности.
     salt = int.from_bytes(hashlib.sha256(defect.encode()).digest()[:16], "big")
 
@@ -525,3 +538,487 @@ def _derive(variant: str, base: Scenario, w: World) -> Scenario:
     files["egrul.json"] = json.dumps(egrul, ensure_ascii=False, indent=2).encode("utf-8")
     manifest["case_id"] = f"{variant}-{base.case_id.rsplit('-', 1)[-1]}"
     return Scenario(manifest["case_id"], variant, DEFECTS[variant], manifest, files)
+
+
+# --- Поток, похожий на банковский: смесь видов и пограничные условия (data/load_profiles.json) ---------------
+#
+# run_corpus берёт каждый вид поровну: так проверяется логика каждого правила. Поток банка устроен иначе: почти
+# все пакеты чистые, дефекты — длинный хвост, и есть условия, которых в ровном корпусе нет: конец операционного
+# дня, часовые пояса регионов, крупные клиенты с сотнями представителей, повторные проверки той же МЧД.
+# Доли берутся из профиля, у каждой доли есть обоснование (basis): допущение или ссылка на источник.
+
+MOSCOW = timezone(timedelta(hours=3), "MSK")  # дата операции — календарный день банка, по Москве (UTC+3)
+# Виды поверх готового сценария, которых нет в DEFECTS: run_corpus и evidence.json от них не меняются.
+# Вид → (базовый вид, где меняется, значение, ожидаемый вердикт профиля demo).
+OVERLAYS: dict[str, tuple[str, str, str, str]] = {
+    # Банкротство доверителя по ЕФРСБ (подп. 7 п. 1 ст. 188 ГК РФ; 127-ФЗ).
+    "bankruptcy_proceedings": ("ok_charter_cleared", "bankruptcy", "bankruptcy_proceedings", "refuted"),  # ст. 126
+    "external_management": ("ok_charter_cleared", "bankruptcy", "external_management", "refuted"),  # ст. 94
+    "bankruptcy_observation": ("ok_charter_cleared", "bankruptcy", "observation", "needs_review"),  # ст. 64
+    # Статус организации в ЕГРЮЛ.
+    "in_liquidation": ("ok_charter_cleared", "egrul", "in_liquidation", "needs_review"),
+    "reorganizing": ("ok_charter_cleared", "egrul", "reorganizing", "needs_review"),
+    "terminated": ("ok_charter_cleared", "egrul", "terminated", "refuted"),  # подп. 4 п. 1 ст. 188 ГК РФ
+}
+# Длинные цепочки передоверия: вид → число МЧД. До domain.graph.MAX_CHAIN_LINKS (10) цепочка разбирается
+# и ведёт себя как long_chain; длиннее — автоматически не разбирается, нужна сверка звеньев.
+CHAIN_DEPTHS: dict[str, tuple[int, str]] = {
+    "deep_chain_8": (8, "needs_review"),
+    "deep_chain_12": (12, "insufficient_data"),
+}
+KINDS: dict[str, str] = {
+    **DEFECTS,
+    **{kind: spec[3] for kind, spec in OVERLAYS.items()},
+    **{kind: spec[1] for kind, spec in CHAIN_DEPTHS.items()},
+}
+CONDITIONS = ("many_representatives", "repeat_check", "registry_moment", "term_last_day", "term_ended_yesterday")
+# Сценарии с одной МЧД «poa-root.xml», у которых срок можно сдвинуть на день операции или на день раньше.
+TERM_BASES = frozenset(
+    {
+        "ok",
+        "ok_charter_cleared",
+        "director_changed",
+        "director_changed_long_ago",
+        "not_covered",
+        "charter_limit",
+        "code_revoked",
+        "name_mismatch",
+        "revoked",
+        "registry_unavailable",
+        "snils_of_other_person",
+        "bankruptcy_observation",
+        "in_liquidation",
+    }
+)
+# Момент запроса к реестру не добавляется, где запись реестра не относится к МЧД кейса (нет МЧД, бумажная
+# доверенность, нет родителя, двойники) или статус в реестре не «действует» и не «отменена».
+MOMENT_EXCLUDED = frozenset(
+    {
+        "ok_director",
+        "fresh_director_admin",
+        "paper_poa",
+        "missing_parent",
+        "malformed_xml",
+        "xml_bomb",
+        "registry_unavailable",
+        "not_in_registry",
+        "long_chain_unregistered",
+        "same_number_twin",
+        "leaf_tie",
+        "guid_case_transfer",
+    }
+)
+_SOURCE_ID = re.compile(r"\b[MC]-\d{2}\b")
+_OFFSET = re.compile(r"[+-](0\d|1[0-4]):[0-5]\d")
+_VERDICTS = frozenset({"confirmed", "refuted", "needs_review", "insufficient_data"})
+
+
+def _max_snapshot_age_days() -> int:
+    from mandat.rules.pack import default_pack
+
+    return int(default_pack().get("R-REG-001").param("max_snapshot_age_days"))
+
+
+def _person(rng: random.Random, position: str) -> Person:
+    """Ещё один вымышленный сотрудник: для длинных цепочек людей мира кейса не хватает."""
+    last, first = rng.choice(LAST), rng.choice(FIRST_M)
+    inn = make_inn12(f"77{rng.randrange(10**7, 10**8)}")
+    snils = make_snils(f"{rng.randrange(2 * 10**8, 9 * 10**8)}")
+    return Person(f"{last} {first} {rng.choice(['Иванович', 'Сергеевич', 'Петрович'])}", inn, snils, position)
+
+
+def _deep_chain(kind: str, seed: int, org_seed: int | None) -> Scenario:
+    """Цепочка из ``links`` МЧД: руководитель → заместитель → специалисты → бухгалтер, все звенья в реестре."""
+    links, expected = CHAIN_DEPTHS[kind]
+    w = World.make(seed, org_seed)
+    principal = Organization(inn=w.org.inn, ogrn=w.org.ogrn, kpp=w.org.kpp, name=w.org_full_name)
+    holders = [w.deputy, *(_person(w.rng, "Специалист") for _ in range(links - 2)), w.accountant]
+    numbers = [str(uuid.UUID(int=w.rng.getrandbits(128))) for _ in range(links)]
+    until = date(2027, 2, 28)
+    files: dict[str, bytes] = {}
+    docs: list[dict[str, str]] = []
+    for step in range(links):
+        last = step == links - 1
+        xml = build_emchd_xml(
+            number=numbers[step],
+            issue_date=date(2026, 3, 1) + timedelta(days=7 * step),
+            valid_until=until - timedelta(days=step),
+            principal=principal,
+            signer=w.director if step == 0 else holders[step - 1],
+            representatives=[holders[step]],
+            machine_codes=[PAY, VIEW],
+            subdelegation_code="1" if last else "3",
+            parent_number=numbers[step - 1] if step else None,
+            original_number=numbers[0] if step else None,
+            loses_authority_code="1" if step else None,
+        )
+        name = "poa-root.xml" if step == 0 else ("poa-child.xml" if last else f"poa-link{step}.xml")
+        files[name] = xml.encode("utf-8")
+        docs.append({"id": name.removesuffix(".xml"), "kind": "emchd_xml", "path": name})
+    files["charter.txt"] = "Устав общества. Генеральный директор действует без доверенности от имени общества.".encode()
+    docs.append({"id": "charter", "kind": "charter_text", "path": "charter.txt"})
+    files["egrul.json"] = json.dumps(_egrul(w), ensure_ascii=False, indent=2).encode("utf-8")
+    docs.append({"id": "egrul", "kind": "egrul_json", "path": "egrul.json"})
+    requester = w.accountant
+    manifest: dict[str, Any] = {
+        "case_id": f"{kind}-{seed}",
+        "organization": {"inn": w.org.inn, "ogrn": w.org.ogrn, "name": w.org.name},
+        "requester": {"full_name": requester.full_name, "inn": requester.inn, "snils": requester.snils},
+        "operation": {"code": "PAYMENT_SIGN", "date": OP_DATE.isoformat(), "amount_rub": 480_000},
+        "documents": docs,
+        "registry": dict.fromkeys(numbers, "active"),
+    }
+    return Scenario(manifest["case_id"], kind, expected, manifest, files)
+
+
+def _build_kind(kind: str, seed: int, org_seed: int | None) -> Scenario:
+    if kind in CHAIN_DEPTHS:
+        return _deep_chain(kind, seed, org_seed)
+    if kind not in OVERLAYS:
+        return build(kind, seed, org_seed=org_seed)
+    base_kind, where, value, expected = OVERLAYS[kind]
+    base = build(base_kind, seed, org_seed=org_seed)
+    manifest = json.loads(json.dumps(base.manifest))
+    files = dict(base.files)
+    if where == "bankruptcy":
+        manifest["bankruptcy"] = {manifest["organization"]["inn"]: value}
+    else:
+        egrul = json.loads(files["egrul.json"])
+        egrul["status"] = value
+        files["egrul.json"] = json.dumps(egrul, ensure_ascii=False, indent=2).encode("utf-8")
+    manifest["case_id"] = f"{kind}-{seed}"
+    return Scenario(manifest["case_id"], kind, expected, manifest, files)
+
+
+def moscow_age_days(moment: str) -> int:
+    """Сколько календарных дней по Москве между моментом запроса к реестру и днём операции."""
+    return (OP_DATE - datetime.fromisoformat(moment).astimezone(MOSCOW).date()).days
+
+
+def make_case(recipe: Mapping[str, Any]) -> Scenario:
+    """Кейс потока по рецепту: вид, seed, общий клиент и пограничные условия. Один рецепт — один и тот же кейс.
+
+    Ожидаемый вердикт выводится из вида и условий по нормам, а не из ответа движка:
+    * ``term`` = ``last_day`` — операция в последний день срока МЧД: действие можно совершить до 24 часов
+      последнего дня срока (п. 1 ст. 194 ГК РФ), вердикт вида не меняется; ``ended_yesterday`` — срок истёк
+      накануне (подп. 1 п. 1 ст. 188 ГК РФ): «опровергнуто»;
+    * ``registry_moment`` — момент запроса к реестру с часовым поясом, в котором его записала система региона.
+      Возраст снимка считается в днях банка, по Москве: тот же момент, записанный в другом поясе, — тот же
+      снимок. Снимок «действует» старше ``max_snapshot_age_days`` правила R-REG-001 не подтверждает МЧД на
+      дату операции: вместо «подтверждено» и «на разбор» — «недостаточно данных».
+    """
+    kind, seed = str(recipe["kind"]), int(recipe["seed"])
+    if kind not in KINDS:
+        raise ValueError(f"неизвестный вид {kind!r}")
+    org_seed = recipe.get("org_seed")
+    scenario = _build_kind(kind, seed, None if org_seed is None else int(org_seed))
+    expected = scenario.expected
+    manifest = json.loads(json.dumps(scenario.manifest))
+    files = dict(scenario.files)
+    term = recipe.get("term")
+    if term is not None:
+        if kind not in TERM_BASES or term not in {"last_day", "ended_yesterday"}:
+            raise ValueError(f"term={term!r} не применяется к виду {kind!r}")
+        until = OP_DATE if term == "last_day" else OP_DATE - timedelta(days=1)
+        files["poa-root.xml"] = _xml_edit(files["poa-root.xml"], _SV, СрокДейст=until.isoformat())
+        expected = expected if term == "last_day" else "refuted"
+    moment = recipe.get("registry_moment")
+    if moment is not None:
+        if kind in MOMENT_EXCLUDED:
+            raise ValueError(f"registry_moment не применяется к виду {kind!r}")
+        statuses = [str(v) for v in manifest["registry"].values()]
+        manifest["registry"] = {n: {"status": s, "observed_at": moment} for n, s in manifest["registry"].items()}
+        stale = moscow_age_days(str(moment)) > _max_snapshot_age_days()
+        if stale and expected in {"confirmed", "needs_review"} and all(s == "active" for s in statuses):
+            expected = "insufficient_data"
+    case_id = str(recipe.get("case_id") or scenario.case_id)
+    manifest["case_id"] = case_id
+    return Scenario(case_id, kind, expected, manifest, files, recipe=dict(recipe))
+
+
+def conditions_of(recipe: Mapping[str, Any]) -> list[str]:
+    """Названия условий рецепта для сводок: общий клиент, повтор, момент реестра (с поясом), срок."""
+    out = []
+    if recipe.get("org_seed") is not None:
+        out.append("many_representatives")
+    if recipe.get("repeat_of"):
+        out.append("repeat_check")
+    moment = recipe.get("registry_moment")
+    if moment is not None:
+        out.append(f"registry_moment{str(moment)[-6:]}")
+    if recipe.get("term"):
+        out.append("term_" + str(recipe["term"]))
+    return out
+
+
+def _share(problems: list[str], where: str, value: Any) -> None:
+    if not isinstance(value, int | float) or isinstance(value, bool) or not 0 <= value <= 1:
+        problems.append(f"{where}: доля от 0 до 1")
+
+
+def _weights(problems: list[str], where: str, value: Any, key_ok: Any) -> None:
+    if not isinstance(value, dict) or not value:
+        problems.append(f"{where}: непустой объект «значение → доля»")
+        return
+    for key, weight in value.items():
+        if not key_ok(key):
+            problems.append(f"{where}: недопустимый ключ {key!r}")
+        _share(problems, f"{where}.{key}", weight)
+    if all(isinstance(w, int | float) for w in value.values()) and abs(sum(value.values()) - 1) > 1e-9:
+        problems.append(f"{where}: доли в сумме {sum(value.values()):.6f}, нужна 1")
+
+
+def _basis(problems: list[str], where: str, value: Any) -> None:
+    """Каждая доля названа допущением или ссылается на источник реестра утверждений (M-xx, C-xx)."""
+    if not isinstance(value, str) or not (value.startswith("допущение") or _SOURCE_ID.search(value)):
+        problems.append(f"{where}.basis: «допущение: …» или ссылка на источник (M-xx, C-xx)")
+
+
+def validate_mixes(payload: Any) -> list[str]:
+    """Ошибки файла профилей потока; пустой список — файл годен."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("profiles"), dict) or not payload["profiles"]:
+        return ["нужен объект с непустым profiles"]
+    problems: list[str] = []
+    for name, spec in payload["profiles"].items():
+        if not isinstance(spec, dict):
+            problems.append(f"{name}: профиль — объект")
+            continue
+        extra = set(spec) - {"description", "seed", "mix", "conditions"}
+        if extra:
+            problems.append(f"{name}: лишние поля {sorted(extra)}")
+        if not isinstance(spec.get("description"), str) or not spec["description"].strip():
+            problems.append(f"{name}.description: нужен текст")
+        if not isinstance(spec.get("seed"), int) or isinstance(spec.get("seed"), bool):
+            problems.append(f"{name}.seed: целое число")
+        mix = spec.get("mix")
+        if not isinstance(mix, list) or not mix:
+            problems.append(f"{name}.mix: непустой список")
+            mix = []
+        seen: set[str] = set()
+        for i, entry in enumerate(mix):
+            where = f"{name}.mix[{i}]"
+            if not isinstance(entry, dict) or set(entry) - {"kind", "group", "weight", "basis"}:
+                problems.append(f"{where}: поля kind, group, weight, basis")
+                continue
+            kind = entry.get("kind")
+            if kind not in KINDS:
+                problems.append(f"{where}.kind: неизвестный вид {kind!r}")
+            elif kind in seen:
+                problems.append(f"{where}.kind: {kind} указан дважды")
+            seen.add(str(kind))
+            if not isinstance(entry.get("group"), str) or not entry["group"].strip():
+                problems.append(f"{where}.group: нужна группа")
+            weight = entry.get("weight")
+            if not isinstance(weight, int | float) or isinstance(weight, bool) or not 0 < weight <= 1:
+                problems.append(f"{where}.weight: доля больше 0 и не больше 1")
+            _basis(problems, where, entry.get("basis"))
+        weights = [e.get("weight") for e in mix if isinstance(e, dict)]
+        numbers = [float(w) for w in weights if isinstance(w, int | float)]
+        if numbers and len(numbers) == len(weights) and abs(sum(numbers) - 1) > 1e-9:
+            problems.append(f"{name}.mix: доли в сумме {sum(numbers):.6f}, нужна 1")
+        conditions = spec.get("conditions")
+        if not isinstance(conditions, dict):
+            problems.append(f"{name}.conditions: объект")
+            continue
+        for cond, params in conditions.items():
+            where = f"{name}.conditions.{cond}"
+            allowed = {
+                "many_representatives": {"share", "size", "basis"},
+                "repeat_check": {"share", "max_repeats", "max_gap", "basis"},
+                "registry_moment": {"share", "age_days", "end_of_day", "offsets", "basis"},
+                "term_last_day": {"share", "basis"},
+                "term_ended_yesterday": {"share", "basis"},
+            }.get(cond)
+            if allowed is None:
+                problems.append(f"{where}: неизвестное условие, есть {', '.join(CONDITIONS)}")
+                continue
+            if not isinstance(params, dict) or set(params) != allowed:
+                problems.append(f"{where}: поля {sorted(allowed)}")
+                continue
+            _share(problems, f"{where}.share", params["share"])
+            _basis(problems, where, params["basis"])
+            if cond == "many_representatives":
+                size = params["size"]
+                if not (isinstance(size, list) and len(size) == 2 and all(isinstance(x, int) for x in size)) or not (
+                    2 <= size[0] <= size[1]
+                ):
+                    problems.append(f"{where}.size: [от, до], 2 ≤ от ≤ до")
+            if cond == "repeat_check":
+                for key in ("max_repeats", "max_gap"):
+                    if not isinstance(params[key], int) or isinstance(params[key], bool) or params[key] < 1:
+                        problems.append(f"{where}.{key}: целое не меньше 1")
+            if cond == "registry_moment":
+                _share(problems, f"{where}.end_of_day", params["end_of_day"])
+                _weights(problems, f"{where}.age_days", params["age_days"], lambda k: k.isdigit() and int(k) <= 30)
+                _weights(problems, f"{where}.offsets", params["offsets"], lambda k: bool(_OFFSET.fullmatch(k)))
+        term_total = sum(
+            p.get("share", 0)
+            for c, p in conditions.items()
+            if c.startswith("term_") and isinstance(p, dict) and isinstance(p.get("share"), int | float)
+        )
+        if term_total > 1:
+            problems.append(f"{name}.conditions: доли term_* в сумме больше 1")
+    return problems
+
+
+def load_mixes(path: Path | None = None) -> dict[str, Any]:
+    """Профили потока из ``data/load_profiles.json`` или из файла банка; негодный файл — ``ValueError``."""
+    from mandat.data import load_json
+
+    payload = json.loads(path.read_text(encoding="utf-8")) if path else load_json("load_profiles.json")
+    problems = validate_mixes(payload)
+    if problems:
+        raise ValueError("профили потока: " + "; ".join(problems))
+    profiles: dict[str, Any] = payload["profiles"]
+    return profiles
+
+
+def _pick(rng: random.Random, weights: Mapping[str, float]) -> str:
+    return rng.choices(list(weights), list(weights.values()))[0]
+
+
+def _draw_moment(rng: random.Random, spec: Mapping[str, Any]) -> str:
+    """Момент запроса к реестру: день по Москве, время рабочего дня или конец дня, пояс системы региона."""
+    day = OP_DATE - timedelta(days=int(_pick(rng, spec["age_days"])))
+    if rng.random() < spec["end_of_day"]:
+        second = 23 * 3600 + 30 * 60 + rng.randrange(1800)  # последние полчаса операционного дня
+    else:
+        second = 9 * 3600 + rng.randrange(10 * 3600)  # с 9 до 19 по Москве
+    moment = datetime(day.year, day.month, day.day, tzinfo=MOSCOW) + timedelta(seconds=second)
+    offset = _pick(rng, spec["offsets"])
+    sign = -1 if offset.startswith("-") else 1
+    zone = timezone(sign * timedelta(hours=int(offset[1:3]), minutes=int(offset[4:6])))
+    return moment.astimezone(zone).isoformat(timespec="seconds")
+
+
+def production_recipes(
+    cases: int = 10_000,
+    mix: str = "vtb_prod",
+    *,
+    seed: int | None = None,
+    profiles: Mapping[str, Any] | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Рецепты ``cases`` кейсов потока по профилю ``mix``: тот же профиль и seed — тот же поток.
+
+    Повторная проверка той же МЧД — копия рецепта с новым ``case_id``, она приходит позже, через 1–``max_gap``
+    кейсов. Кейсы общего клиента идут подряд по мере выдачи: у клиента от ``size[0]`` до ``size[1]`` представителей.
+    """
+    if cases < 0:
+        raise ValueError("cases: не меньше 0")
+    specs = profiles if profiles is not None else load_mixes()
+    if mix not in specs:
+        raise ValueError(f"нет профиля {mix!r}, есть {', '.join(sorted(specs))}")
+    spec = specs[mix]
+    rng = random.Random(spec["seed"] if seed is None else seed)  # noqa: S311 — синтетика
+    kinds = [entry["kind"] for entry in spec["mix"]]
+    weights = [entry["weight"] for entry in spec["mix"]]
+    cond = spec["conditions"]
+    reps, repeat, moment = cond.get("many_representatives"), cond.get("repeat_check"), cond.get("registry_moment")
+    last_day = cond.get("term_last_day", {}).get("share", 0)
+    ended = cond.get("term_ended_yesterday", {}).get("share", 0)
+    client: list[int] = [0, 0]  # seed клиента, сколько его представителей ещё впереди
+    pending: list[tuple[int, int, dict[str, Any]]] = []
+    emitted = order = 0
+    while emitted < cases:
+        if pending and pending[0][0] <= emitted:
+            yield heapq.heappop(pending)[2]
+            emitted += 1
+            continue
+        kind = rng.choices(kinds, weights)[0]
+        recipe: dict[str, Any] = {
+            "case_id": f"{mix}-{emitted:06d}-{kind}",
+            "kind": kind,
+            "seed": rng.randrange(1, 2**31),
+        }
+        if reps and rng.random() < reps["share"]:
+            if client[1] == 0:
+                client = [rng.randrange(1, 2**31), rng.randint(*reps["size"])]
+            recipe["org_seed"] = client[0]
+            client[1] -= 1
+        if kind in TERM_BASES and (last_day or ended):
+            draw = rng.random()
+            if draw < last_day:
+                recipe["term"] = "last_day"
+            elif draw < last_day + ended:
+                recipe["term"] = "ended_yesterday"
+        if moment and kind not in MOMENT_EXCLUDED and rng.random() < moment["share"]:
+            recipe["registry_moment"] = _draw_moment(rng, moment)
+        yield recipe
+        emitted += 1
+        if repeat and rng.random() < repeat["share"]:
+            for k in range(1, rng.randint(1, repeat["max_repeats"]) + 1):
+                order += 1
+                copy = {**recipe, "case_id": f"{recipe['case_id']}-r{k}", "repeat_of": recipe["case_id"]}
+                heapq.heappush(pending, (emitted + rng.randint(1, repeat["max_gap"]), order, copy))
+
+
+def production_corpus(
+    cases: int = 10_000, mix: str = "vtb_prod", *, seed: int | None = None, profiles: Mapping[str, Any] | None = None
+) -> Iterator[Scenario]:
+    """Кейсы потока по профилю: ``make_case`` на каждый рецепт ``production_recipes``."""
+    for recipe in production_recipes(cases, mix, seed=seed, profiles=profiles):
+        yield make_case(recipe)
+
+
+def summarize(recipes: list[dict[str, Any]], profiles: Mapping[str, Any], mix: str) -> dict[str, Any]:
+    """Состав потока: группы видов, ожидаемые вердикты, условия, клиенты."""
+    groups = {entry["kind"]: entry["group"] for entry in profiles[mix]["mix"]}
+    by_group: dict[str, int] = {}
+    conditions: dict[str, int] = {}
+    for recipe in recipes:
+        by_group[groups[recipe["kind"]]] = by_group.get(groups[recipe["kind"]], 0) + 1
+        for name in conditions_of(recipe):
+            key = "registry_moment" if name.startswith("registry_moment") else name
+            conditions[key] = conditions.get(key, 0) + 1
+    clients = {r["org_seed"] for r in recipes if r.get("org_seed") is not None}
+    return {
+        "mix": mix,
+        "cases": len(recipes),
+        "kinds": len({r["kind"] for r in recipes}),
+        "groups": dict(sorted(by_group.items(), key=lambda kv: -kv[1])),
+        "conditions": dict(sorted(conditions.items())),
+        "shared_clients": len(clients),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    """``python -m mandat.eval.synth --mix vtb_prod --cases 10000 --out var/corpus.jsonl``."""
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="python -m mandat.eval.synth", description="поток кейсов по профилю")
+    parser.add_argument("--mix", default="vtb_prod", help="профиль из load_profiles.json")
+    parser.add_argument("--cases", type=int, default=10_000)
+    parser.add_argument("--seed", type=int, help="вместо seed профиля")
+    parser.add_argument("--profiles", type=Path, help="свой файл профилей вместо data/load_profiles.json")
+    parser.add_argument("--out", type=Path, help="JSONL: рецепт и ожидаемый вердикт на строку")
+    parser.add_argument("--with-manifests", action="store_true", help="добавить в строку манифест с документами")
+    parser.add_argument("--recipe", help="один рецепт (JSON): записать кейс в каталог --case-dir")
+    parser.add_argument("--case-dir", type=Path, help="каталог кейса для --recipe (case.json и файлы)")
+    args = parser.parse_args(argv)
+    if args.recipe:
+        scenario = make_case(json.loads(args.recipe))
+        target = args.case_dir or Path(scenario.case_id)
+        target.mkdir(parents=True, exist_ok=True)
+        manifest = {**scenario.manifest, "expected_verdict": scenario.expected}
+        (target / "case.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        for name, raw in scenario.files.items():
+            (target / name).write_bytes(raw)
+        print(json.dumps({"case_dir": str(target), "expected": scenario.expected}, ensure_ascii=False))
+        return 0
+    profiles = load_mixes(args.profiles)
+    recipes = list(production_recipes(args.cases, args.mix, seed=args.seed, profiles=profiles))
+    if args.out:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        with args.out.open("w", encoding="utf-8") as fh:
+            for recipe in recipes:
+                scenario = make_case(recipe)
+                row: dict[str, Any] = {"recipe": recipe, "expected": scenario.expected}
+                if args.with_manifests:
+                    row["manifest"] = scenario.inline_manifest()
+                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    print(json.dumps(summarize(recipes, profiles, args.mix), ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
