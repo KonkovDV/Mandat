@@ -85,3 +85,14 @@ MANDAT_STAND=1 mandat serve --port 8000     # http://127.0.0.1:8000/console/
 ## На пилоте
 
 Консоль стенда — витрина. На пилоте банк подключает свой вход сотрудников вместо сессий браузера, учётные записи из `MANDAT_API_USERS` со сроком действия, общее хранилище и ключи (`MANDAT_ENV=pilot`, [запуск](RUN.md)), свою модель в контуре через `MANDAT_LLM_*` и реестр МЧД вместо фикстур демо-кейсов.
+
+## HTTPS через API Gateway Yandex Cloud
+
+Если Let's Encrypt не может проверить машину из-за рубежа, HTTPS даёт API Gateway: у шлюза свой адрес `*.apigw.yandexcloud.net` с доверенным сертификатом, а на машину он ходит по HTTP внутри облака. Свой домен не нужен.
+
+1. Консоль Yandex Cloud → API Gateway → «Создать API-шлюз», вставить [спецификацию](../deploy/yandex-api-gateway.yaml), заменив `<IP>` на публичный IP машины и `<HOST>` на адрес, с которым запускали `deploy_stand.sh`.
+2. Скопировать «Служебный домен» шлюза, например `d5d0example.apigw.yandexcloud.net`.
+3. На машине перезапустить выкладку с этим доменом, чтобы консоль принимала запросы со страницы шлюза: `MANDAT_STAND_ORIGINS=d5d0example.apigw.yandexcloud.net bash scripts/deploy_stand.sh <HOST>`.
+4. Стенд открывается по `https://<служебный домен>/console/`.
+
+`MANDAT_STAND_ORIGINS` — хосты через запятую, без схемы; запрос с любого другого `Origin` консоль по-прежнему отклоняет.

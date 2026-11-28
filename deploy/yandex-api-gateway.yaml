@@ -1,0 +1,40 @@
+# HTTPS для стенда через API Gateway Yandex Cloud: шлюз отдаёт адрес *.apigw.yandexcloud.net с доверенным
+# сертификатом и проксирует все запросы на машину стенда по HTTP. Замените <IP> на публичный IP машины,
+# <HOST> — на адрес, с которым запускали scripts/deploy_stand.sh (например, 153-51-161-7.sslip.io).
+openapi: 3.0.0
+info:
+  title: mandat-stand
+  version: 1.0.0
+paths:
+  /:
+    x-yc-apigateway-any-method:
+      x-yc-apigateway-integration:
+        type: http
+        url: http://<IP>/
+        headers:
+          '*': '*'
+          Host: <HOST>
+        query:
+          '*': '*'
+        timeouts:
+          connect: 5
+          read: 30
+  /{path+}:
+    x-yc-apigateway-any-method:
+      parameters:
+        - name: path
+          in: path
+          required: false
+          schema:
+            type: string
+      x-yc-apigateway-integration:
+        type: http
+        url: http://<IP>/{path}
+        headers:
+          '*': '*'
+          Host: <HOST>
+        query:
+          '*': '*'
+        timeouts:
+          connect: 5
+          read: 30

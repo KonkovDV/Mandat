@@ -124,6 +124,17 @@ def test_head_only_on_safe_routes(app):
     assert client.head("/v1/cases", headers={"Authorization": f"Bearer {token}"}).status_code == 405
 
 
+def test_post_from_a_configured_https_proxy_origin_is_accepted(app, monkeypatch):
+    # Стенд за API Gateway: браузер шлёт Origin шлюза, nginx получает Host машины.
+    client = _client(app)
+    gateway = {"Origin": "https://d5d0example.apigw.yandexcloud.net"}
+    assert client.post("/console/api/check", json={"demo": "01_ok"}, headers=gateway).status_code == 403
+    monkeypatch.setenv("MANDAT_STAND_ORIGINS", "d5d0example.apigw.yandexcloud.net, /bad/path")
+    assert client.post("/console/api/check", json={"demo": "01_ok"}, headers=gateway).status_code != 403
+    evil = {"Origin": "https://evil.example"}
+    assert client.post("/console/api/check", json={"demo": "01_ok"}, headers=evil).status_code == 403
+
+
 def test_post_is_json_only_same_origin_and_bounded(app):
     client = _client(app)
     form = client.post("/console/api/check", content="demo=01_ok", headers={"Content-Type": "text/plain"})

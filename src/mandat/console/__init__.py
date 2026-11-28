@@ -13,6 +13,8 @@ import os
 STAND_ENV = "MANDAT_STAND"
 # Secure у cookie сессии: стенд за HTTPS (nginx с сертификатом). Локально по http cookie без Secure.
 SECURE_COOKIE_ENV = "MANDAT_STAND_SECURE_COOKIE"
+# Адреса, с которых консоль открывают через прокси с HTTPS (например, API Gateway): через запятую, без схемы.
+ORIGINS_ENV = "MANDAT_STAND_ORIGINS"
 # Каталог рабочих файлов стенда: списки статусов демо-издателя. Пусто — временный каталог системы.
 WORKDIR_ENV = "MANDAT_STAND_DIR"
 
@@ -56,3 +58,9 @@ def enabled() -> bool:
 
 def secure_cookie() -> bool:
     return _flag(SECURE_COOKIE_ENV)
+
+
+def extra_origins() -> frozenset[str]:
+    """Хосты (``host`` или ``host:port``), которым разрешено слать POST в консоль, кроме её собственного ``Host``."""
+    raw = os.environ.get(ORIGINS_ENV, "")
+    return frozenset(h.strip().lower() for h in raw.split(",") if h.strip() and "/" not in h)

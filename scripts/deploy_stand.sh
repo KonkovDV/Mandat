@@ -209,6 +209,13 @@ elif grep -q '^MANDAT_LLM_API_KEY=' "$ENV_FILE"; then
   grep -q '^MANDAT_LLM_EXTRA=' "$ENV_FILE" || echo "MANDAT_LLM_EXTRA='$LLM_EXTRA'" >> "$ENV_FILE"
   grep -q '^MANDAT_LLM_BUDGET_USD_PER_DAY=' "$ENV_FILE" || echo "MANDAT_LLM_BUDGET_USD_PER_DAY=$LLM_BUDGET" >> "$ENV_FILE"
 fi
+if [ -n "${MANDAT_STAND_ORIGINS:-}" ]; then  # адреса HTTPS-прокси перед стендом (API Gateway), через запятую
+  case "$MANDAT_STAND_ORIGINS" in
+    *[!A-Za-z0-9.,:-]*) echo "MANDAT_STAND_ORIGINS: только имена хостов через запятую, без схемы и пробелов" >&2; exit 1 ;;
+  esac
+  sed -i '/^MANDAT_STAND_ORIGINS=/d' "$ENV_FILE"
+  echo "MANDAT_STAND_ORIGINS=$MANDAT_STAND_ORIGINS" >> "$ENV_FILE"
+fi
 chown root:root "$ENV_FILE" && chmod 600 "$ENV_FILE"
 
 cat > "$UNIT" <<UNIT

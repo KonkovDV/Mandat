@@ -28,7 +28,7 @@ from starlette.concurrency import run_in_threadpool
 
 from mandat.api.storage import Store
 from mandat.audit.attestation import NONCE_MIN_CHARS
-from mandat.console import analytics, secure_cookie
+from mandat.console import analytics, extra_origins, secure_cookie
 from mandat.console.advisor import (
     ADVICE_LABEL,
     cached_advice,
@@ -148,8 +148,10 @@ class ConsoleGate:
             if kind != "application/json":
                 return 415, "нужен Content-Type: application/json", {}
             origin = headers.get("origin", "").strip()
-            if origin and urlsplit(origin).netloc.lower() != headers.get("host", "").strip().lower():
-                return 403, "запрос с чужой страницы", {}
+            if origin:
+                netloc = urlsplit(origin).netloc.lower()
+                if netloc != headers.get("host", "").strip().lower() and netloc not in extra_origins():
+                    return 403, "запрос с чужой страницы", {}
         return None
 
 

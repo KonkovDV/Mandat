@@ -69,7 +69,7 @@
 |---|---|---|
 | NFR-01 | Работа без сети | `mandat demo` идёт без сети |
 | NFR-02 | Одинаковый вход — одинаковый хеш отчёта | `test_report_is_reproducible_and_fully_sourced` |
-| NFR-03 | Скорость | медиана <!--ev:latency.median_ms\|ru1-->1,5<!--/ev--> мс, 95 % — быстрее <!--ev:latency.p95_ms\|ru1-->2,0<!--/ev--> мс на машине сборки `evidence.json`, без сети, реестров и модели (`evidence.json` → `latency`) |
+| NFR-03 | Скорость | медиана <!--ev:latency.median_ms\|ru1-->1,6<!--/ev--> мс, 95 % — быстрее <!--ev:latency.p95_ms\|ru1-->2,3<!--/ev--> мс на машине сборки `evidence.json`, без сети, реестров и модели (`evidence.json` → `latency`) |
 | NFR-04 | Ни одного ложного «подтверждено» на корпусе | <!--ev:synthetic_corpus.false_confirmed-->0<!--/ev--> из <!--ev:synthetic_corpus.negative_cases-->288<!--/ev-->, верхняя граница 95% около <!--ev:synthetic_corpus.false_confirmed_rate_upper95\|ru1%-->1,3<!--/ev-->% (`mandat eval --per-defect 6`) |
 | NFR-05 | У каждой находки есть источник | находку без ссылки создать нельзя (`Finding.__post_init__`) |
 | NFR-06 | API закрыт по умолчанию | без токенов 503, с неверным 401 |
