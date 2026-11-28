@@ -33,7 +33,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-from mandat.api.storage import Pending, Store, review_holds
+from mandat.api.storage import Pending, Store, conclusion_ogrn, review_holds
 
 MIN_KEY_BYTES = 32
 # v2: привязка отчёта включает владельца. v1 его не включал, и такие записи не читаются.
@@ -148,10 +148,16 @@ def review_aad(case_id: str, version: int) -> str:
     return f"review\x00{case_id}\x00{version}"
 
 
+def conclusion_aad(conclusion_id: str, ogrn: str, version: int) -> str:
+    """Привязка заключения: номер, организация и версия. Вывод нельзя тайно сменить или перенести к другому ОГРН."""
+    return f"conclusion\x00{conclusion_id}\x00{ogrn}\x00{version}"
+
+
 class SealedStore:
     """Хранилище, которое шифрует отчёты и разборы до записи и проверяет их при чтении.
 
-    Остальное — лимиты, ``nonce``, Idempotency-Key, high-watermark — без ПДн и передаётся как есть.
+    Остальное — лимиты, ``nonce``, Idempotency-Key, high-watermark, счётчики применений заключений — без ПДн и
+    передаётся как есть. Заключения юриста шифруются так же: в основании бывает текст с именами.
     """
 
     def __init__(self, inner: Store, sealer: Sealer) -> None:
@@ -238,6 +244,41 @@ class SealedStore:
         if isinstance(body.get("open"), bool) and body["open"] != review_holds(opened):
             raise SealError("признак открытого разбора рядом с шифром изменён")
         return opened
+
+    # --- заключения юриста: ОГРН лежит рядом с шифром для указателя и входит в привязку ---
+    def conclusion_get(self, conclusion_id: str) -> tuple[dict[str, Any], int] | None:
+        found = self.inner.conclusion_get(conclusion_id)
+        if found is None:
+            return None
+        body, version = found
+        return self._conclusion(conclusion_id, body, version, None), version
+
+    def conclusion_put(self, conclusion_id: str, body: dict[str, Any], expected_version: int) -> int:
+        ogrn = conclusion_ogrn(body)
+        sealed = self.sealer.seal(body, conclusion_aad(conclusion_id, ogrn, expected_version + 1))
+        sealed["ogrn"] = ogrn
+        return self.inner.conclusion_put(conclusion_id, sealed, expected_version)
+
+    def conclusion_list(self, ogrn: str) -> list[tuple[str, dict[str, Any], int]]:
+        return [
+            (cid, self._conclusion(cid, body, version, ogrn), version)
+            for cid, body, version in self.inner.conclusion_list(ogrn)
+        ]
+
+    def _conclusion(self, conclusion_id: str, body: Any, version: int, ogrn: str | None) -> dict[str, Any]:
+        beside = body.get("ogrn") if isinstance(body, dict) else None
+        if not isinstance(beside, str) or (ogrn is not None and beside != ogrn):
+            raise SealError("ОГРН рядом с шифром заключения не совпадает с указателем")
+        opened = self.sealer.open(body, conclusion_aad(conclusion_id, beside, version))
+        if opened.get("ogrn") != beside:
+            raise SealError("ОГРН рядом с шифром заключения изменён")
+        return opened
+
+    def conclusion_tally(self, conclusion_id: str, cleared: bool) -> None:
+        self.inner.conclusion_tally(conclusion_id, cleared)
+
+    def conclusion_tallies(self, conclusion_ids: list[str]) -> dict[str, tuple[int, int]]:
+        return self.inner.conclusion_tallies(conclusion_ids)
 
     # --- без ПДн ---
     def allow(self, client: str, limit: int, now: float | None = None) -> bool:
