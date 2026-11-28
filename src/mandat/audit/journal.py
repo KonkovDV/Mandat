@@ -24,12 +24,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
 import os
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -427,6 +428,19 @@ def _release_lock(lock: Path) -> None:
             if not _WINDOWS or time.monotonic() >= deadline:
                 raise
             time.sleep(0.001)
+
+
+@contextlib.contextmanager
+def locked(path: Path) -> Iterator[None]:
+    """Та же блокировка, под которой ``append`` дописывает журнал. Пока она держится, активный сегмент, закрытые
+    сегменты, свидетель и манифест не меняются: резервная копия (``services/backup.py``) снимает их одним срезом,
+    не останавливая службу. Ждёт не дольше ``LOCK_WAIT_SECONDS``, иначе ``ValueError``."""
+    fd, lock = _acquire_lock(path)
+    try:
+        yield
+    finally:
+        os.close(fd)
+        _release_lock(lock)
 
 
 def append(
