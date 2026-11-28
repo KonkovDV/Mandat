@@ -543,18 +543,34 @@ def cmd_examples(args: argparse.Namespace) -> int:
     return 0
 
 
+def _stand_access_problem() -> str | None:
+    """На стенде учётные записи консоли создаёт сам сервер; ``MANDAT_API_USERS``, если задан, должен читаться."""
+    from mandat.api.principals import load_users
+
+    try:
+        load_users()
+    except (ValueError, OSError) as exc:
+        return f"MANDAT_API_USERS не читается: {exc}"
+    return None
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
+    from mandat import console
     from mandat.api.principals import access_problem
     from mandat.audit.anchor import missing_anchor_problem
     from mandat.services.env_policy import key_problem, require_attestation_status
 
     try:
         require_attestation_status()  # выключенная проверка статуса в pilot/prod — ошибка конфигурации
-        problem = access_problem() or key_problem() or missing_anchor_problem()
+        access = _stand_access_problem() if console.requested() else access_problem()
+        problem = console.problem() or access or key_problem() or missing_anchor_problem()
     except ValueError as exc:
         problem = str(exc)
     if problem:
         print(f"ошибка: {problem}", file=sys.stderr)
+        return 2
+    if console.requested() and args.workers > 1:
+        print("ошибка: консоль стенда держит сессии в памяти процесса и работает одним воркером", file=sys.stderr)
         return 2
     try:
         import uvicorn

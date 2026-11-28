@@ -4,7 +4,9 @@
 
 * SDK моделей (openai, gigachat, litellm и т. п.) не импортируются нигде;
 * вне ``llm.py`` нет адресов API моделей (``/chat/completions`` и др.) и переменных ``MANDAT_LLM_*``,
-  нет импорта клиента модели и печати ``_SEAL``;
+  нет импорта клиента модели и печати ``_SEAL``. Исключение одно и явное — ``CLIENT_HOLDERS``: модуль получает
+  клиента из ``OpenAICompatClient.from_env`` и передаёт ему ``RedactedMessages`` из ``case_charter_messages``,
+  но сам в сеть не ходит, сообщений не строит и настроек модели не читает;
 * HTTP-клиенты (urllib.request, http.client, requests, httpx, aiohttp, socket) импортируют только модули из
   ``HTTP_ALLOWED`` с указанной целью: новый сетевой модуль не пройдёт CI, пока его не добавят сюда явно.
 
@@ -46,6 +48,11 @@ LLM_SDKS = {
 }
 LLM_ENDPOINTS = ("/chat/completions", "/v1/completions", "/v1/messages", "/embeddings", "/api/generate", "/api/chat")
 LLM_ONLY_NAMES = {"OpenAICompatClient", "RedactedMessages", "_SEAL", "_require_redacted"}
+# Кто ещё может обратиться к клиенту модели и зачем. Только к ``OpenAICompatClient``: печать, конструктор сообщений,
+# HTTP-клиенты и строки ``MANDAT_LLM_*`` этим модулям запрещены так же, как остальным.
+CLIENT_HOLDERS = {
+    "src/mandat/console/advisor.py": "консультант стенда: справка модели по уставу кейса через case_charter_messages",
+}
 HTTP_CLIENTS = {"urllib.request", "http.client", "requests", "httpx", "aiohttp", "socket", "urllib3"}
 # Модули с сетевыми вызовами не к модели и их цель.
 HTTP_ALLOWED = {
@@ -93,7 +100,7 @@ def violations(source: str, rel: str) -> list[str]:
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
             modules = [node.module] + [f"{node.module}.{a.name}" for a in node.names]
             if node.module == "mandat.advisory.llm" and not is_llm:
-                out += [f"{rel}: импорт {a.name} из llm" for a in node.names if a.name in LLM_ONLY_NAMES]
+                out += [f"{rel}: импорт {a.name} из llm" for a in node.names if a.name in _forbidden(rel)]
         for module in modules:
             if _matches(module, LLM_SDKS):
                 out.append(f"{rel}: SDK модели {module}")
@@ -106,9 +113,14 @@ def violations(source: str, rel: str) -> list[str]:
                 out.append(f"{rel}: адрес API модели {node.value!r}")
             if "MANDAT_LLM_" in node.value:
                 out.append(f"{rel}: настройка модели {node.value!r}")
-        if isinstance(node, ast.Attribute) and node.attr in LLM_ONLY_NAMES:
+        if isinstance(node, ast.Attribute) and node.attr in _forbidden(rel):
             out.append(f"{rel}: обращение к {node.attr}")
     return sorted(set(out))
+
+
+def _forbidden(rel: str) -> set[str]:
+    """Имена llm.py, недоступные модулю: держателю клиента из ``CLIENT_HOLDERS`` открыт только сам клиент."""
+    return LLM_ONLY_NAMES - {"OpenAICompatClient"} if rel in CLIENT_HOLDERS else LLM_ONLY_NAMES
 
 
 def _files() -> list[Path]:
@@ -118,6 +130,17 @@ def _files() -> list[Path]:
 def test_only_llm_module_talks_to_the_model():
     found = [v for p in _files() for v in violations(p.read_text(encoding="utf-8"), p.relative_to(ROOT).as_posix())]
     assert found == []
+
+
+def test_client_holders_are_current_and_stay_narrow():
+    # Держатель клиента существует, действительно берёт клиента и не получает ничего сверх него.
+    for rel in CLIENT_HOLDERS:
+        source = (ROOT / rel).read_text(encoding="utf-8")
+        assert "OpenAICompatClient" in source, rel
+        for name in ("_SEAL", "RedactedMessages", "_require_redacted"):
+            assert any(name in v for v in violations(f"from mandat.advisory import llm\nllm.{name}", rel)), name
+        assert violations("import urllib.request", rel), rel
+        assert violations("x = 'MANDAT_LLM_MODEL'", rel), rel
 
 
 def test_http_allowlist_is_current():

@@ -240,46 +240,63 @@ class Guard:
     запроса. Тело читается потоком со счётчиком и отвергается с 413, как только превысит
     ``MAX_BODY``, даже без ``Content-Length`` (chunked). ``BaseHTTPMiddleware`` с
     ``await request.body()`` здесь нельзя: он буферизует всё тело до проверок.
+
+    В режиме стенда ``console`` (``mandat.console.routes.ConsoleGate``) забирает пути консоли: вместо токена — её
+    проверки метода, типа тела и ``Origin``, свой потолок тела; лимит частоты тот же. Ко всем ответам стенда
+    добавляются HSTS и ``X-Robots-Tag: noindex``.
     """
 
-    def __init__(self, app: Any, *, directory: Directory, limit: int, store: Store) -> None:
-        self.app, self.directory, self.limit, self.store = app, directory, limit, store
+    def __init__(self, app: Any, *, directory: Directory, limit: int, store: Store, console: Any = None) -> None:
+        self.app, self.directory, self.limit, self.store, self.console = app, directory, limit, store, console
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
         path = scope.get("path", "")
+        method = scope.get("method")
         headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
+        console = self.console is not None and self.console.owns(path)
+        stand_headers = list(self.console.extra_headers) if self.console is not None else []
+        max_body = self.console.max_body if console else MAX_BODY
 
         rid = request_id(scope).encode("ascii")
 
         async def secured(message: MutableMapping[str, Any]) -> None:
             if message["type"] == "http.response.start":
                 existing = [(k, v) for k, v in message.get("headers", []) if k.lower() != REQUEST_ID_HEADER]
-                extra = [] if any(k.lower() == b"content-security-policy" for k, _ in existing) else [DEFAULT_CSP]
-                message = {**message, "headers": [*existing, *SECURITY_HEADERS, *extra, (REQUEST_ID_HEADER, rid)]}
+                names = {k.lower() for k, _ in existing}
+                # Заголовок, заданный маршрутом (CSP карточки, кэш файлов консоли), не дублируется общим.
+                common = [(k, v) for k, v in [*SECURITY_HEADERS, *stand_headers, DEFAULT_CSP] if k not in names]
+                message = {**message, "headers": [*existing, *common, (REQUEST_ID_HEADER, rid)]}
             await send(message)
 
         async def reply(status: int, detail: str, extra: dict[str, str] | None = None) -> None:
             # Отказы (401, 405, 413, 429) идут с теми же заголовками безопасности, что и обычные ответы.
             await JSONResponse({"detail": detail}, status_code=status, headers=extra)(scope, receive, secured)
 
-        if path in OPEN_PATHS and scope.get("method") not in {"GET", "HEAD"}:
+        if path in OPEN_PATHS and method not in {"GET", "HEAD"}:
             # Открытые пути без токена и без лимита частоты отвечают только на GET: тело здесь не читается.
             await reply(405, "метод не поддерживается", {"Allow": "GET, HEAD"})
             return
+        if console:
+            refused = self.console.screen(str(method), path, headers)
+            if refused is not None:
+                await reply(*refused)
+                return
         if path not in OPEN_PATHS:
             if self.limit > 0:
                 client = (scope.get("client") or ("unknown",))[0]
                 if not self.store.allow(str(client), self.limit):
                     await reply(429, "слишком много запросов", {"Retry-After": "60"})
                     return
-            if not self.directory.configured:
+            if not console and not self.directory.configured:
                 await reply(503, "API закрыт: задайте MANDAT_API_TOKEN или MANDAT_API_USERS")
                 return
             scheme, _, value = headers.get("authorization", "").partition(" ")
-            if scheme.lower() != "bearer" or not value.strip() or self.directory.find(value.strip()) is None:
+            if not console and (
+                scheme.lower() != "bearer" or not value.strip() or self.directory.find(value.strip()) is None
+            ):
                 await reply(401, "нужен токен доступа", {"WWW-Authenticate": bearer_challenge(bool(value.strip()))})
                 return
         length = headers.get("content-length")
@@ -287,19 +304,19 @@ class Guard:
             if not length.isascii() or not length.isdigit():
                 await reply(400, "некорректный Content-Length")
                 return
-            if int(length) > MAX_BODY:
+            if int(length) > max_body:
                 await reply(413, "запрос больше допустимого")
                 return
         messages: list[dict[str, Any]] = []
         total = 0
-        if scope.get("method") not in {"GET", "HEAD", "OPTIONS"}:
+        if method not in {"GET", "HEAD", "OPTIONS"}:
             while True:
                 message = await receive()
                 if message["type"] != "http.request":
                     messages.append(message)
                     break
                 total += len(message.get("body", b""))
-                if total > MAX_BODY:
+                if total > max_body:
                     await reply(413, "запрос больше допустимого")
                     return
                 messages.append(message)
@@ -330,6 +347,22 @@ def _env_flag(name: str) -> bool:
 CREATE_CLAIM_SECONDS = 30.0
 # Idempotency-Key: безопасный набор символов, чтобы ключ не попал в журнал/логи как произвольный текст.
 IDEMPOTENCY_KEY = re.compile(r"[A-Za-z0-9._~-]{1,128}")
+
+
+COMMIT = re.compile(r"[0-9a-f]{7,40}")
+
+
+def build_stamp() -> str | None:
+    """Коммит, из которого собран сервер: ``MANDAT_COMMIT`` или файл ``BUILD`` в рабочем каталоге.
+
+    ``BUILD`` пишет scripts/deploy_stand.sh: по ``/health`` видно, какой коммит репозитория работает на стенде.
+    """
+    raw = os.environ.get("MANDAT_COMMIT", "").strip()
+    if not raw:
+        with contextlib.suppress(OSError, UnicodeDecodeError):
+            raw = Path("BUILD").read_text(encoding="utf-8").strip()
+    raw = raw[:40].lower()
+    return raw if COMMIT.fullmatch(raw) else None
 
 
 def readiness(store: Store, journal_path: Path | None) -> dict[str, str]:
@@ -371,11 +404,26 @@ def create_app(
     journal_path: Path | None = None,
     admission_config: admission.AdmissionConfig | None = None,
     authzen_pdp: str | None = None,
+    console: bool | None = None,
 ) -> FastAPI:
+    """Приложение API. ``console`` (по умолчанию флаг ``MANDAT_STAND``) добавляет консоль стенда; в pilot и prod —
+    ``StandRefused``: стенд с демо-учётными записями в защищённом режиме не поднимается."""
+    from mandat import console as stand
+
+    with_console = stand.requested() if console is None else console
+    if with_console and (reason := stand.refusal()):
+        raise stand.StandRefused(reason)
     expected = token if token is not None else os.environ.get("MANDAT_API_TOKEN", "")
     raw_users = (users if users is not None else os.environ.get("MANDAT_API_USERS", "")).strip()
     users_file = Path(raw_users) if raw_users and not raw_users.startswith("[") else None
-    directory = Directory(load_users(users), expected, reload_path=users_file)
+    sessions = None
+    if with_console:
+        from mandat.console.sessions import Sessions, StandDirectory
+
+        sessions = Sessions()
+        directory: Directory = StandDirectory(load_users(users), sessions, reload_path=users_file)
+    else:
+        directory = Directory(load_users(users), expected, reload_path=users_file)
     show_docs = docs if docs is not None else _env_flag("MANDAT_API_DOCS")
     limit = rate_per_min if rate_per_min is not None else int(os.environ.get("MANDAT_API_RATE_PER_MIN", "120"))
     app = FastAPI(
@@ -391,11 +439,24 @@ def create_app(
     env_journal = os.environ.get("MANDAT_API_JOURNAL", "").strip()
     audit_log = journal_path if journal_path is not None else (Path(env_journal) if env_journal else None)
     # Допуск операции включается связкой ключей издателя; настроенный не полностью — ошибка старта, а не 500.
+    # На стенде удостоверения выпускает демо-издатель консоли, и допуск проверяет его ключ.
+    issuer = None
+    if with_console and admission_config is None:
+        from mandat.console.issuer import DemoIssuer
+
+        workdir = os.environ.get(stand.WORKDIR_ENV, "").strip()
+        issuer = DemoIssuer(Path(workdir) if workdir else None)
+        admission_config = issuer.config()
     admit = admission_config or admission.AdmissionConfig.from_env(protected=protected())
     raw_pdp = (authzen_pdp if authzen_pdp is not None else os.environ.get(authzen.PDP_ENV, "")).strip()
     pdp_identifier = authzen.check_pdp_identifier(raw_pdp) if raw_pdp else None
 
-    app.add_middleware(Guard, directory=directory, limit=limit, store=shared)
+    gate = None
+    if with_console:
+        from mandat.console.routes import ConsoleGate
+
+        gate = ConsoleGate()
+    app.add_middleware(Guard, directory=directory, limit=limit, store=shared, console=gate)
 
     @app.exception_handler(RequestValidationError)
     async def schema_error(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -459,6 +520,8 @@ def create_app(
             raise HTTPException(404, "кейс не найден")
         return found[0]
 
+    commit = build_stamp()
+
     @app.get("/health")
     def health() -> dict[str, Any]:
         return {
@@ -467,6 +530,8 @@ def create_app(
             "auth_configured": directory.configured,
             "mode": "users" if directory.multi_user else "single-token",
             "store": shared.name,
+            "commit": commit,
+            "console": with_console,
         }
 
     @app.get("/readyz")
@@ -1154,4 +1219,9 @@ def create_app(
         results = authzen.run_batch(evaluations, semantic, lambda one: authzen_admission(one, principal))
         return {"evaluations": results}
 
+    if with_console and sessions is not None:
+        from mandat.console.issuer import DemoIssuer
+        from mandat.console.routes import mount
+
+        mount(app, sessions=sessions, store=shared, issuer=issuer or DemoIssuer(), commit=commit)
     return app

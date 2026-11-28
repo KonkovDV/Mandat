@@ -27,6 +27,12 @@
 
 Дерево Меркла построено по RFC 6962 и RFC 9162, списки статусов — по W3C Bitstring Status List v1.0.
 
+## Шрифты консоли стенда
+
+`src/mandat/console/static/` несёт WOFF2 шрифтов сайта: Golos Text, Manrope и Cormorant Garamond — SIL Open Font
+License 1.1, тексты лицензий лежат рядом (`OFL-GolosText.txt`, `OFL-Manrope.txt`, `OFL-CormorantGaramond.txt`).
+Код консоли (страница, стили, скрипт) написан для проекта, сторонних библиотек в нём нет.
+
 ## Тестовые векторы
 
 `tests/vectors/eddsa-jcs-2022/` — копия векторов `eddsa-jcs-2022` из

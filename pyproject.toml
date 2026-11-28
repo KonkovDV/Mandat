@@ -47,7 +47,8 @@ mandat = "mandat.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-mandat = ["data/*.json"]
+# Консоль стенда (MANDAT_STAND=1): страница, стили, скрипт, шрифты с лицензиями OFL и кадры Анны.
+mandat = ["data/*.json", "console/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

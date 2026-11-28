@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>Мандат — консоль стенда</title>
+<link rel="icon" href="/console/static/favicon.svg?v={{version}}" type="image/svg+xml">
+<link rel="preload" href="/console/static/GolosText-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/console/static/Manrope-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/console/static/console.css?v={{version}}">
+<script src="/console/static/theme.js?v={{version}}"></script>
+<script src="/console/static/console.js?v={{version}}" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">К содержанию</a>
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="/console/" aria-label="Мандат — консоль стенда"><svg class="logo" viewBox="120 148 660 132" width="130" height="26" aria-hidden="true"><path class="lg-n" d="M273 185.5 242 204 242 271 273 251.5ZM147 152 124 168 124 246.5 133 255 153.5 266 153.5 185.5 159 185.5 181 200 204.5 185.5Z"/><path class="lg-d" d="M167 209 167 251.5 204.5 276 204.5 232Z"/><path class="lg-b" d="M273 157 264 152 183 200 207 215.5 273 175Z"/><path class="lg-w" fill-rule="evenodd" d="M314 179.5 314 246.5 328 246.5 328 207 348.5 235 357 235 378 207 378 246.5 392.5 246.5 392.5 179.5 378 179.5 354 215.5 348.5 211 328 179.5ZM435 179.5 402 246.5 419 246.5 426 232 457 232 464 246.5 482 246.5 449 179.5ZM442 200 451.5 219.5 432 219.5ZM489 179.5 489 246.5 504.5 246.5 504.5 215.5 536.5 215.5 536.5 246.5 553 246.5 553 179.5 536.5 179.5 536.5 204 504.5 204 504.5 179.5ZM577 179.5 577 215.5 572 229 569 232 562 232 562 259 577 259 577 246.5 625.5 246.5 625.5 259 641 259 641 232 632 232 632 179.5ZM593 192 615.5 192 615.5 232 586 232 590 219.5ZM680 179.5 647 246.5 664 246.5 671 232 702 232 709 246.5 726 246.5 694 179.5ZM686 200 688 200 696.5 219.5 676 219.5ZM714 179.5 714 192 737 192 737 246.5 752 246.5 752 192 754 192 776 192 776 179.5Z"/></svg><span class="brand-sub">консоль стенда</span></a>
+    <nav class="nav" role="tablist" aria-label="Вкладки консоли">
+      <button type="button" role="tab" id="tab-check" aria-controls="check" aria-selected="true">Проверка</button>
+      <button type="button" role="tab" id="tab-consult" aria-controls="consult" aria-selected="false" tabindex="-1">Консультант</button>
+      <button type="button" role="tab" id="tab-review" aria-controls="review" aria-selected="false" tabindex="-1">Юрист</button>
+      <button type="button" role="tab" id="tab-dbo" aria-controls="dbo" aria-selected="false" tabindex="-1">ДБО</button>
+      <button type="button" role="tab" id="tab-eval" aria-controls="eval" aria-selected="false" tabindex="-1">Прогон</button>
+    </nav>
+    <div class="state" aria-live="polite">
+      <span class="pill" id="pill-session">сессия…</span>
+      <span class="pill" id="pill-model">модель…</span>
+    </div>
+    <button class="theme" id="theme" type="button" aria-label="Сменить тему"><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.6A8.2 8.2 0 0 1 9.4 4a8.2 8.2 0 1 0 10.6 10.6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></button>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <p class="notice" id="notice" role="alert" hidden></p>
+
+  <section class="panel" id="check" role="tabpanel" aria-labelledby="tab-check">
+    <div class="intro">
+      <img class="intro-face" src="/console/static/anna-hello-480.webp" alt="" aria-hidden="true" width="120" height="120">
+      <p class="kicker">Проверка полномочий</p>
+      <h1>Можно ли этому человеку провести эту операцию компании <span class="serif">сегодня</span>?</h1>
+      <p class="lead">Доверенность, выписка ЕГРЮЛ и устав сходятся в одну цепочку. Ответ за секунды и с доказательством: поле МЧД, запись ЕГРЮЛ, фраза устава и статья закона. Банк не открывает доступ к счёту по истёкшей или отменённой доверенности.</p>
+    </div>
+    <div class="seg" role="group" aria-label="Источник кейса">
+      <button type="button" id="mode-demo" aria-pressed="true">Демо-кейс</button>
+      <button type="button" id="mode-upload" aria-pressed="false">Свои документы</button>
+    </div>
+    <div id="demo-pane" class="pane">
+      <p class="note">Вымышленные компании и люди. Выберите кейс — проверка идёт через HTTP API стенда от учётной записи оператора вашей сессии.</p>
+      <div class="cases" id="demo-cases"></div>
+    </div>
+    <form id="upload-pane" class="pane card form" hidden>
+      <p class="note">Документы в формате API: МЧД XML (до трёх, для передоверия), выписка ЕГРЮЛ в JSON, устав текстом. До 128 КБ на документ. Можно подставить документы демо-кейса и поменять их, например порог суммы в уставе.</p>
+      <div class="row">
+        <label for="fill-demo">Подставить документы демо-кейса</label>
+        <div class="inline"><select id="fill-demo"></select><button class="btn small" type="button" id="fill-go">Подставить</button></div>
+      </div>
+      <div class="grid2">
+        <div class="row"><label for="up-poa">МЧД (XML)</label><input id="up-poa" type="file" accept=".xml,application/xml,text/xml" multiple><span class="fine" id="up-poa-note">файл не выбран</span></div>
+        <div class="row"><label for="up-egrul">Выписка ЕГРЮЛ (JSON)</label><input id="up-egrul" type="file" accept=".json,application/json"><span class="fine" id="up-egrul-note">файл не выбран</span></div>
+      </div>
+      <div class="row"><label for="up-charter">Устав (текст)</label><textarea id="up-charter" rows="4" placeholder="Текст устава или его выписка: ограничения полномочий руководителя"></textarea><input id="up-charter-file" type="file" accept=".txt,text/plain" aria-label="Загрузить устав из файла"></div>
+      <div class="grid3">
+        <div class="row"><label for="up-op">Операция</label><select id="up-op"></select></div>
+        <div class="row"><label for="up-amount">Сумма, ₽</label><input id="up-amount" type="number" min="1" step="1" inputmode="numeric" value="480000"></div>
+        <div class="row"><label for="up-date">Дата операции</label><input id="up-date" type="date"></div>
+      </div>
+      <div class="grid3">
+        <div class="row"><label for="up-name">Заявитель: ФИО</label><input id="up-name" type="text" autocomplete="off" maxlength="200"></div>
+        <div class="row"><label for="up-inn">ИНН заявителя</label><input id="up-inn" type="text" inputmode="numeric" autocomplete="off" maxlength="12"></div>
+        <div class="row"><label for="up-snils">СНИЛС</label><input id="up-snils" type="text" autocomplete="off" maxlength="14" placeholder="000-000-000 00"></div>
+      </div>
+      <div class="row"><label for="up-registry">Статус МЧД в реестре</label><select id="up-registry"><option value="active">действует</option><option value="revoked">отменена</option><option value="unknown">нет ответа реестра</option></select></div>
+      <div><button class="btn primary" type="submit" id="up-go">Проверить документы</button></div>
+    </form>
+    <div id="check-result" class="results" aria-live="polite"></div>
+    <div id="check-history" class="history"></div>
+  </section>
+
+  <section class="panel" id="consult" role="tabpanel" aria-labelledby="tab-consult" hidden>
+    <div class="intro">
+      <img class="intro-face" src="/console/static/anna-explain-480.webp" alt="" aria-hidden="true" width="120" height="120">
+      <p class="kicker">Консультант</p>
+      <h1>Объясняет решение, а&nbsp;вердикт оставляет <span class="serif">правилам</span></h1>
+      <p class="lead">Пояснение собирается только из фактов отчёта, каждая фраза ссылается на свой факт. Модель читает обезличенные строки устава и предлагает факты с дословной цитатой; шлюз пропускает только подтверждённые цитатой. Сотрудник тратит минуты на суть, а не на чтение всего устава.</p>
+    </div>
+    <div class="card form">
+      <div class="grid2">
+        <div class="row"><label for="consult-case">Кейс вашей сессии</label><select id="consult-case"></select></div>
+        <div class="row"><span class="label">Модель</span><label class="check"><input type="checkbox" id="consult-model"> спросить модель по уставу</label><span class="fine" id="consult-model-note"></span></div>
+      </div>
+      <div><button class="btn primary" type="button" id="consult-go">Спросить консультанта</button></div>
+    </div>
+    <div id="consult-result" class="results" aria-live="polite"></div>
+    <article class="card">
+      <h2 class="section-title">Шлюз на подставных ответах модели</h2>
+      <p class="note">Ловушки, которые модель могла бы вернуть: цитата не из устава, неверная сумма, «вправе подписать» при вердикте НА РАЗБОР, дата не из фактов. Решение считает тот же код шлюза, что работает с настоящей моделью.</p>
+      <div><button class="btn" type="button" id="gate-go">Проверить шлюз</button></div>
+      <div id="gate-result" class="gate"></div>
+    </article>
+  </section>
+
+  <section class="panel" id="review" role="tabpanel" aria-labelledby="tab-review" hidden>
+    <div class="intro">
+      <img class="intro-face" src="/console/static/anna-lawyer-480.webp" alt="" aria-hidden="true" width="120" height="120">
+      <p class="kicker">Юрист</p>
+      <h1>Очередь юриста со&nbsp;сроками и&nbsp;<span class="serif">основаниями</span></h1>
+      <p class="lead">Кейсы «на разбор» и «недостаточно данных» встают в очередь с приоритетом и сроком SLA, просроченные поднимаются выше. Юрист берёт кейс, решает или возвращает за документами; каждое действие с основанием пишется в журнал, а создатель кейса решать его не может.</p>
+    </div>
+    <div class="toolbar"><button class="btn" type="button" id="review-refresh">Обновить очередь</button><span class="fine" id="review-who"></span></div>
+    <div id="review-queue" class="results" aria-live="polite"></div>
+    <div id="review-done" class="history"></div>
+  </section>
+
+  <section class="panel" id="dbo" role="tabpanel" aria-labelledby="tab-dbo" hidden>
+    <div class="intro">
+      <img class="intro-face" src="/console/static/anna-phone-480.webp" alt="" aria-hidden="true" width="120" height="120">
+      <p class="kicker">ДБО</p>
+      <h1>Платёж проходит, захват <span class="serif">останавливается</span></h1>
+      <p class="lead">Банк выпускает удостоверение на один платёж: организация, день, операция, сумма, представитель, получатель и одноразовый номер. ДБО спрашивает допуск перед списанием — через REST или OpenID AuthZEN. Деньги не уходят по чужому запросу, по завышенной сумме и после смены руководителя.</p>
+    </div>
+    <div class="card form">
+      <div class="steps">
+        <div class="step"><span class="num">1</span><div><b>Удостоверение на сегодняшний платёж</b><p class="fine">Демо-кейс с подтверждённым полномочием переносится на сегодня: допуск сверяет день операции с часами сервера.</p><button class="btn primary" type="button" id="dbo-issue">Проверить кейс и выпустить</button></div></div>
+        <div class="step"><span class="num">2</span><div><b>Запрос ДБО перед списанием</b>
+          <div class="seg" role="group" aria-label="Канал допуска"><button type="button" id="ch-rest" aria-pressed="true">REST /v1/operations/authorize</button><button type="button" id="ch-authzen" aria-pressed="false">AuthZEN /access/v1/evaluation</button></div>
+          <div class="actions" id="dbo-actions">
+            <button class="btn" type="button" data-scenario="pay" disabled>Платёж на проверенную сумму</button>
+            <button class="btn" type="button" data-scenario="replay" disabled>Повтор того же запроса</button>
+            <button class="btn" type="button" data-scenario="over" disabled>Сумма в 4 раза больше</button>
+            <button class="btn" type="button" data-scenario="takeover" disabled>Смена руководителя, затем платёж</button>
+          </div>
+        </div></div>
+      </div>
+    </div>
+    <div id="dbo-credential" class="results"></div>
+    <div id="dbo-log" class="results" aria-live="polite"></div>
+  </section>
+
+  <section class="panel" id="eval" role="tabpanel" aria-labelledby="tab-eval" hidden>
+    <div class="intro">
+      <img class="intro-face" src="/console/static/anna-timer-480.webp" alt="" aria-hidden="true" width="120" height="120">
+      <p class="kicker">Прогон</p>
+      <h1>Ноль ложных «подтверждено» на&nbsp;<span class="serif">корпусе</span></h1>
+      <p class="lead">Кейсы с ожидаемым вердиктом — демо, синтетический корпус или свои — проходят через тот же движок на сервере стенда за секунду. Видно, где движок отвечает сам, а где отдаёт кейс человеку вместо «да». Точность на документах банка измеряет пилот.</p>
+    </div>
+    <div class="card form">
+      <div class="seg" role="group" aria-label="Что прогнать">
+        <button type="button" id="ev-demo" aria-pressed="true">Демо-кейсы</button>
+        <button type="button" id="ev-corpus" aria-pressed="false">Корпус: кейс на каждый вид дефекта</button>
+        <button type="button" id="ev-pasted" aria-pressed="false">Свои кейсы (JSON)</button>
+      </div>
+      <div id="ev-demo-pane" class="cases-check"></div>
+      <p id="ev-corpus-pane" class="note" hidden>Синтетический генератор строит по одному кейсу на каждый вид дефекта документов — до 50 кейсов, ожидаемый вердикт задан генератором.</p>
+      <div id="ev-pasted-pane" class="row" hidden><label for="ev-json">Массив манифестов API с полем expected_verdict, до 50 кейсов</label><textarea id="ev-json" rows="6" placeholder='[{"case_id": "мой-кейс", "expected_verdict": "needs_review", "organization": {…}, "documents": […]}]'></textarea></div>
+      <div><button class="btn primary" type="button" id="eval-go">Запустить прогон</button></div>
+    </div>
+    <div id="eval-result" class="results" aria-live="polite"></div>
+  </section>
+</main>
+
+<footer class="foot wrap">
+  <p class="fine" id="foot-principals">Стенд на вымышленных данных, профиль demo. Учётные записи вашей сессии: оператор, юрист и система ДБО — без прав администратора и удаления.</p>
+  <p class="fine"><a href="https://konkovdv.github.io/Mandat/" rel="noopener noreferrer" target="_blank">Сайт проекта</a></p>
+</footer>
+</body>
+</html>
