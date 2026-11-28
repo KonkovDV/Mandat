@@ -585,19 +585,19 @@ def create_app(
             case = load_case_inline(manifest)
         except CaseError as exc:
             raise ApiProblem(422, "кейс не прошёл проверку входных данных", f"CaseError: {exc}") from exc
-        # Квота владельца проверяется до проверки кейса и записи в журнал; окончательно её держит commit.
-        try:
-            has_room = shared.room(principal.name, case.case_id, MAX_REPORTS)
-        except Exception as exc:
-            raise ApiProblem(503, "хранилище недоступно, кейс не сохранён", f"store: {type(exc).__name__}") from exc
-        if not has_room:
-            raise ApiProblem(429, QUOTA_DETAIL, f"quota: {MAX_REPORTS}")
         # В pilot и prod снимки источников сверяются с часами сервера: снимок «из будущего» не доказательство.
         if protected():
             report = verify_case(case, profile=profile, now=datetime.now(UTC)).as_dict()
         else:
             report = verify_case(case, profile=profile).as_dict()
         case_id = report["case_id"]
+        # Квота владельца проверяется до записи в журнал; окончательно её держит commit.
+        try:
+            has_room = shared.room(principal.name, case_id, MAX_REPORTS)
+        except Exception as exc:
+            raise ApiProblem(503, "хранилище недоступно, кейс не сохранён", f"store: {type(exc).__name__}") from exc
+        if not has_room:
+            raise ApiProblem(429, QUOTA_DETAIL, f"quota: {MAX_REPORTS}")
         # Атомарная заявка на создание (в том числе при replace=true): из одновременных запросов с одним
         # case_id дальше проходит один, остальные получают 409, а не перезаписывают друг друга. Заявка
         # держится только на время записи: после успеха или любой ошибки она снимается, и честный повтор

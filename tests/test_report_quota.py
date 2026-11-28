@@ -145,7 +145,7 @@ def test_flood_by_one_operator_keeps_the_victim_and_the_queue(tmp_path, monkeypa
     queue = {i["case_id"] for i in client.get("/v1/review/queue", headers=_h("rev")).json()["items"]}
     assert victim in queue and len(queue) == 4
     verified = [r for r in journal.read_journal(tmp_path / "j.jsonl") if r["action"] == "verify"]
-    assert len(verified) == 4, "отказ по квоте приходит до проверки кейса и записи в журнал"
+    assert len(verified) == 4, "отказ по квоте приходит до записи в журнал"
 
 
 def test_eviction_of_a_settled_case_is_journaled(tmp_path, monkeypatch):
