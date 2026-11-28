@@ -733,6 +733,18 @@ class RedisStore:
     def watermark_raise(self, key: str, value: int) -> int:
         return int(self._watermark(keys=[f"{self.prefix}watermark:{key}"], args=[int(value)]))
 
+    def watermark_get_many(self, keys: list[str]) -> dict[str, int | None]:
+        """Watermark нескольких списков одним MGET: у допуска их по одному на список статусов."""
+        raws = self.r.mget([f"{self.prefix}watermark:{key}" for key in keys]) if keys else []
+        return {key: None if raw is None else int(raw) for key, raw in zip(keys, raws, strict=True)}
+
+    def watermark_raise_many(self, items: dict[str, int]) -> None:
+        """Те же атомарные скрипты подъёма, но одним конвейером: один обмен с Redis вместо одного на список."""
+        pipe = self.r.pipeline(transaction=False)
+        for key, value in items.items():
+            self._watermark(keys=[f"{self.prefix}watermark:{key}"], args=[int(value)], client=pipe)
+        pipe.execute()
+
     def ping(self) -> None:
         self.r.ping()
 

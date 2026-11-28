@@ -246,6 +246,12 @@ class SealedStore:
     def watermark_raise(self, key: str, value: int) -> int:
         return self.inner.watermark_raise(key, value)
 
+    def __getattr__(self, name: str) -> Any:
+        # Пакетные операции watermark (у Redis) — как есть, если они есть у хранилища: ПДн в них нет.
+        if name in {"watermark_get_many", "watermark_raise_many"}:
+            return getattr(self.inner, name)
+        raise AttributeError(name)
+
 
 def sealed(store: Store) -> Store:
     """Обернуть хранилище шифром, если ключ задан; уже обёрнутое не оборачивается второй раз."""
