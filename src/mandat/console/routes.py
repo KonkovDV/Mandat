@@ -85,6 +85,17 @@ MODEL_DEADLINE_SECONDS = 8.0
 DBO_PER_SESSION = 20
 REVIEW_ACTIONS = {"open": "reviewer", "request_docs": "reviewer", "accept": "reviewer", "reject": "reviewer"}
 REVIEW_ACTIONS |= {"close": "reviewer", "appeal": "operator"}
+# Реестр заключений: черновик пишет оператор сессии, утверждает и отзывает юрист сессии (два разных лица).
+REGISTRY_CASE = "01_ok"
+REGISTRY_ACTIONS = {"approve": "reviewer", "revoke": "reviewer"}
+REGISTRY_DRAFTS_PER_SESSION = 10
+REGISTRY_READING: dict[str, dict[str, Any]] = {
+    "no_restriction": {"outcome": "no_restriction", "restrictions": [], "max_amount_rub": 1_000_000},
+    "threshold": {
+        "outcome": "restriction",
+        "restrictions": [{"kind": "approval_threshold", "value_rub": 300_000, "inclusive": False}],
+    },
+}
 DBO_SCENARIOS = ("pay", "replay", "over", "takeover")
 EFFECT_ORDER = {"refutes": 0, "needs_review": 1, "not_verified": 2, "supports": 3, "info": 4}
 SOURCE_LABEL = {
@@ -164,7 +175,11 @@ def evidence(report: dict[str, Any]) -> list[dict[str, Any]]:
         for ref in finding.get("refs") or []:
             doc = str(ref.get("doc_id") or "")
             label = SOURCE_LABEL.get(str(kinds.get(doc))) or (
-                "Реестр МЧД" if doc.startswith("registry") else "Сведения"
+                "Реестр МЧД"
+                if doc.startswith("registry")
+                else "Заключение юриста"
+                if doc.startswith("conclusion:")
+                else "Сведения"
             )
             sources.append({"source": label, "locator": ref.get("locator"), "quote": ref.get("quote")})
         rows.append(
@@ -242,9 +257,12 @@ def mount(app: FastAPI, *, sessions: Sessions, store: Store, issuer: DemoIssuer,
             raise ConsoleProblem(401, "сессия консоли закончилась: обновите страницу")
         return found
 
-    async def api(session: Session, role: str, method: str, path: str, body: Any = None) -> Reply:
+    async def api(
+        session: Session, role: str, method: str, path: str, body: Any = None, query: dict[str, str] | None = None
+    ) -> Reply:
         target: AsgiApp = app
-        return await call(target, method, path, token=session.token(role), client=f"console-{session.tag}", body=body)
+        tag = f"console-{session.tag}"
+        return await call(target, method, path, token=session.token(role), client=tag, body=body, query=query)
 
     async def json_body(request: Request) -> dict[str, Any]:
         try:
@@ -464,6 +482,94 @@ def mount(app: FastAPI, *, sessions: Sessions, store: Store, issuer: DemoIssuer,
             raise ConsoleProblem(422, "нужны expected_version и reason")
         payload = {"expected_version": version, "reason": reason.strip()[:300]}
         reply = await api(session, role, "POST", f"/v1/cases/{case_id}/review/{action}", payload)
+        if not reply.ok:
+            return passthrough(reply)
+        return JSONResponse({**reply.json(), "actor": session.principal_name(role)})
+
+    def registry_client() -> dict[str, Any]:
+        """Демо-клиент реестра: организация демо-кейсов и sha256 его устава в той же записи, что у загрузчика."""
+        manifest = demo_manifest(REGISTRY_CASE)
+        charter = next(d["content"] for d in manifest["documents"] if d["kind"] == "charter_text")
+        organization = manifest["organization"]
+        return {
+            "name": organization.get("name"),
+            "ogrn": organization.get("ogrn"),
+            "charter_sha256": hashlib.sha256(str(charter).encode("utf-8")).hexdigest(),
+            "case": REGISTRY_CASE,
+        }
+
+    @app.get(f"{PREFIX}/api/conclusions", include_in_schema=False)
+    async def registry_list(request: Request) -> JSONResponse:
+        session = session_of(request)
+        client = registry_client()
+        reply = await api(session, "reviewer", "GET", "/v1/conclusions", None, {"ogrn": str(client["ogrn"])})
+        if not reply.ok:
+            return passthrough(reply)
+        mine = {session.principal_name(role) for role in ("operator", "reviewer")}
+        items = [{**item, "mine": item.get("author") in mine} for item in reply.json()["items"][:20]]
+        return JSONResponse({"client": client, "items": items, "lawyer": session.principal_name("reviewer")})
+
+    @app.post(f"{PREFIX}/api/conclusions", include_in_schema=False)
+    async def registry_draft(request: Request) -> JSONResponse:
+        session = session_of(request)
+        body = await json_body(request)
+        reading = REGISTRY_READING.get(str(body.get("reading")))
+        basis = body.get("basis", "")
+        if reading is None or not isinstance(basis, str) or not basis.strip():
+            raise ConsoleProblem(422, "вывод: no_restriction или threshold; основание — непустой текст")
+        if session.drafts >= REGISTRY_DRAFTS_PER_SESSION:
+            raise ConsoleProblem(429, f"в одной сессии не больше {REGISTRY_DRAFTS_PER_SESSION} черновиков")
+        client = registry_client()
+        until = bank_today()
+        payload = {
+            "ogrn": client["ogrn"],
+            "charter_sha256": client["charter_sha256"],
+            "basis": basis.strip()[:300],
+            "operations": ["PAYMENT_SIGN"],
+            "valid_until": f"{int(until[:4]) + 1}{until[4:]}"
+            if until[5:] != "02-29"
+            else f"{int(until[:4]) + 1}-02-28",
+            **reading,
+        }
+        reply = await api(session, "operator", "POST", "/v1/conclusions", payload)
+        if not reply.ok:
+            return passthrough(reply)
+        session.drafts += 1
+        return JSONResponse({**reply.json(), "actor": session.principal_name("operator")})
+
+    @app.post(f"{PREFIX}/api/conclusions/check", include_in_schema=False)
+    async def registry_check(request: Request) -> JSONResponse:
+        """Демо-кейс в строгом профиле: находка R-CHR-002 называет применённое заключение или причину отказа."""
+        session = session_of(request)
+        await json_body(request)
+        reply = await api(session, "operator", "POST", "/v1/cases", demo_manifest(REGISTRY_CASE), {"profile": "strict"})
+        if not reply.ok:
+            return passthrough(reply)
+        report = reply.json()
+        session.remember(str(report["case_id"]), "Реестр: кейс 01_ok в строгом профиле", {"demo": REGISTRY_CASE})
+        charter = [f for f in report.get("findings") or [] if str(f.get("rule_id")).startswith("R-CHR")]
+        return JSONResponse(
+            {
+                **summary(report),
+                "title": "Кейс 01_ok в строгом профиле",
+                "charter": charter,
+                "conclusions": report.get("charter_conclusions") or {"applied": [], "not_applied": []},
+                "cases": session.cases,
+            }
+        )
+
+    @app.post(f"{PREFIX}/api/conclusions/{{conclusion_id}}/{{action}}", include_in_schema=False)
+    async def registry_action(conclusion_id: str, action: str, request: Request) -> JSONResponse:
+        session = session_of(request)
+        body = await json_body(request)
+        role = REGISTRY_ACTIONS.get(action)
+        if role is None:
+            raise ConsoleProblem(404, "действие с заключением: " + ", ".join(REGISTRY_ACTIONS))
+        version, reason = body.get("expected_version"), body.get("reason", "")
+        if isinstance(version, bool) or not isinstance(version, int) or not isinstance(reason, str):
+            raise ConsoleProblem(422, "нужны expected_version и reason")
+        payload = {"expected_version": version, "reason": reason.strip()[:300]}
+        reply = await api(session, role, "POST", f"/v1/conclusions/{conclusion_id}/{action}", payload)
         if not reply.ok:
             return passthrough(reply)
         return JSONResponse({**reply.json(), "actor": session.principal_name(role)})

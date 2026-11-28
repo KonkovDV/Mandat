@@ -64,6 +64,7 @@ class Session:
     sources: dict[str, Any] = field(default_factory=dict)
     dbo: DboState | None = None
     issued: int = 0
+    drafts: int = 0
 
     def principal_name(self, role: str) -> str:
         return f"stand-{self.tag}-{role}"

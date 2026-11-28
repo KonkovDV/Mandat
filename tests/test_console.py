@@ -504,3 +504,36 @@ def test_inproc_call_turns_a_crash_into_500():
 
     reply = asyncio.run(inproc.call(broken, "GET", "/x", token="t", client="c"))
     assert reply.status == 500 and not reply.ok and reply.json() == {"detail": "ответ API не JSON"}
+
+
+def test_lawyer_tab_registry_draft_approve_apply_and_revoke(app):
+    client = _client(app)
+    session = _session(app, client)
+    empty = client.get("/console/api/conclusions").json()
+    assert empty["items"] == [] and empty["client"]["case"] == "01_ok" and len(empty["client"]["charter_sha256"]) == 64
+    bad = client.post("/console/api/conclusions", json={"reading": "maybe", "basis": "x"})
+    assert bad.status_code == 422
+    draft = client.post("/console/api/conclusions", json={"reading": "no_restriction", "basis": "устав прочитан"})
+    assert draft.status_code == 200, draft.text
+    item = draft.json()
+    assert item["status"] == "draft" and item["actor"] == session.principal_name("operator")
+    before = client.post("/console/api/conclusions/check", json={}).json()
+    assert before["conclusions"]["applied"] == [] and before["verdict"] != "confirmed"
+    approved = client.post(f"/console/api/conclusions/{item['id']}/approve", json={"expected_version": 1}).json()
+    assert approved["status"] == "approved" and approved["actor"] == session.principal_name("reviewer")
+    after = client.post("/console/api/conclusions/check", json={}).json()
+    assert [a["id"] for a in after["conclusions"]["applied"]] == [item["id"]]
+    assert any(f"№ {item['id']}" in f["message"] for f in after["charter"])
+    assert any(row["source"] == "Заключение юриста" for e in after["evidence"] for row in e["sources"])
+    listed = client.get("/console/api/conclusions").json()["items"]
+    assert listed[0]["mine"] is True and listed[0]["applications"]["applied"] == 1
+    assert client.post(f"/console/api/conclusions/{item['id']}/erase", json={"expected_version": 2}).status_code == 404
+    stale = client.post(f"/console/api/conclusions/{item['id']}/revoke", json={"expected_version": 1, "reason": "x"})
+    assert stale.status_code == 409
+    revoked = client.post(f"/console/api/conclusions/{item['id']}/revoke", json={"expected_version": 2, "reason": "x"})
+    assert revoked.json()["status"] == "revoked"
+    assert (
+        client.post(f"/console/api/conclusions/{item['id']}/approve", json={"expected_version": "2"}).status_code == 422
+    )
+    session.drafts = 10
+    assert client.post("/console/api/conclusions", json={"reading": "threshold", "basis": "порог"}).status_code == 429
