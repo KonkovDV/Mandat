@@ -107,5 +107,6 @@ def test_events_at_the_edge_of_the_calendar_are_422_not_500(root: Path, moment: 
     # Клиенту общий текст и request_id, причина — в журнале сервера
     assert response.json()["detail"] == "события не разобраны"
     assert response.json()["request_id"] == response.headers["x-request-id"]
-    # Причина — в журнале сервера; числа в ней скрыты маской журнала, смысл остаётся.
-    assert "время события вне диапазона <num> годов" in caplog.text
+    # Причина — в журнале сервера: тип ошибки и путь поля, без присланного значения.
+    assert "ValueError at events[0].at" in caplog.text
+    assert moment not in caplog.text

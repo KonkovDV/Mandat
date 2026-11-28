@@ -31,6 +31,8 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
@@ -125,6 +127,29 @@ def _event_time(value: Any, warnings: list[str] | None = None) -> datetime:
     return parsed.astimezone(UTC)
 
 
+class EventFieldError(ValueError):
+    """Пачка событий не разобрана. ``field`` — путь поля и ``kind`` — тип ошибки: только их можно писать в журнал
+    сервера, текст ошибки несёт значения клиента."""
+
+    def __init__(self, field: str, kind: str, message: str) -> None:
+        super().__init__(message)
+        self.field = field
+        self.kind = kind
+
+
+@contextmanager
+def _at(path: str) -> Iterator[None]:
+    try:
+        yield
+    except EventFieldError:
+        raise
+    except KeyError as exc:
+        name = exc.args[0] if exc.args and isinstance(exc.args[0], str) and exc.args[0].isidentifier() else ""
+        raise EventFieldError(f"{path}.{name}" if name else path, "KeyError", f"нет поля {name}") from exc
+    except (TypeError, ValueError) as exc:
+        raise EventFieldError(path, type(exc).__name__, str(exc)) from exc
+
+
 def _rows(payload: dict[str, Any], key: str) -> list[Any]:
     if not isinstance(payload, dict):
         raise ValueError("тело событий должно быть объектом")
@@ -167,45 +192,55 @@ def _valid_until(value: Any, numbers: tuple[str, ...]) -> tuple[tuple[str, date]
 def parse_as_of(payload: dict[str, Any], warnings: list[str] | None = None) -> datetime | None:
     """Момент проверки сроков — поле ``as_of`` пачки. Нет поля — None: вызывающий берёт текущее время."""
     value = payload.get("as_of") if isinstance(payload, dict) else None
-    return None if value is None else _event_time(value, warnings)
+    with _at("as_of"):
+        return None if value is None else _event_time(value, warnings)
 
 
 def parse_events(payload: dict[str, Any], warnings: list[str] | None = None) -> tuple[list[GrantedRight], list[Event]]:
     """Права и события. Номера МЧД и ИНН приводятся к одному виду, отмена без номера МЧД — ошибка."""
     rights = []
-    for row in _rows(payload, "rights"):
-        if not isinstance(row, dict):
-            raise ValueError("право должно быть объектом")
-        numbers = _numbers(row.get("poa_numbers"))
-        rights.append(
-            GrantedRight(
-                right_id=str(row["right_id"]),
-                org_inn=normalize_inn(row["org_inn"]) or "",
-                representative_inn=normalize_inn(row["representative_inn"]) or "",
-                operation=str(row["operation"]),
-                poa_numbers=numbers,
-                eio_inn=normalize_inn(row.get("eio_inn")),
-                poa_valid_until=_valid_until(row.get("poa_valid_until"), numbers),
+    with _at("rights"):
+        right_rows = _rows(payload, "rights")
+    for index, row in enumerate(right_rows):
+        with _at(f"rights[{index}]"):
+            if not isinstance(row, dict):
+                raise ValueError("право должно быть объектом")
+            numbers = _numbers(row.get("poa_numbers"))
+            rights.append(
+                GrantedRight(
+                    right_id=str(row["right_id"]),
+                    org_inn=normalize_inn(row["org_inn"]) or "",
+                    representative_inn=normalize_inn(row["representative_inn"]) or "",
+                    operation=str(row["operation"]),
+                    poa_numbers=numbers,
+                    eio_inn=normalize_inn(row.get("eio_inn")),
+                    poa_valid_until=_valid_until(row.get("poa_valid_until"), numbers),
+                )
             )
-        )
     events = []
-    for row in _rows(payload, "events"):
-        if not isinstance(row, dict):
-            raise ValueError("событие должно быть объектом")
-        if row["kind"] not in EVENT_KINDS:
-            raise ValueError(f"неизвестный тип события {row['kind']!r}")
-        body = row.get("payload") or {}
-        if not isinstance(body, dict):
-            raise ValueError("payload события должен быть объектом")
-        if row["kind"] in {"POA_REVOKED", "POA_EXPIRED"}:
-            number = normalize_poa_number(body.get("number"))
-            if not number:
-                raise ValueError(f"событие {row['kind']} без номера МЧД: неполное событие не пропускается молча")
-            body = {**body, "number": number}
-        org = normalize_inn(row["org_inn"])
-        if not org:
-            raise ValueError("у события нет ИНН организации")
-        events.append(Event(row["kind"], org, _event_time(row["at"], warnings), body))
+    with _at("events"):
+        event_rows = _rows(payload, "events")
+    for index, row in enumerate(event_rows):
+        with _at(f"events[{index}]"):
+            if not isinstance(row, dict):
+                raise ValueError("событие должно быть объектом")
+            if row["kind"] not in EVENT_KINDS:
+                raise ValueError(f"неизвестный тип события {row['kind']!r}")
+            body = row.get("payload") or {}
+            if not isinstance(body, dict):
+                raise ValueError("payload события должен быть объектом")
+            if row["kind"] in {"POA_REVOKED", "POA_EXPIRED"}:
+                number = normalize_poa_number(body.get("number"))
+                if not number:
+                    raise ValueError(f"событие {row['kind']} без номера МЧД: неполное событие не пропускается молча")
+                body = {**body, "number": number}
+            org = normalize_inn(row["org_inn"])
+            if not org:
+                raise ValueError("у события нет ИНН организации")
+            at = row["at"]
+        with _at(f"events[{index}].at"):
+            moment = _event_time(at, warnings)
+        events.append(Event(row["kind"], org, moment, body))
     return rights, events
 
 

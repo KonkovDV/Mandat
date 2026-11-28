@@ -967,7 +967,9 @@ def create_app(
             rights, events = parse_events(payload, warnings)
             as_of = parse_as_of(payload, warnings) or datetime.now(UTC)
         except (KeyError, ValueError, TypeError) as exc:
-            raise ApiProblem(422, "события не разобраны", f"{type(exc).__name__}: {exc}") from exc
+            # Текст ошибки несёт значения клиента: в журнал сервера — только тип ошибки и путь поля.
+            where = f"{getattr(exc, 'kind', type(exc).__name__)} at {getattr(exc, 'field', 'body')}"
+            raise ApiProblem(422, "события не разобраны", where) from exc
         try:
             found = evaluate(rights, events, window_hours=window_hours, as_of=as_of, notice_days=notice_days)
         except ValueError as exc:
