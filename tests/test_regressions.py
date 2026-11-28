@@ -198,7 +198,31 @@ CHARTER_VARIANTS = {
     "nbsp": "Сделки на сумму свыше 300 000 рублей требуют одобрения общего собрания участников.",
     "jointly_with": "Платёжные документы генеральный директор подписывает совместно с главным бухгалтером.",
     "second_signature": "Для платёжных документов обязательна вторая подпись главного бухгалтера.",
+    "two_persons": "Платёжные документы подписываются двумя лицами: генеральным директором и главным бухгалтером.",
+    "two_signatures": "Платёжные документы оформляются за двумя подписями.",
+    "two_officials": "Распоряжения о списании средств действительны за подписью двух должностных лиц Общества.",
 }
+
+
+def _charter_kinds(sentence: str) -> set[str]:
+    from mandat.domain.model import TextDocument
+    from mandat.intake.charter import extract_charter_facts
+
+    return {f.kind for f in extract_charter_facts(TextDocument("charter", "0" * 64, "charter_text", sentence))}
+
+
+@pytest.mark.parametrize("variant", ["two_persons", "two_signatures", "two_officials"])
+def test_joint_signature_phrasings_are_found(variant):
+    """«Подписываются двумя лицами: …» и «за подписью двух должностных лиц» — совместная подпись."""
+    assert "joint_signature" in _charter_kinds(CHARTER_VARIANTS[variant])
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    ["Договор подписывается в двух экземплярах.", "Соглашение подписывается двумя сторонами и вступает в силу."],
+)
+def test_two_copies_or_two_parties_are_not_a_joint_signature(sentence):
+    assert "joint_signature" not in _charter_kinds(sentence)
 
 
 @pytest.mark.parametrize("variant", sorted(CHARTER_VARIANTS))

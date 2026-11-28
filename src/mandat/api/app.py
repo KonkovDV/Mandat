@@ -41,9 +41,10 @@ from mandat.api import authzen
 from mandat.api import review as review_api
 from mandat.api.principals import Directory, Principal, load_users
 from mandat.api.sealing import SealError, sealed
-from mandat.api.storage import Idem, Pending, ReviewVersionConflict, Store, open_store
+from mandat.api.storage import Idem, Pending, ReportQuotaExceeded, ReviewVersionConflict, Store, open_store
 from mandat.audit import journal
 from mandat.audit.attestation import NONCE_MIN_CHARS, OperationRequest
+from mandat.audit.status_list import known_risk
 from mandat.intake.case_loader import CaseError, load_case_inline
 from mandat.report.html import render
 from mandat.review.state_machine import (
@@ -162,7 +163,12 @@ class AdmissionBody(BaseModel):
 
     credential: dict[str, Any]
     request: AdmissionOperation
-    operation_risk: str | None = Field(default=None, max_length=32, description="уровень риска: payment, high, low…")
+    operation_risk: str | None = Field(
+        default=None,
+        max_length=32,
+        description="уровень риска из карты окон (payment, high, default…): окно свежести списка статусов задаёт "
+        "подписанная операция, это поле может его только сузить; слово не из карты — 422",
+    )
 
 
 # Основания удаления кейса: закрытый список вместо свободного текста, чтобы в журнал не попали ПДн.
@@ -310,8 +316,10 @@ class Guard:
         await self.app(scope, replay, secured)
 
 
-# Отчёты живут в памяти процесса. Без потолка поток POST /v1/cases съедает память (OWASP API4:2023).
+# Квота отчётов одного пользователя в хранилище. Без потолка поток POST /v1/cases съедает память (OWASP API4:2023);
+# потолок на владельца, а не общий, иначе один пользователь вытеснял бы чужие кейсы и опустошал очередь разбора.
 MAX_REPORTS = 1000
+QUOTA_DETAIL = "квота кейсов пользователя исчерпана: все кейсы в ней ждут разбора, новый кейс не сохранён"
 
 
 def _env_flag(name: str) -> bool:
@@ -503,7 +511,13 @@ def create_app(
             except (ValueError, OSError, journal.JournalKeyMissing, journal.JournalError):
                 return "skipped"
             if recorded:
-                return "committed" if shared.commit(pend.case_id, pend.attempt, MAX_REPORTS) else "superseded"
+                evicted: list[str] = []
+                try:
+                    done = shared.commit(pend.case_id, pend.attempt, MAX_REPORTS, evicted=evicted)
+                except ReportQuotaExceeded:
+                    return "over_quota"  # ожидающая запись снята: опубликовать её некуда
+                journal_evictions(evicted, pend.owner, "reconcile", pend.case_id)
+                return "committed" if done else "superseded"
         return "discarded" if shared.discard(pend.case_id, pend.attempt) else "superseded"
 
     def reconcile_all() -> dict[str, int]:
@@ -577,6 +591,13 @@ def create_app(
         else:
             report = verify_case(case, profile=profile).as_dict()
         case_id = report["case_id"]
+        # Квота владельца проверяется до записи в журнал; окончательно её держит commit.
+        try:
+            has_room = shared.room(principal.name, case_id, MAX_REPORTS)
+        except Exception as exc:
+            raise ApiProblem(503, "хранилище недоступно, кейс не сохранён", f"store: {type(exc).__name__}") from exc
+        if not has_room:
+            raise ApiProblem(429, QUOTA_DETAIL, f"quota: {MAX_REPORTS}")
         # Атомарная заявка на создание (в том числе при replace=true): из одновременных запросов с одним
         # case_id дальше проходит один, остальные получают 409, а не перезаписывают друг друга. Заявка
         # держится только на время записи: после успеха или любой ошибки она снимается, и честный повтор
@@ -641,8 +662,12 @@ def create_app(
                     shared.discard(case_id, attempt)
                 cause = f"journal: {type(exc).__name__}: {exc}"
                 raise ApiProblem(503, "журнал аудита недоступен, кейс не сохранён", cause) from exc
+        evicted: list[str] = []
         try:
-            committed = shared.commit(case_id, attempt, MAX_REPORTS)
+            committed = shared.commit(case_id, attempt, MAX_REPORTS, evicted=evicted)
+        except ReportQuotaExceeded as exc:
+            # Место заняли между проверкой и записью: попытка снята, в журнале остаётся только запись verify.
+            raise ApiProblem(429, QUOTA_DETAIL, f"quota: {MAX_REPORTS}, at commit") from exc
         except Exception as exc:
             # Запись в журнале уже есть, отчёт ждёт подтверждения: клиенту не 200, сверка завершит позже.
             raise ApiProblem(
@@ -650,6 +675,7 @@ def create_app(
             ) from exc
         if not committed:
             raise HTTPException(409, "запись вытеснена другой попыткой: повторите запрос")
+        journal_evictions(evicted, principal.name, principal.role, case_id)
         # Кейс без автоматического решения сразу встаёт в очередь разбора. При replace=true разбор начинается
         # заново по новому отчёту: прежний разбор уходит в «superseded» и в журнал (review_reset).
         # Сбой записи не отменяет кейс: разбор создастся при первом действии, но до того кейса нет в очереди,
@@ -659,6 +685,28 @@ def create_app(
         except Exception as exc:
             log.warning("review_seed_failed case_id=%s error=%s", case_id, type(exc).__name__)
         return report
+
+    def journal_evictions(evicted: list[str], actor: str, role: str, for_case: str) -> None:
+        """Отчёты, вытесненные квотой владельца ради ``for_case``, — в журнал: кейс уходит из хранилища не молча.
+
+        Отчёт уже опубликован, поэтому сбой этой записи ответ не меняет, а уходит в журнал сервера.
+        """
+        for gone in evicted:
+            if audit_log is None:
+                log.warning("report_evicted case_id=%s", scrub(gone))
+                continue
+            try:
+                journal.append(
+                    audit_log,
+                    action="evict_case",
+                    actor=actor,
+                    role=role,
+                    case_id=gone,
+                    reason="квота отчётов владельца: вытеснен самый старый кейс с закрытым разбором",
+                    details={"via": "api", "quota": MAX_REPORTS, "for_case": for_case},
+                )
+            except (ValueError, OSError, journal.JournalKeyMissing) as exc:
+                log.warning("evict_journal_failed case_id=%s error=%s", scrub(gone), type(exc).__name__)
 
     def seed_review(case_id: str, report: dict[str, Any], principal: Principal) -> None:
         fresh = review_api.initial(case_id, report, principal.name)
@@ -799,11 +847,18 @@ def create_app(
         return {"case_id": case_id, "erased": True, "reason": body.reason, "basis": basis}
 
     def review_target(case_id: str, principal: Principal) -> tuple[dict[str, Any], str]:
-        # reviewer разбирает любые кейсы, остальные видят свои; auditor и admin — все (только чтение разбора).
+        # Свои кейсы видит каждый, auditor и admin — все (только чтение разбора). reviewer видит чужой кейс, пока тот
+        # в разборе, или если уже действовал по нему (docs/RUN.md): автоматическое решение чужого кейса ему не видно.
         found = shared.get(case_id)
-        if found is None or not (principal.sees_all or principal.role == "reviewer" or found[1] == principal.name):
-            raise HTTPException(404, "кейс не найден")
-        return found
+        if found is not None and (principal.sees_all or found[1] == principal.name):
+            return found
+        if found is not None and principal.role == "reviewer":
+            body, _ = review_state(case_id, *found)
+            runs = [body, *(body.get("superseded") or [])]
+            acted = any(h.get("actor") == principal.name for run in runs for h in run.get("history") or [])
+            if acted or body.get("state") in {s.value for s in review_api.OPEN_STATES}:
+                return found
+        raise HTTPException(404, "кейс не найден")
 
     def review_state(case_id: str, report: dict[str, Any], owner: str) -> tuple[dict[str, Any], int]:
         try:
@@ -882,11 +937,12 @@ def create_app(
                 continue
             if not (principal.sees_all or principal.role == "reviewer" or body.get("created_by") == principal.name):
                 continue
-            if shared.get(case_id) is None:  # отчёт вытеснен из хранилища
-                continue
             item = review_api.view(case_id, body, version)
             item.pop("history")
             item.pop("superseded")
+            # Кейс в разборе квота не вытесняет. Если отчёта всё же нет (копия, сбой), кейс не прячется из очереди.
+            if shared.get(case_id) is None:
+                item["report_missing"] = True
             items.append(item)
         # Просроченные выше, внутри — по поднятому приоритету, затем по сроку.
         items.sort(
@@ -911,7 +967,9 @@ def create_app(
             rights, events = parse_events(payload, warnings)
             as_of = parse_as_of(payload, warnings) or datetime.now(UTC)
         except (KeyError, ValueError, TypeError) as exc:
-            raise ApiProblem(422, "события не разобраны", f"{type(exc).__name__}: {exc}") from exc
+            # Текст ошибки несёт значения клиента: в журнал сервера — только тип ошибки и путь поля.
+            where = f"{getattr(exc, 'kind', type(exc).__name__)} at {getattr(exc, 'field', 'body')}"
+            raise ApiProblem(422, "события не разобраны", where) from exc
         try:
             found = evaluate(rights, events, window_hours=window_hours, as_of=as_of, notice_days=notice_days)
         except ValueError as exc:
@@ -955,6 +1013,9 @@ def create_app(
                 "учётной записи не разрешён этот получатель удостоверения (audience)",
                 f"admission: audience not allowed for {principal.name}",
             )
+        if not known_risk(operation_risk):
+            # Окно свежести задаёт подписанная операция; незнакомое слово не угадывается, nonce не тронут.
+            raise ApiProblem(422, "уровень риска операции не из карты окон свежести", "operation_risk: unknown")
         try:
             operation = OperationRequest(
                 operation=fields.operation,

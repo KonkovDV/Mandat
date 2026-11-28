@@ -106,6 +106,19 @@ def test_full_cycle_and_journal(store, tmp_path):
     ]
 
 
+def test_reviewer_sees_a_foreign_case_only_in_review_or_after_acting_on_it(store, tmp_path):
+    client = _client(store, tmp_path)
+    auto = _case(client, "ok_charter_cleared")  # автоматическое решение: человеку разбирать нечего
+    assert client.get(f"/v1/cases/{auto}/review", headers=_h("op")).json()["state"] == "auto_decided"
+    assert client.get(f"/v1/cases/{auto}/review", headers=_h("rv")).status_code == 404
+    case_id = _case(client)
+    version = client.get(f"/v1/cases/{case_id}/review", headers=_h("rv")).json()["version"]
+    version = _act(client, case_id, "open", "rv", version).json()["version"]
+    assert _act(client, case_id, "accept", "rv", version).json()["state"] == "accepted"
+    assert client.get(f"/v1/cases/{case_id}/review", headers=_h("rv")).status_code == 200  # решал сам
+    assert client.get(f"/v1/cases/{case_id}/review", headers=_h("rv2")).status_code == 404
+
+
 def test_review_body_with_a_duplicate_key_is_422_and_not_journaled(store, tmp_path):
     """Строгий JSON и для маршрута разбора: два «reason» молча давали 200 и писали в журнал последнее значение."""
     client = _client(store, tmp_path)

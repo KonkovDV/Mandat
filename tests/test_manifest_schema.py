@@ -80,10 +80,22 @@ INVALID = {
     "registry principal_inn short": _set(("registry", "N-1"), {"status": "active", "principal_inn": "123"}),
     "charter_disposition unknown": _set(("charter_disposition",), "maybe"),
     "subdelegation form unknown": _set(("subdelegation_forms",), {"N-1": "oral"}),
+    # Одна МЧД под двумя ключами разного написания: ответ реестра выбирал бы порядок ключей в JSON.
+    "registry keys differ only by case": lambda m: (
+        m.update(registry={**{k.upper(): "active" for k in m["registry"]}, **{k: "revoked" for k in m["registry"]}}),
+        m,
+    )[1],
+    "subdelegation form keys differ only by case": _set(
+        ("subdelegation_forms",), {"n-1": "notarized", " {N-1}": "legal_entity"}
+    ),
 }
 
 # Дубли id схема JSON выразить не может (uniqueItems сравнивает объекты целиком): их ловит только загрузчик.
-SCHEMA_CANNOT = {"duplicate document id"}
+SCHEMA_CANNOT = {
+    "duplicate document id",
+    "registry keys differ only by case",
+    "subdelegation form keys differ only by case",
+}
 
 # Неизвестные поля: схема отвергает их всегда, загрузчик — в защищённом режиме; на стенде он предупреждает.
 UNKNOWN_FIELDS = {

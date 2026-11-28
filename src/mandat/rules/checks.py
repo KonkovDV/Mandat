@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import Any
 
 from mandat.data import load_json, sha256_json
@@ -506,6 +506,16 @@ def id_conflict(ctx: RuleContext) -> list[Finding]:
     ]
 
 
+def _absent(ctx: RuleContext, message: str, refs: list[EvidenceRef]) -> list[Finding]:
+    """Заявителя нет в разобранных МЧД. Если какая-то МЧД пакета не разобрана, он мог быть указан в ней:
+    это «не проверено», а не опровержение."""
+    unread = [err.doc_id for err in ctx.case.intake_errors if err.kind == "emchd_xml"]
+    if unread:
+        tail = f"; не разобрана МЧД {', '.join(unread)}, заявитель мог быть указан в ней"
+        return [ctx.emit("R-ID-003", E.NOT_VERIFIED, message + tail, refs)]
+    return [ctx.emit("R-ID-003", E.REFUTES, message, refs)]
+
+
 @rule("R-ID-003")
 def id_representative(ctx: RuleContext) -> list[Finding]:
     req = ctx.case.requester
@@ -521,7 +531,7 @@ def id_representative(ctx: RuleContext) -> list[Finding]:
         if not ctx.case.poas:
             return []
         refs = [poa.ref("representative.1") for poa in ctx.case.poas]
-        return [ctx.emit("R-ID-003", E.REFUTES, f"{req.label()} не указан представителем ни в одной МЧД пакета", refs)]
+        return _absent(ctx, f"{req.label()} не указан представителем ни в одной МЧД пакета", refs)
     leaf = ctx.chain.leaf
     assert leaf is not None
     if any(rep.conflicts_with(req) for rep in leaf.representatives) and not any(
@@ -538,7 +548,7 @@ def id_representative(ctx: RuleContext) -> list[Finding]:
                     [leaf.ref(f"representative.{index}")],
                 )
             ]
-    return [ctx.emit("R-ID-003", E.REFUTES, "Заявитель не совпадает с представителем", [leaf.ref("representative.1")])]
+    return _absent(ctx, "Заявитель не совпадает с представителем", [leaf.ref("representative.1")])
 
 
 _ORG_FORMS = {
@@ -588,6 +598,10 @@ def id_principal_name(ctx: RuleContext) -> list[Finding]:
 
 
 # --- реестр и срок ----------------------------------------------------------
+
+
+# Дата выписки — календарный день по Москве (UTC+3, без перехода на летнее время).
+_MOSCOW = timezone(timedelta(hours=3), "MSK")
 
 
 def _from_future(moment: datetime | None, now: datetime | None) -> bool:
@@ -1125,6 +1139,9 @@ def egrul_fresh(ctx: RuleContext) -> list[Finding]:
     ref = _egrul_ref(ctx, "$.extracted_at")
     if eg.extracted_at is None:
         return [ctx.emit("R-EIO-006", E.NOT_VERIFIED, "У сведений ЕГРЮЛ нет даты выписки", [ref])]
+    if _from_future(datetime.combine(eg.extracted_at, time.min, tzinfo=_MOSCOW), ctx.now):
+        text = f"Выписка ЕГРЮЛ датирована {eg.extracted_at:%d.%m.%Y}: это позже момента проверки"
+        return [ctx.emit("R-EIO-006", E.NOT_VERIFIED, text, [ref])]
     age = (on - eg.extracted_at).days
     if age > max_age:
         return [

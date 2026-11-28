@@ -238,6 +238,59 @@ def test_malformed_request_is_422(issuer, tmp_path, change):
     assert answer.status_code == 422, answer.text
 
 
+def _operation(nonce: str) -> attestation.OperationRequest:
+    return attestation.OperationRequest(
+        operation="PAYMENT_SIGN",
+        amount_rub=500_000,
+        representative_inn=REP_INN,
+        audience=AUDIENCE,
+        nonce=nonce,
+        organization_inn=ORG_INN,
+        operation_date=datetime.now(UTC).astimezone(BANK_TZ).date(),
+    )
+
+
+@pytest.mark.parametrize("env", ["demo", "pilot"])
+@pytest.mark.parametrize("risk", ["low", "archive", "default", "LOW ", None])
+def test_caller_cannot_widen_the_status_window_of_a_payment(issuer, tmp_path, monkeypatch, env, risk):
+    """Окно свежести списка задаёт подписанная операция: платёж по списку трёхдневной давности не допускается."""
+    monkeypatch.setenv("MANDAT_ENV", env)
+    nonce = "n-" + "w" * 20
+    cred = issuer.issue(nonce)
+    issuer.registry.save(issuer.key, now=datetime.now(UTC) - timedelta(days=3))
+    decision = admission.decide_detailed(
+        admission.AdmissionRequest(cred, _operation(nonce), risk),
+        issuer.config(),
+        MemoryStore(),
+        now=datetime.now(UTC),
+        protected=env != "demo",
+    )
+    assert any("список устарел" in p for p in decision.problems), decision.problems
+
+
+def test_stale_list_refuses_a_payment_over_http_whatever_risk_is_named(issuer, tmp_path):
+    nonce = "n-" + "v" * 20
+    cred = issuer.issue(nonce)
+    issuer.registry.save(issuer.key, now=datetime.now(UTC) - timedelta(days=3))
+    body = {**_body(cred, nonce), "operation_risk": "archive"}
+    answer = _client(issuer, tmp_path).post("/v1/operations/authorize", json=body, headers=HEADERS).json()
+    assert answer["allowed"] is False
+    assert any("список устарел" in p for p in answer["problems"]), answer
+
+
+@pytest.mark.parametrize("risk", ["lowest", "архив", "pay ment"])
+def test_unknown_operation_risk_is_422_and_does_not_burn_the_nonce(issuer, tmp_path, risk):
+    nonce = "n-" + "u" * 20
+    client = _client(issuer, tmp_path)
+    cred = issuer.issue(nonce)
+    body = {**_body(cred, nonce), "operation_risk": risk}
+    wrong = client.post("/v1/operations/authorize", json=body, headers=HEADERS)
+    assert wrong.status_code == 422, wrong.text
+    assert risk not in wrong.text
+    right = client.post("/v1/operations/authorize", json=_body(cred, nonce), headers=HEADERS)
+    assert right.json()["allowed"] is True, right.json()
+
+
 def test_route_answers_503_when_admission_is_not_configured(tmp_path, monkeypatch):
     monkeypatch.delenv("MANDAT_ATTESTATION_KEYRING", raising=False)
     app = create_app(token=TOKEN, store=MemoryStore(), journal_path=tmp_path / "j.jsonl")

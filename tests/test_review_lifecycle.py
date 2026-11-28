@@ -217,7 +217,8 @@ def test_appeal_after_close(store, tmp_path):
 def test_appeal_needs_operator_and_reason(store, tmp_path):
     client = _client(store, tmp_path)
     case_id, v = _decided(client)
-    assert _act(client, case_id, "appeal", "rv2", v).status_code == 403
+    assert _act(client, case_id, "appeal", "rv", v).status_code == 403  # решавший видит кейс, но жалобу не подаёт
+    assert _act(client, case_id, "appeal", "rv2", v).status_code == 404  # решённый чужой кейс другому не виден
     assert _act(client, case_id, "appeal", "op", v, reason=" ").status_code == 422
 
 

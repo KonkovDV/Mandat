@@ -26,7 +26,7 @@ from urllib.parse import urlparse
 from mandat.domain.model import Case
 from mandat.privacy.names import KnownPerson, known_people, mask_names
 from mandat.privacy.pii import for_model
-from mandat.privacy.unknown_names import mask_unknown_names
+from mandat.privacy.unknown_names import mask_unknown_names, mixed_words, normalize_letters
 from mandat.strictjson import strict_loads
 
 DATA_BEGIN = "<<<MANDAT_DOCUMENT_DATA_BEGIN>>>"
@@ -269,13 +269,20 @@ def minimize(text: str) -> str:
     return "\n".join(lines)
 
 
+class MixedAlphabet(ValueError):
+    """В тексте для модели осталось слово из кириллицы и латиницы вперемешку: словарь ФИО его не узнаёт."""
+
+
 def charter_messages(text: str, people: Iterable[KnownPerson] = ()) -> list[dict[str, str]]:
     """Запрос к модели: строки о полномочиях, ФИО известных людей — метками ролей, остальные ФИО — ``[ФИО]``
-    (словарь), затем ``for_model``."""
+    (словарь), затем ``for_model``. Двойники латиницы, разрядка и регистр выравниваются до поиска ФИО; слово, где
+    кириллица и латиница так и остались вперемешку, — ``MixedAlphabet``: такой текст модель не получает."""
+    masked = for_model(mask_unknown_names(mask_names(minimize(normalize_letters(text)), people)))
+    if mixed := mixed_words(masked):
+        # Самих слов в причине нет: в них может быть фамилия.
+        raise MixedAlphabet(f"в тексте для модели слов из кириллицы и латиницы вперемешку: {len(mixed)}")
     # Маркеры границ данных в самом тексте убираются: документ не может «закрыть» блок данных.
-    safe = (
-        for_model(mask_unknown_names(mask_names(minimize(text), people))).replace(DATA_BEGIN, "").replace(DATA_END, "")
-    )
+    safe = masked.replace(DATA_BEGIN, "").replace(DATA_END, "")
     return [
         {"role": "system", "content": CHARTER_PROMPT},
         {"role": "user", "content": f"{DATA_BEGIN}\n{safe}\n{DATA_END}"},

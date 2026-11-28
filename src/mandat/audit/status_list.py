@@ -157,6 +157,46 @@ def status_max_age_for(operation_risk: str | None = None) -> float:
     return risk_age
 
 
+# При допуске окно задаёт подписанная операция, а не слово вызывающей системы: платёж — payment, операция
+# высокого риска из каталога — high, остальные операции каталога — default, операция вне каталога — самое
+# строгое окно карты. ``operation_risk`` запроса окно только сужает.
+PAYMENT_OPERATIONS = frozenset({"PAYMENT_SIGN"})
+
+
+def known_risk(operation_risk: str | None) -> bool:
+    """Уровень риска из запроса есть в карте окон. Пустой — «не указан» — тоже допустим."""
+    risk = (operation_risk or "").strip().lower()
+    if not risk:
+        return True
+    try:
+        return risk in _risk_age_mapping()
+    except ValueError:  # карта банка не читается: допуск откажет по статусу с этой причиной
+        return risk in DEFAULT_STATUS_MAX_AGE_BY_RISK
+
+
+def operation_tier(operation: object) -> str | None:
+    """Уровень риска операции по каталогу: payment, high или default. ``None`` — операции нет в каталоге."""
+    from mandat.rules.pack import default_catalog
+
+    spec = default_catalog().get(operation) if isinstance(operation, str) else None
+    if spec is None:
+        return None
+    if spec.code in PAYMENT_OPERATIONS:
+        return "payment"
+    return "high" if spec.high_risk else "default"
+
+
+def admission_risk(operation: object, operation_risk: str | None = None) -> str:
+    """Уровень риска для свежести списка при допуске операции ``operation`` из удостоверения.
+
+    Из уровня операции и уровня запроса берётся тот, у которого окно короче: запрос может окно сузить, но не
+    расширить. Пустой уровень запроса значит то же, что в ``status_max_age_for``.
+    """
+    mapping = _risk_age_mapping()
+    tier = operation_tier(operation) or min(mapping, key=mapping.__getitem__)
+    return min((tier, (operation_risk or "").strip().lower()), key=status_max_age_for)
+
+
 def _lock_path(directory: Path) -> Path:
     return directory / ".registry.lock"
 

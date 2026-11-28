@@ -27,6 +27,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
@@ -553,14 +554,20 @@ def authorize_operation(
     """Допуск операции по удостоверению: подлинность + статус + вердикт confirmed + привязка к запросу.
 
     Успех ``validate_attestation`` при вердикте refuted/needs_review недостаточен для операции.
-    В pilot/prod обязателен ``seen`` (high-watermark списков) и учитывается ``operation_risk``.
+    В pilot/prod обязателен ``seen`` (high-watermark списков). Окно свежести списка задаёт подписанная операция
+    (``status_list.admission_risk``): ``operation_risk`` вызывающей системы его только сужает.
     В pilot/prod обязателен и ``request``: операция, сумма, представитель, ``audience`` и одноразовый ``nonce``
     сверяются с удостоверением; ``consume_nonce(nonce)`` возвращает True только при первом использовании.
     На стенде без ``request`` привязка не проверяется.
     """
+    from mandat.audit.status_list import admission_risk
     from mandat.services.env_policy import protected
 
     problems: list[str] = []
+    subject = _object(credential, "credentialSubject")
+    risk: str | None = operation_risk
+    with contextlib.suppress(ValueError):  # карта окон не читается: check_status откажет с той же причиной
+        risk = admission_risk(subject.get("operation"), operation_risk)
     require_seen = bool(protected())
     if require_seen and seen is None:
         problems.append("нет high-watermark seen: в защищённом режиме обязателен для допуска операции")
@@ -573,13 +580,12 @@ def authorize_operation(
             allow_demo=allow_demo,
             require_status=True,
             seen=seen,
-            operation_risk=operation_risk,
+            operation_risk=risk,
             # Если seen уже отсутствует — не дублируем ошибку check_status; age всё равно проверим
             # только когда watermark передан.
             require_seen=require_seen and seen is not None,
         )
     )
-    subject = _object(credential, "credentialSubject")
     verdict = subject.get("verdict")
     if verdict != "confirmed":
         problems.append(f"вердикт {verdict!r} не разрешает операцию: нужен confirmed")

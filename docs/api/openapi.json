@@ -47,7 +47,7 @@
                 "type": "null"
               }
             ],
-            "description": "уровень риска: payment, high, low…",
+            "description": "уровень риска из карты окон (payment, high, default…): окно свежести списка статусов задаёт подписанная операция, это поле может его только сузить; слово не из карты — 422",
             "title": "Operation Risk"
           },
           "request": {

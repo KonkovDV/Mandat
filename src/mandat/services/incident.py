@@ -31,6 +31,7 @@ PD_ACTIONS = {
     "read_case": "чтение отчёта",
     "read_report": "чтение карточки",
     "erase_case": "удаление",
+    "evict_case": "вытеснение по квоте",
     "authorize_operation": "допуск операции",
     "review_open": "разбор",
     "review_accept": "разбор",

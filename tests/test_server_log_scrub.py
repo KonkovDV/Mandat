@@ -61,3 +61,23 @@ def test_grouped_card_number_from_an_unhandled_error_never_reaches_the_log(monke
     assert "RuntimeError" in caplog.text
     for part in ("4111 1111", "1111 1111", "123-45-67", "(903)"):
         assert part not in caplog.text, part
+
+
+@pytest.mark.parametrize(
+    ("payload", "where"),
+    [
+        ({"as_of": "Иванова Мария, паспорт серии АБ"}, "ValueError at as_of"),
+        ({"rights": [{"org_inn": "Петров"}]}, "KeyError at rights[0].right_id"),
+        ({"events": [{"kind": "Сидоров", "org_inn": "1", "at": "x"}]}, "ValueError at events[0]"),
+        ({"events": "Сидоров"}, "ValueError at events"),
+    ],
+)
+def test_events_that_do_not_parse_log_the_field_not_the_client_text(caplog, payload, where):
+    """Причина отказа POST /v1/events — тип ошибки и путь поля: текст ошибки повторял значение клиента."""
+    client = TestClient(api.create_app(token=TOKEN, store=MemoryStore()), raise_server_exceptions=False)
+    with caplog.at_level(logging.WARNING, "mandat.api"):
+        answer = client.post("/v1/events", json=payload, headers={"Authorization": f"Bearer {TOKEN}"})
+    assert answer.status_code == 422
+    assert where in caplog.text
+    for part in ("Иванова", "паспорт", "Петров", "Сидоров"):
+        assert part not in caplog.text, part

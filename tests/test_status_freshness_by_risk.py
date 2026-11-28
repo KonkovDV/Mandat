@@ -9,7 +9,14 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from mandat.audit import attestation
-from mandat.audit.status_list import StatusRegistry, _risk_age_mapping, check_status, status_max_age_for
+from mandat.audit.status_list import (
+    StatusRegistry,
+    _risk_age_mapping,
+    check_status,
+    known_risk,
+    operation_tier,
+    status_max_age_for,
+)
 
 NOW = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
 
@@ -29,12 +36,13 @@ def _report(**extra):
     return base
 
 
-def _issued(tmp_path: Path, *, list_age: timedelta = timedelta(0)):
+def _issued(tmp_path: Path, *, list_age: timedelta = timedelta(0), code: str = "payment_sign"):
     key = Ed25519PrivateKey.generate()
     sd = tmp_path / "status"
     registry = StatusRegistry.open(sd)
     idx = registry.allocate({"org_inn": "7707083893", "verdict": "confirmed", "poa_numbers": ["poc"]})
-    cred = attestation.issue(_report(), key, now=NOW, status=registry.credential_status(idx))
+    report = _report(operation={"code": code, "date": NOW.date().isoformat()})
+    cred = attestation.issue(report, key, now=NOW, status=registry.credential_status(idx))
     registry.save(key, now=NOW - list_age)
     return key, cred, sd
 
@@ -187,3 +195,50 @@ def test_check_status_require_seen_without_seen_raises(tmp_path, monkeypatch: py
     key, cred, sd = _issued(tmp_path)
     with pytest.raises(ValueError, match="high-watermark seen"):
         check_status(cred, sd, key.public_key(), now=NOW + timedelta(minutes=1), require_seen=True)
+
+
+# --- допуск: окно задаёт подписанная операция, запрос его только сужает ---------------------------------------
+
+
+def _authorize(key, cred, sd, risk):
+    return attestation.authorize_operation(
+        cred, [key.public_key()], now=NOW + timedelta(minutes=1), status_dir=sd, seen={}, operation_risk=risk
+    )
+
+
+def test_operation_tier_comes_from_the_operation_catalog():
+    assert operation_tier("PAYMENT_SIGN") == "payment"
+    assert operation_tier("REQUISITES_CHANGE") == operation_tier("USER_ADMIN") == "high"
+    assert operation_tier("STATEMENT_VIEW") == "default"
+    assert operation_tier("payment_sign") is None and operation_tier(None) is None
+
+
+@pytest.mark.parametrize("env", ["demo", "pilot"])
+@pytest.mark.parametrize("risk", ["low", "archive", "archive_receipt", "default", "LOW ", None])
+def test_requested_risk_cannot_widen_the_window_of_a_signed_payment(tmp_path, monkeypatch, env, risk):
+    """Платёж по списку трёхдневной давности: окно платежа около часа, слово вызывающей системы его не расширяет."""
+    monkeypatch.setenv("MANDAT_ENV", env)
+    key, cred, sd = _issued(tmp_path, list_age=timedelta(days=3), code="PAYMENT_SIGN")
+    assert any("устарел" in p for p in _authorize(key, cred, sd, risk))
+
+
+def test_requested_risk_only_tightens_the_window_of_a_low_risk_operation(tmp_path, monkeypatch):
+    monkeypatch.setenv("MANDAT_ENV", "prod")
+    key, cred, sd = _issued(tmp_path, list_age=timedelta(hours=2), code="STATEMENT_VIEW")
+    assert not any("устарел" in p for p in _authorize(key, cred, sd, "default"))
+    assert any("устарел" in p for p in _authorize(key, cred, sd, "payment"))
+
+
+@pytest.mark.parametrize("risk", ["default", "archive", None])
+def test_operation_outside_the_catalog_gets_the_strictest_window(tmp_path, monkeypatch, risk):
+    monkeypatch.setenv("MANDAT_ENV", "demo")
+    key, cred, sd = _issued(tmp_path, list_age=timedelta(hours=2))  # payment_sign: такого кода в каталоге нет
+    assert any("устарел" in p for p in _authorize(key, cred, sd, risk))
+
+
+def test_known_risk_accepts_map_levels_and_blank_only(monkeypatch):
+    monkeypatch.setenv("MANDAT_ENV", "pilot")
+    assert all(known_risk(word) for word in ("payment", "LOW ", "default", "", None))
+    assert not any(known_risk(word) for word in ("lowest", "архив", "pay ment"))
+    monkeypatch.setenv("MANDAT_STATUS_MAX_AGE_BY_RISK", '{"card": 0.01}')
+    assert known_risk("card")

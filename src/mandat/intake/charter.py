@@ -74,6 +74,12 @@ def _pair(words: list[str], first: tuple[str, ...], second: tuple[str, ...], gap
     return False
 
 
+# «подписываются двумя лицами», «за подписью двух должностных лиц», «при наличии двух подписей».
+# «в двух экземплярах» и «двумя сторонами» совместной подписью не считаются.
+_SIGNER_COUNT = ("двумя", "двух", "двое", "два", "2", "тремя", "трёх", "трех", "3")
+_SIGNERS = ("лиц", "подпис", "должностн", "уполномоченн", "руководител")
+
+
 def _joint(words: list[str]) -> bool:
     if any(w == "совместно" and i + 1 < len(words) and words[i + 1] == "с" for i, w in enumerate(words)):
         return True
@@ -82,6 +88,7 @@ def _joint(words: list[str]) -> bool:
         or _pair(words, ("двумя",), ("подпис",), 1)
         or _pair(words, ("только",), ("совместно",), 1)
         or _pair(words, ("втор",), ("подпис",), 1)
+        or (_has(words, ("подпис",)) and _pair(words, _SIGNER_COUNT, _SIGNERS, 2))
     )
 
 

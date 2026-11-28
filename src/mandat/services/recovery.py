@@ -69,10 +69,11 @@ class RestoreReport:
 
 
 def _last_events(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Последнее событие жизни отчёта по каждому кейсу: создание (``verify``) или удаление (``erase_case``)."""
+    """Последнее событие жизни отчёта по каждому кейсу: создание (``verify``), удаление (``erase_case``) или
+    вытеснение квотой (``evict_case``)."""
     last: dict[str, dict[str, Any]] = {}
     for record in records:
-        if record.get("action") in ("verify", "erase_case") and isinstance(record.get("case_id"), str):
+        if record.get("action") in ("verify", "erase_case", "evict_case") and isinstance(record.get("case_id"), str):
             last[record["case_id"]] = record
     return last
 
@@ -211,6 +212,8 @@ def check_restore(
             report.erased_in_journal += 1
             _erased(store, case_id, record, journal_path, repair, report.findings)
             continue
+        if record["action"] == "evict_case":
+            continue  # отчёт вытеснен квотой: его нет в хранилище по правилу, а не из-за копии
         if (record.get("details") or {}).get("via") != "api":
             continue  # отчёты CLI и показа в хранилище API не попадают
         try:

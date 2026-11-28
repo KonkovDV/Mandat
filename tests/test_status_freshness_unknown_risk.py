@@ -24,25 +24,27 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("MANDAT_STATUS_MAX_AGE_BY_RISK", raising=False)
 
 
-def _report():
+def _report(code: str = "payment_sign"):
     return {
         "verdict": "confirmed",
         "profile": "strict",
         "organization": {"inn": "7707083893"},
         "requester": {"inn": "123456789012"},
-        "operation": {"code": "payment_sign", "date": NOW.date().isoformat()},
+        "operation": {"code": code, "date": NOW.date().isoformat()},
         "chain": {"poa_numbers": ["poc"]},
         "rule_pack": {"sha256": "a" * 64},
         "reproducibility_hash": "b" * 64,
     }
 
 
-def _issued(tmp_path: Path, *, list_age: timedelta = timedelta(0), revoke: bool = False, save_now=NOW):
+def _issued(
+    tmp_path: Path, *, list_age: timedelta = timedelta(0), revoke: bool = False, save_now=NOW, code="payment_sign"
+):
     key = Ed25519PrivateKey.generate()
     sd = tmp_path / "status"
     registry = StatusRegistry.open(sd)
     idx = registry.allocate({"org_inn": "7707083893", "verdict": "confirmed", "poa_numbers": ["poc"]})
-    cred = attestation.issue(_report(), key, now=NOW, status=registry.credential_status(idx))
+    cred = attestation.issue(_report(code), key, now=NOW, status=registry.credential_status(idx))
     if revoke:
         registry.mark(idx, "revocation", "test")
     registry.save(key, now=save_now - list_age)
@@ -200,12 +202,20 @@ def test_seen_file_not_created_when_status_unreadable(tmp_path, monkeypatch, cap
 
 
 def test_authorize_operation_prod_without_risk_is_strictest_but_default_passes(tmp_path, monkeypatch):
-    """Документированное ломающее изменение: authorize_operation без operation_risk в prod строже явного default."""
+    """Документированное ломающее изменение: authorize_operation без operation_risk в prod строже явного default.
+
+    Явный default действует, только если его допускает сама подписанная операция: окно платежа запрос не расширяет.
+    """
     monkeypatch.setenv("MANDAT_ENV", "prod")
-    key, cred, sd = _issued(tmp_path, list_age=timedelta(days=6))
+    key, cred, sd = _issued(tmp_path, list_age=timedelta(days=6), code="STATEMENT_VIEW")
     now = NOW + timedelta(minutes=1)
     common = {"now": now, "status_dir": sd, "seen": {}}
     blank = attestation.authorize_operation(cred, [key.public_key()], **common)
     assert any("устарел" in p for p in blank)
     explicit = attestation.authorize_operation(cred, [key.public_key()], operation_risk="default", **common)
     assert not any("устарел" in p for p in explicit)
+    key, cred, sd = _issued(tmp_path / "payment", list_age=timedelta(days=6), code="PAYMENT_SIGN")
+    payment = attestation.authorize_operation(
+        cred, [key.public_key()], now=now, status_dir=sd, seen={}, operation_risk="default"
+    )
+    assert any("устарел" in p for p in payment)
