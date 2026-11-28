@@ -1,5 +1,5 @@
 """Статичные карточки для жюри: копирует отчёты `mandat demo` из списка CARDS в docs/demo/ и,
-если есть Playwright с Chromium, снимает с них PNG 1280×800.
+если есть Playwright с Chromium, снимает с них PNG: окно 1280×800 с плотностью 2× (2560×1600 точек).
 
     mandat demo && python scripts/export_demo_cards.py
 """
@@ -36,7 +36,7 @@ def screenshots(pages: list[Path]) -> bool:
         return False
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page = browser.new_page(viewport={"width": 1280, "height": 800}, device_scale_factor=2)
         for html in pages:
             page.goto(html.resolve().as_uri())
             page.screenshot(path=str(html.with_suffix(".png")))
