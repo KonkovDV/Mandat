@@ -43,8 +43,7 @@ from mandat.api.principals import Directory, Principal, load_users
 from mandat.api.sealing import SealError, sealed
 from mandat.api.storage import Idem, Pending, ReportQuotaExceeded, ReviewVersionConflict, Store, open_store
 from mandat.audit import journal
-from mandat.audit.attestation import NONCE_MIN_CHARS, OperationRequest
-from mandat.audit.status_list import known_risk
+from mandat.audit.attestation import NONCE_MIN_CHARS
 from mandat.intake.case_loader import CaseError, load_case_inline
 from mandat.report.html import render
 from mandat.review.state_machine import (
@@ -499,13 +498,8 @@ def create_app(
         return principal
 
     def admitter(principal: Principal = Depends(auth)) -> Principal:
-        """Кто получает допуск операции.
-
-        В pilot и prod — только ``dbo``: служебная учётная запись системы банка, которая проводит операцию.
-        Сотрудник допуск к платежу не получает: разделение обязанностей и минимальные привилегии (приказ
-        ФСТЭК № 21, меры УПД.4 и УПД.5; ГОСТ Р 57580.1). На стенде допуск доступен и ролям с правом записи.
-        """
-        if principal.role == "dbo" or (principal.can_write and not protected()):
+        """Кто получает допуск операции: в pilot и prod — только ``dbo`` (``admission.may_request``)."""
+        if admission.may_request(principal, protected=protected()):
             return principal
         raise ApiProblem(
             403,
@@ -1044,11 +1038,10 @@ def create_app(
 
     def admission_ready() -> admission.AdmissionConfig:
         """Допуск настроен и в защищённом режиме у него есть общее хранилище nonce и журнал; иначе 503."""
-        if admit is None:
-            raise HTTPException(503, "допуск не настроен: задайте MANDAT_ATTESTATION_KEYRING и MANDAT_STATUS_DIR")
-        if protected() and (shared.name == "memory" or audit_log is None):
-            raise HTTPException(503, "в защищённом режиме допуск требует общего хранилища и журнала аудита")
-        return admit
+        try:
+            return admission.ready(admit, shared, audit_log, protected=protected())
+        except admission.AdmissionRefused as exc:
+            raise HTTPException(exc.status, exc.detail) from exc
 
     @app.post("/v1/operations/authorize", dependencies=[Depends(strict_json_object)])
     def authorize_operation(body: AdmissionBody, principal: Principal = Depends(admitter)) -> dict[str, Any]:
@@ -1069,91 +1062,22 @@ def create_app(
         *,
         via: str,
     ) -> dict[str, Any]:
-        """Решение о допуске и запись в журнал. Общая часть ``/v1/operations/authorize`` и AuthZEN."""
+        """Решение о допуске и запись в журнал (``admission.admit``); ``via`` — канал запроса для журнала."""
         config = admission_ready()
-        if principal.audiences and fields.audience not in principal.audiences:
-            # Учётная запись одного канала не расходует удостоверения другого; nonce не тронут.
-            raise ApiProblem(
-                403,
-                "учётной записи не разрешён этот получатель удостоверения (audience)",
-                f"admission: audience not allowed for {principal.name}",
-            )
-        if not known_risk(operation_risk):
-            # Окно свежести задаёт подписанная операция; незнакомое слово не угадывается, nonce не тронут.
-            raise ApiProblem(422, "уровень риска операции не из карты окон свежести", "operation_risk: unknown")
         try:
-            operation = OperationRequest(
-                operation=fields.operation,
-                amount_rub=fields.amount_rub,
-                representative_inn=fields.representative_inn,
-                audience=fields.audience,
-                nonce=fields.nonce,
-                organization_inn=fields.organization_inn,
-                operation_date=admission.parse_day(fields.operation_date),
-            )
-        except ValueError as exc:
-            raise ApiProblem(422, "запрос операции не соответствует схеме", str(exc)) from exc
-        moment = datetime.now(UTC)
-        try:
-            decision = admission.decide_detailed(
-                admission.AdmissionRequest(credential, operation, operation_risk),
-                config,
-                shared,
-                now=moment,
+            return admission.admit(
+                credential,
+                fields.model_dump(),
+                operation_risk,
+                principal,
+                config=config,
+                store=shared,
+                journal_path=audit_log,
+                via=via,
                 protected=protected(),
-            )
-        except Exception as exc:
-            raise ApiProblem(503, "хранилище недоступно, допуск не выдан", f"store: {type(exc).__name__}") from exc
-        problems = decision.problems
-        allowed = not problems
-        subject = credential.get("credentialSubject")
-        report_sha = subject.get("reportSha256") if isinstance(subject, dict) else None
-        if audit_log is not None:
-            try:
-                journal.append(
-                    audit_log,
-                    action="authorize_operation",
-                    actor=principal.name,
-                    role=principal.role,
-                    case_id=str(report_sha)[:64] if isinstance(report_sha, str) else "unknown",
-                    payload_hash=hashlib.sha256(
-                        json.dumps(
-                            {
-                                "credential": credential,
-                                "request": fields.model_dump(exclude={"representative_inn"}),
-                            },
-                            sort_keys=True,
-                            ensure_ascii=False,
-                        ).encode("utf-8")
-                    ).hexdigest(),
-                    details={
-                        "allowed": allowed,
-                        "operation": fields.operation,
-                        "audience": fields.audience,
-                        "problems": len(problems),
-                        "already_admitted": decision.already_admitted,
-                        "via": via,
-                    },
-                )
-            except (ValueError, OSError, journal.JournalKeyMissing) as exc:
-                # Допуск без записи в журнал не выдаётся: в защищённом режиме решение должно быть доказуемо.
-                # nonce, который занял этот допуск, освобождается: иначе повтор получил бы «уже допущен».
-                cause = f"journal: {type(exc).__name__}"
-                if allowed:
-                    try:
-                        shared.release(admission.nonce_key(fields.audience, fields.nonce))
-                    except Exception:  # noqa: BLE001 — недоступное хранилище: повтор получит отказ
-                        cause += "; nonce не освобождён"
-                raise ApiProblem(503, "журнал аудита недоступен, допуск не выдан", cause) from exc
-        return {
-            "allowed": allowed,
-            "problems": problems,
-            "already_admitted": decision.already_admitted,
-            "admitted_at": decision.admitted_at,
-            "operation": fields.operation,
-            "audience": fields.audience,
-            "checked_at": moment.isoformat(timespec="seconds"),
-        }
+            ).answer
+        except admission.AdmissionRefused as exc:
+            raise ApiProblem(exc.status, exc.detail, exc.cause) from exc
 
     # --- OpenID AuthZEN Authorization API 1.0: тот же допуск в стандартном конверте (api/authzen.py) ---------
 
