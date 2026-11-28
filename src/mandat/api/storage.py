@@ -15,6 +15,10 @@
 кейсов одного пользователя не вытесняет чужие. Сверх квоты уходят самые старые отчёты того же владельца, у которых
 разбор закрыт (``auto_decided``, ``accepted``, ``rejected``, ``closed``). Кейс в разборе или без прочитанного
 разбора не вытесняется: если места нет, новый отчёт не сохраняется (``ReportQuotaExceeded``).
+
+Заключения юриста по уставам (``review/conclusions.py``) лежат рядом с разборами и так же пишутся только по
+ожидаемой версии. Указатель «заключения организации» строится по полю ``ogrn`` тела записи; ОГРН записи не
+меняется. Счётчики применений — отдельно от записи: проверка кейса не переписывает заключение.
 """
 
 from __future__ import annotations
@@ -69,6 +73,24 @@ class ReportQuotaExceeded(RuntimeError):
         super().__init__(f"квота отчётов владельца {owner}: {limit}, вытеснить нечего")
         self.owner = owner
         self.limit = limit
+
+
+class ConclusionVersionConflict(RuntimeError):
+    """Заключение уже записано с другой версией: действие основано на устаревшем снимке."""
+
+    def __init__(self, conclusion_id: str, expected: int, current: int) -> None:
+        super().__init__(f"заключение {conclusion_id}: ожидалась версия {expected}, сейчас {current}")
+        self.conclusion_id = conclusion_id
+        self.expected = expected
+        self.current = current
+
+
+def conclusion_ogrn(body: dict[str, Any]) -> str:
+    """ОГРН записи заключения — ключ указателя «заключения организации». Без него запись не сохраняется."""
+    ogrn = body.get("ogrn")
+    if not isinstance(ogrn, str) or not ogrn:
+        raise ValueError("у записи заключения нет ОГРН")
+    return ogrn
 
 
 # Состояния, в которых кейс ждёт человека (``api/review.OPEN_STATES``): отчёт такого кейса не вытесняется.
@@ -183,6 +205,25 @@ class Store(Protocol):
     def watermark_raise(self, key: str, value: int) -> int:
         """Атомарно поднять watermark до ``value``, если он меньше; вернуть значение после записи."""
 
+    # --- Реестр заключений юриста: запись только по ожидаемой версии (CAS), указатель по ОГРН. ---
+    def conclusion_get(self, conclusion_id: str) -> tuple[dict[str, Any], int] | None:
+        """(заключение, версия) или None."""
+
+    def conclusion_put(self, conclusion_id: str, body: dict[str, Any], expected_version: int) -> int:
+        """Записать заключение, если текущая версия равна ``expected_version`` (0 — записи ещё нет).
+
+        Возвращает новую версию; иначе ``ConclusionVersionConflict``. ОГРН берётся из ``body["ogrn"]`` и не меняется.
+        """
+
+    def conclusion_list(self, ogrn: str) -> list[tuple[str, dict[str, Any], int]]:
+        """Заключения организации: (номер, заключение, версия), по номеру."""
+
+    def conclusion_tally(self, conclusion_id: str, cleared: bool) -> None:
+        """Учесть применение заключения в проверке; ``cleared`` — устав закрыт и кейс не ушёл к юристу."""
+
+    def conclusion_tallies(self, conclusion_ids: list[str]) -> dict[str, tuple[int, int]]:
+        """Сколько раз заключения применены и сколько операций закрыли: номер → (применено, закрыто)."""
+
 
 class MemoryStore:
     name = "memory"
@@ -200,6 +241,8 @@ class MemoryStore:
         self._idem: dict[tuple[str, str], tuple[str, str, float]] = {}
         self._reviews: dict[str, tuple[dict[str, Any], int]] = {}
         self._watermarks: dict[str, int] = {}
+        self._conclusions: dict[str, tuple[dict[str, Any], int]] = {}
+        self._tallies: dict[str, tuple[int, int]] = {}
 
     def watermark_get(self, key: str) -> int | None:
         with self._lock:
@@ -380,6 +423,37 @@ class MemoryStore:
             items = sorted(self._reviews.items())
         return [(cid, json.loads(json.dumps(body)), version) for cid, (body, version) in items]
 
+    def conclusion_get(self, conclusion_id: str) -> tuple[dict[str, Any], int] | None:
+        with self._lock:
+            found = self._conclusions.get(conclusion_id)
+            return (json.loads(json.dumps(found[0])), found[1]) if found else None
+
+    def conclusion_put(self, conclusion_id: str, body: dict[str, Any], expected_version: int) -> int:
+        ogrn = conclusion_ogrn(body)
+        copy = json.loads(json.dumps(body, ensure_ascii=False))
+        with self._lock:
+            old, current = self._conclusions.get(conclusion_id, ({}, 0))
+            if current != expected_version:
+                raise ConclusionVersionConflict(conclusion_id, expected_version, current)
+            if old and old.get("ogrn") != ogrn:
+                raise ValueError("ОГРН заключения не меняется")
+            self._conclusions[conclusion_id] = (copy, current + 1)
+            return current + 1
+
+    def conclusion_list(self, ogrn: str) -> list[tuple[str, dict[str, Any], int]]:
+        with self._lock:
+            items = sorted((cid, row) for cid, row in self._conclusions.items() if row[0].get("ogrn") == ogrn)
+        return [(cid, json.loads(json.dumps(body)), version) for cid, (body, version) in items]
+
+    def conclusion_tally(self, conclusion_id: str, cleared: bool) -> None:
+        with self._lock:
+            applied, closed = self._tallies.get(conclusion_id, (0, 0))
+            self._tallies[conclusion_id] = (applied + 1, closed + int(cleared))
+
+    def conclusion_tallies(self, conclusion_ids: list[str]) -> dict[str, tuple[int, int]]:
+        with self._lock:
+            return {cid: self._tallies.get(cid, (0, 0)) for cid in conclusion_ids}
+
 
 class SQLiteStore:
     """Одна БД на машину. ``BEGIN IMMEDIATE`` делает проверку и запись лимита атомарными между процессами."""
@@ -421,6 +495,13 @@ class SQLiteStore:
                 held INTEGER NOT NULL DEFAULT 1
             );
             CREATE TABLE IF NOT EXISTS watermarks (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS conclusions (
+                id TEXT PRIMARY KEY, ogrn TEXT NOT NULL, version INTEGER NOT NULL, body TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS conclusions_ogrn ON conclusions (ogrn);
+            CREATE TABLE IF NOT EXISTS conclusion_tallies (
+                id TEXT PRIMARY KEY, applied INTEGER NOT NULL DEFAULT 0, cleared INTEGER NOT NULL DEFAULT 0
+            );
             """
         )
         # Файлы старого формата: у таблицы seen нет столбца value. Строки first_seen остаются со значением NULL.
@@ -694,6 +775,52 @@ class SQLiteStore:
         rows = self._db().execute("SELECT case_id, body, version FROM reviews ORDER BY case_id").fetchall()
         return [(str(r[0]), json.loads(r[1]), int(r[2])) for r in rows]
 
+    # Заключения: проверка версии и запись под одной ``BEGIN IMMEDIATE``, как у разбора.
+    def conclusion_get(self, conclusion_id: str) -> tuple[dict[str, Any], int] | None:
+        row = self._db().execute("SELECT body, version FROM conclusions WHERE id = ?", (conclusion_id,)).fetchone()
+        return (json.loads(row[0]), int(row[1])) if row else None
+
+    def conclusion_put(self, conclusion_id: str, body: dict[str, Any], expected_version: int) -> int:
+        ogrn = conclusion_ogrn(body)
+        text = json.dumps(body, ensure_ascii=False)
+        with self._tx() as db:
+            row = db.execute("SELECT version, ogrn FROM conclusions WHERE id = ?", (conclusion_id,)).fetchone()
+            current = int(row[0]) if row else 0
+            if current != expected_version:
+                raise ConclusionVersionConflict(conclusion_id, expected_version, current)
+            if row is not None and row[1] != ogrn:
+                raise ValueError("ОГРН заключения не меняется")
+            db.execute(
+                "INSERT INTO conclusions (id, ogrn, version, body) VALUES (?, ?, ?, ?) ON CONFLICT(id) "
+                "DO UPDATE SET version = excluded.version, body = excluded.body",
+                (conclusion_id, ogrn, current + 1, text),
+            )
+            return current + 1
+
+    def conclusion_list(self, ogrn: str) -> list[tuple[str, dict[str, Any], int]]:
+        rows = (
+            self._db()
+            .execute("SELECT id, body, version FROM conclusions WHERE ogrn = ? ORDER BY id", (ogrn,))
+            .fetchall()
+        )
+        return [(str(r[0]), json.loads(r[1]), int(r[2])) for r in rows]
+
+    def conclusion_tally(self, conclusion_id: str, cleared: bool) -> None:
+        with self._tx() as db:
+            db.execute(
+                "INSERT INTO conclusion_tallies (id, applied, cleared) VALUES (?, 1, ?) ON CONFLICT(id) "
+                "DO UPDATE SET applied = applied + 1, cleared = cleared + excluded.cleared",
+                (conclusion_id, int(cleared)),
+            )
+
+    def conclusion_tallies(self, conclusion_ids: list[str]) -> dict[str, tuple[int, int]]:
+        out = {cid: (0, 0) for cid in conclusion_ids}
+        for cid in conclusion_ids:
+            row = self._db().execute("SELECT applied, cleared FROM conclusion_tallies WHERE id = ?", (cid,)).fetchone()
+            if row is not None:
+                out[cid] = (int(row[0]), int(row[1]))
+        return out
+
 
 class RedisStore:
     """Окно лимита — сортированное множество на клиента, отчёты — строки JSON, порядок — ещё одно множество."""
@@ -838,6 +965,19 @@ class RedisStore:
     return {cur + 1, cur}
     """
 
+    # CAS по версии заключения и указатель «заключения организации» в одном скрипте. -1 — версия не совпала,
+    # -2 — у записи другой ОГРН (он не меняется).
+    _CONCLUSION_PUT = """
+    local k = KEYS[1]
+    local cur = tonumber(redis.call('HGET', k, 'version') or '0')
+    if cur ~= tonumber(ARGV[1]) then return {-1, cur} end
+    local old = redis.call('HGET', k, 'ogrn')
+    if old and old ~= ARGV[3] then return {-2, cur} end
+    redis.call('HSET', k, 'version', cur + 1, 'body', ARGV[2], 'ogrn', ARGV[3])
+    redis.call('SADD', KEYS[2], ARGV[4])
+    return {cur + 1, cur}
+    """
+
     # Watermark только растёт: сравнение и запись в одном скрипте.
     _WATERMARK = """
     local cur = redis.call('GET', KEYS[1])
@@ -866,6 +1006,7 @@ class RedisStore:
         self._discard = client.register_script(self._DISCARD)
         self._erase = client.register_script(self._ERASE)
         self._review_put = client.register_script(self._REVIEW_PUT)
+        self._conclusion_put = client.register_script(self._CONCLUSION_PUT)
 
     def allow(self, client: str, limit: int, now: float | None = None) -> bool:
         now = time.time() if now is None else now
@@ -1011,6 +1152,47 @@ class RedisStore:
             if found is not None:
                 out.append((raw, found[0], found[1]))
         return out
+
+    def conclusion_get(self, conclusion_id: str) -> tuple[dict[str, Any], int] | None:
+        found = self.r.hmget(f"{self.prefix}conclusion:{conclusion_id}", "body", "version")
+        if found[0] is None:
+            return None
+        return json.loads(found[0]), int(found[1])
+
+    def conclusion_put(self, conclusion_id: str, body: dict[str, Any], expected_version: int) -> int:
+        ogrn = conclusion_ogrn(body)
+        new, current = self._conclusion_put(
+            keys=[f"{self.prefix}conclusion:{conclusion_id}", f"{self.prefix}conclusions:{ogrn}"],
+            args=[expected_version, json.dumps(body, ensure_ascii=False), ogrn, conclusion_id],
+        )
+        if int(new) == -2:
+            raise ValueError("ОГРН заключения не меняется")
+        if int(new) < 0:
+            raise ConclusionVersionConflict(conclusion_id, expected_version, int(current))
+        return int(new)
+
+    def conclusion_list(self, ogrn: str) -> list[tuple[str, dict[str, Any], int]]:
+        out: list[tuple[str, dict[str, Any], int]] = []
+        for cid in sorted(self._text(c) for c in self.r.smembers(f"{self.prefix}conclusions:{ogrn}")):
+            body, version, owner = self.r.hmget(f"{self.prefix}conclusion:{cid}", "body", "version", "ogrn")
+            # Номер в указателе чужой организации запись не отдаёт: ОГРН сверяется с самой записью.
+            if body is not None and self._text(owner) == ogrn:
+                out.append((cid, json.loads(body), int(version)))
+        return out
+
+    def conclusion_tally(self, conclusion_id: str, cleared: bool) -> None:
+        key = f"{self.prefix}conclusion-tally:{conclusion_id}"
+        pipe = self.r.pipeline()
+        pipe.hincrby(key, "applied", 1)
+        pipe.hincrby(key, "cleared", int(cleared))
+        pipe.execute()
+
+    def conclusion_tallies(self, conclusion_ids: list[str]) -> dict[str, tuple[int, int]]:
+        pipe = self.r.pipeline()
+        for cid in conclusion_ids:
+            pipe.hmget(f"{self.prefix}conclusion-tally:{cid}", "applied", "cleared")
+        rows = pipe.execute() if conclusion_ids else []
+        return {cid: (int(row[0] or 0), int(row[1] or 0)) for cid, row in zip(conclusion_ids, rows, strict=True)}
 
 
 def open_store(spec: str | None = None) -> Store:

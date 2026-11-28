@@ -127,6 +127,227 @@
         "title": "AdmissionOperation",
         "type": "object"
       },
+      "ConclusionAction": {
+        "additionalProperties": false,
+        "description": "Тело POST /v1/conclusions/{id}/approve и /revoke. ``expected_version`` — поле ``version`` записи.",
+        "properties": {
+          "expected_version": {
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "ConclusionAction",
+        "type": "object"
+      },
+      "ConclusionDraft": {
+        "additionalProperties": false,
+        "description": "Тело POST /v1/conclusions: черновик заключения юриста по одной редакции устава (docs/CONCLUSIONS.md).",
+        "properties": {
+          "basis": {
+            "description": "какие положения прочитаны и почему такой вывод",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Basis",
+            "type": "string"
+          },
+          "charter_sha256": {
+            "description": "sha256 документа устава — его редакция",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Charter Sha256",
+            "type": "string"
+          },
+          "max_amount_rub": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "предел суммы",
+            "title": "Max Amount Rub"
+          },
+          "ogrn": {
+            "description": "ОГРН юрлица — область заключения",
+            "pattern": "^\\d{13}$",
+            "title": "Ogrn",
+            "type": "string"
+          },
+          "operations": {
+            "description": "коды операций; пусто — все",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Operations",
+            "type": "array"
+          },
+          "outcome": {
+            "enum": [
+              "no_restriction",
+              "restriction"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "restrictions": {
+            "items": {
+              "$ref": "#/components/schemas/RestrictionBody"
+            },
+            "maxItems": 5,
+            "title": "Restrictions",
+            "type": "array"
+          },
+          "valid_until": {
+            "description": "последний день действия, не дальше года",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "title": "Valid Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ogrn",
+          "charter_sha256",
+          "outcome",
+          "basis",
+          "valid_until"
+        ],
+        "title": "ConclusionDraft",
+        "type": "object"
+      },
+      "ConclusionEdit": {
+        "additionalProperties": false,
+        "description": "Тело POST /v1/conclusions/{id}/confirm: автор подтверждает черновик, заданные поля заменяют проект.",
+        "properties": {
+          "basis": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
+          "expected_version": {
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "max_amount_rub": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Amount Rub"
+          },
+          "operations": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operations"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "no_restriction",
+                  "restriction"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "restrictions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RestrictionBody"
+                },
+                "maxItems": 5,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restrictions"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "ConclusionEdit",
+        "type": "object"
+      },
+      "ConclusionFromCase": {
+        "additionalProperties": false,
+        "description": "Тело POST /v1/cases/{id}/conclusion-draft: документы того же кейса, чтобы модель банка прочла устав.",
+        "properties": {
+          "manifest": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "манифест кейса; без него проект пуст",
+            "title": "Manifest"
+          }
+        },
+        "title": "ConclusionFromCase",
+        "type": "object"
+      },
       "EraseBody": {
         "additionalProperties": false,
         "description": "Тело POST /v1/cases/{id}/erase: основание удаления из закрытого списка.",
@@ -347,6 +568,56 @@
           "id"
         ],
         "title": "Resource",
+        "type": "object"
+      },
+      "RestrictionBody": {
+        "additionalProperties": false,
+        "description": "Ограничение устава в заключении юриста: вид, порог в рублях, «включительно» и цитата устава.",
+        "properties": {
+          "inclusive": {
+            "default": true,
+            "title": "Inclusive",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "approval_threshold",
+              "joint_signature",
+              "large_deal_approval"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "quote": {
+            "anyOf": [
+              {
+                "maxLength": 400,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote"
+          },
+          "value_rub": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Rub"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "RestrictionBody",
         "type": "object"
       },
       "ReviewAction": {
@@ -794,6 +1065,68 @@
         "summary": "Get Case"
       }
     },
+    "/v1/cases/{case_id}/conclusion-draft": {
+      "post": {
+        "description": "Проект заключения по кейсу, который ушёл на разбор из-за устава (R-CHR-002). Готовит юрист.\n\nС документами кейса и подключённой моделью банка проект заполняют факты устава, прошедшие шлюз цитаты;\nбез модели проект пуст. Прежнее заключение по другой редакции устава названо в проекте: разбор начинается\nс него. Проект действует только после подтверждения автором и утверждения вторым юристом.",
+        "operationId": "conclusion_from_case_v1_cases__case_id__conclusion_draft_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConclusionFromCase"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Conclusion From Case V1 Cases  Case Id  Conclusion Draft Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Conclusion From Case"
+      }
+    },
     "/v1/cases/{case_id}/erase": {
       "post": {
         "description": "Удалить отчёт кейса с ПДн по основанию из 152-ФЗ. Только администратор.\n\nПорядок: запись в журнал, закрытие разбора без истории, удаление отчёта. Сбой журнала — ничего не удалено.\nВ журнале остаются кейс, хеш отчёта, основание, категории ПДн и система, без самих данных: это выгрузка из\nжурнала, которой вместе с актом подтверждают уничтожение (приказ Роскомнадзора № 179, п. 2 и 5). Резервные\nкопии и снимки хранилища банк уничтожает своей процедурой.",
@@ -1026,6 +1359,346 @@
           }
         },
         "summary": "Review Action"
+      }
+    },
+    "/v1/conclusions": {
+      "get": {
+        "description": "Заключения организации по ОГРН, новые сверху: статус на сегодня, вывод, область, число применений.",
+        "operationId": "list_conclusions_v1_conclusions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ogrn",
+            "required": true,
+            "schema": {
+              "title": "Ogrn",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Conclusions V1 Conclusions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Conclusions"
+      },
+      "post": {
+        "description": "Черновик заключения по редакции устава. Пишет operator или reviewer, утверждает другой юрист.\n\n403 — роль; 422 — поля вывода; 429 — реестр организации полон; 503 — журнал или хранилище.",
+        "operationId": "create_conclusion_v1_conclusions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConclusionDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Conclusion V1 Conclusions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Conclusion"
+      }
+    },
+    "/v1/conclusions/{conclusion_id}": {
+      "get": {
+        "operationId": "get_conclusion_v1_conclusions__conclusion_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conclusion_id",
+            "required": true,
+            "schema": {
+              "title": "Conclusion Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Conclusion V1 Conclusions  Conclusion Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Conclusion"
+      }
+    },
+    "/v1/conclusions/{conclusion_id}/approve": {
+      "post": {
+        "description": "Второй юрист утверждает подтверждённый черновик: с этого момента строгий профиль его применяет.",
+        "operationId": "approve_conclusion_v1_conclusions__conclusion_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conclusion_id",
+            "required": true,
+            "schema": {
+              "title": "Conclusion Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConclusionAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Approve Conclusion V1 Conclusions  Conclusion Id  Approve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Conclusion"
+      }
+    },
+    "/v1/conclusions/{conclusion_id}/confirm": {
+      "post": {
+        "description": "Автор подтверждает черновик или исправляет его поля; без этого проект из кейса не утвердить.",
+        "operationId": "confirm_conclusion_v1_conclusions__conclusion_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conclusion_id",
+            "required": true,
+            "schema": {
+              "title": "Conclusion Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConclusionEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Confirm Conclusion V1 Conclusions  Conclusion Id  Confirm Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Conclusion"
+      }
+    },
+    "/v1/conclusions/{conclusion_id}/revoke": {
+      "post": {
+        "description": "Юрист отзывает заключение с причиной: следующие проверки его не применяют.",
+        "operationId": "revoke_conclusion_v1_conclusions__conclusion_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conclusion_id",
+            "required": true,
+            "schema": {
+              "title": "Conclusion Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConclusionAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Revoke Conclusion V1 Conclusions  Conclusion Id  Revoke Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Conclusion"
       }
     },
     "/v1/events": {

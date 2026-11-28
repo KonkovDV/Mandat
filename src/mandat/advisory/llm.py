@@ -393,6 +393,18 @@ def case_charter_messages(case: Case) -> RedactedMessages:
     return RedactedMessages(charter_messages(case.charter.text, known_people(case)), _seal=_SEAL)
 
 
+def charter_candidates(case: Case) -> tuple[list[dict[str, Any]], str]:
+    """Факты устава кейса от модели банка для проекта заключения юриста: кандидаты и текст, который видела модель.
+
+    Модель — из настроек этого модуля (``OpenAICompatClient.from_env``), выключена — ``LlmDisabled``. Запрос —
+    ``case_charter_messages``: только строки устава о полномочиях, ФИО — метками. Кандидаты ещё ничего не значат:
+    их проверяет шлюз цитаты (``gate.ground_candidates``), а проект утверждают два юриста.
+    """
+    client = OpenAICompatClient.from_env()
+    messages = case_charter_messages(case)
+    return parse_facts(client.complete(messages)), messages.messages[-1]["content"]
+
+
 def _answer(raw: str) -> Any:
     """JSON ответа модели от первой «{» до последней «}»; не JSON — ``None``."""
     start, end = raw.find("{"), raw.rfind("}")

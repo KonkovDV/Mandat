@@ -62,6 +62,14 @@ ACTIONS = (
     "erase_case",
     # Отчёт вытеснен из хранилища API квотой владельца: кейс пропал не молча.
     "evict_case",
+    # Реестр заключений юриста по уставам (review/conclusions.py): черновик, подтверждение автором, утверждение
+    # вторым юристом, отзыв, перепроверка при новой редакции устава и применение заключения в проверке кейса.
+    "conclusion_create",
+    "conclusion_confirm",
+    "conclusion_approve",
+    "conclusion_revoke",
+    "conclusion_recheck",
+    "conclusion_apply",
 )
 
 

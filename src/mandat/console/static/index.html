@@ -113,6 +113,17 @@
     <div class="toolbar"><button class="btn" type="button" id="review-refresh">Обновить очередь</button><span class="fine" id="review-who"></span></div>
     <div id="review-queue" class="results" aria-live="polite"></div>
     <div id="review-done" class="history"></div>
+    <article class="card form" id="registry">
+      <h2 class="section-title">Реестр заключений по уставу демо-клиента</h2>
+      <p class="note" id="registry-client">Юрист читает устав один раз на редакцию: заключение пишет оператор, утверждает другой сотрудник — юрист, а строгий профиль применяет его ко всем платежам клиента, пока устав тот же.</p>
+      <div class="grid2">
+        <div class="row"><label for="registry-reading">Вывод юриста</label><select id="registry-reading"><option value="no_restriction">ограничений на платежи нет (до 1 000 000 ₽)</option><option value="threshold">порог одобрения: свыше 300 000 ₽</option></select></div>
+        <div class="row"><label for="registry-basis">Основание</label><input id="registry-basis" type="text" maxlength="300" value="Устав прочитан целиком: полномочия директора на платежи не ограничены"></div>
+      </div>
+      <div class="actions"><button class="btn primary" type="button" id="registry-draft">Черновик от оператора</button><button class="btn" type="button" id="registry-check">Проверить 01_ok в строгом профиле</button></div>
+      <div id="registry-list" class="results" aria-live="polite"></div>
+      <div id="registry-result" class="results" aria-live="polite"></div>
+    </article>
   </section>
 
   <section class="panel" id="dbo" role="tabpanel" aria-labelledby="tab-dbo" hidden>

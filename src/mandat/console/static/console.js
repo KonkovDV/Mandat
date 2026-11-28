@@ -203,7 +203,7 @@
       if (on && focus) button.focus();
     });
     if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
-    if (name === "review") loadQueue();
+    if (name === "review") { loadQueue(); loadRegistry(); }
   }
   TABS.forEach((tab, index) => {
     const button = $("#tab-" + tab);
@@ -681,6 +681,83 @@
     });
   }
 
+  // --- «Юрист»: реестр заключений по уставу ---------------------------------------------------------------------
+  const CONCLUSION_STATE = {
+    draft: "review", approved: "ok", revoked: "no", recheck: "gap", expired: "gap",
+  };
+  async function loadRegistry() {
+    if (!state.session) return;
+    const reply = await call("GET", "/console/api/conclusions");
+    const target = clear($("#registry-list"));
+    if (!reply.ok) {
+      target.append(el("p", "note", "Реестр не загружен: " + problemText(reply)));
+      return;
+    }
+    const c = reply.data.client;
+    $("#registry-client").textContent = c.name + ", ОГРН " + c.ogrn + ", устав sha256 " + c.charter_sha256.slice(0, 12) +
+      "…: заключение пишет оператор, утверждает юрист сессии " + reply.data.lawyer + ", строгий профиль применяет его, пока устав тот же.";
+    if (!reply.data.items.length) target.append(el("p", "note", "Заключений по этому уставу ещё нет: запишите черновик."));
+    reply.data.items.forEach((item) => target.append(conclusionCard(item)));
+  }
+  function conclusionCard(item) {
+    const card = el("article", "card queue-item");
+    const head = el("div", "chips");
+    head.append(tag(CONCLUSION_STATE[item.status] || "gap", item.status_label), tag("info", item.outcome_label));
+    head.append(el("span", "fine", "№ " + item.id + " · версия " + item.version + (item.mine ? " · ваша сессия" : "")));
+    card.append(head, el("p", "msg", item.basis || "основание не записано"));
+    const who = "автор " + item.author + (item.approver ? ", утвердил " + item.approver : "") + ", действует до " + item.valid_until;
+    card.append(el("p", "fine", who + "; применено " + item.applications.applied + ", закрыло устав в " + item.applications.cleared));
+    const actions = el("div", "actions");
+    const add = (action, label, reason) => {
+      const button = el("button", "btn small", label);
+      button.type = "button";
+      button.addEventListener("click", async () => {
+        busy(button, true, "…");
+        const reply = await call("POST", "/console/api/conclusions/" + encodeURIComponent(item.id) + "/" + action, { expected_version: item.version, reason });
+        busy(button, false);
+        if (!reply.ok) notice("Действие не принято: " + problemText(reply));
+        loadRegistry();
+      });
+      actions.append(button);
+    };
+    if (item.status === "draft") add("approve", "Утвердить (юрист)", "сверено с уставом");
+    if (["draft", "approved", "recheck"].includes(item.status)) add("revoke", "Отозвать (юрист)", "устав изменён или вывод неверен");
+    card.append(actions);
+    return card;
+  }
+  $("#registry-draft").addEventListener("click", async () => {
+    const button = $("#registry-draft");
+    busy(button, true, "Записываем…");
+    const reply = await call("POST", "/console/api/conclusions", { reading: $("#registry-reading").value, basis: $("#registry-basis").value });
+    busy(button, false);
+    if (!reply.ok) notice("Черновик не записан: " + problemText(reply));
+    loadRegistry();
+  });
+  $("#registry-check").addEventListener("click", async () => {
+    const button = $("#registry-check");
+    busy(button, true, "Проверяем…");
+    const reply = await call("POST", "/console/api/conclusions/check", {});
+    busy(button, false);
+    if (!reply.ok) {
+      notice("Проверка не выполнена: " + problemText(reply));
+      return;
+    }
+    const d = reply.data;
+    const target = clear($("#registry-result"));
+    const v = VERDICT[d.verdict] || VERDICT.insufficient_data;
+    const card = el("article", "card verdict " + v.cls);
+    const body = el("div", "body");
+    body.append(el("p", "kicker", d.title), el("p", "label-big", d.verdict_label));
+    const applied = (d.conclusions.applied || []).map((a) => "№ " + a.id).join(", ");
+    body.append(el("p", "", applied ? "Устав закрыт заключением " + applied + "." : "Заключение не применено: устав идёт к юристу, как без реестра."));
+    d.charter.forEach((f) => body.append(findingNode({ ...f, sources: [] })));
+    body.append(el("p", "fine", "Строгий профиль на стенде не доверяет реестру, ЕГРЮЛ и подписи из пакета кейса, поэтому итог за человеком; на пилоте эти проверки закрывают адаптеры банка."));
+    card.append(body);
+    target.append(card);
+    updateCaseSelect(d.cases);
+    loadRegistry();
+  });
+
   // --- «ДБО» ----------------------------------------------------------------------------------------------------
   $("#ch-rest").addEventListener("click", () => channel("rest"));
   $("#ch-authzen").addEventListener("click", () => channel("authzen"));
@@ -873,7 +950,7 @@
   async function start() {
     selectTab(location.hash.slice(1) || "check");
     await openSession();
-    if (location.hash === "#review") loadQueue();
+    if (location.hash === "#review") { loadQueue(); loadRegistry(); }
     const reply = await call("GET", "/console/api/cases");
     if (reply.ok) {
       state.demo = reply.data.demo;

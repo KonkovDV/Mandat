@@ -206,13 +206,18 @@ def cmd_monitor(args: argparse.Namespace) -> int:
 
 
 def cmd_eval(args: argparse.Namespace) -> int:
+    from mandat.eval import repeat
     from mandat.eval.run import run_corpus
 
     metrics = run_corpus(args.per_defect, seed=args.seed, profile=args.profile)
+    # Повторные клиенты: доля платежей к человеку без реестра заключений юриста и с ним (eval/repeat.py).
+    clients = repeat.run().as_dict()
+    metrics["repeat_clients"] = clients
     text = json.dumps(metrics, ensure_ascii=False, indent=2)
     _write(Path(args.out) if args.out else None, text)
     print(text)
-    return 0 if metrics["false_confirmed"] == 0 and not metrics["mismatches"] else 1
+    clean = clients["false_confirmed_with_registry"] == 0
+    return 0 if metrics["false_confirmed"] == 0 and not metrics["mismatches"] and clean else 1
 
 
 def cmd_journal_verify(args: argparse.Namespace) -> int:
@@ -529,11 +534,20 @@ def cmd_showcase(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    from mandat.eval import repeat
+
     show = showcase.run(_repo_root(), Path(args.out))
     print(showcase.render_text(show))
     print(f"Шаги и решения: {Path(args.out) / 'showcase.json'}, журнал: {Path(args.out) / 'journal.jsonl'}")
+    # Второй сценарий — повторный клиент и реестр заключений юриста; свой журнал и свой файл итогов.
+    clients = repeat.run(journal_path=Path(args.out) / "repeat" / "journal.jsonl").as_dict()
+    repeat.write(clients, Path(args.out) / "repeat_clients.json")
+    print()
+    print(repeat.render_text(clients))
+    print(f"Итоги: {Path(args.out) / 'repeat_clients.json'}, журнал: {Path(args.out) / 'repeat' / 'journal.jsonl'}")
     refused_last = show.steps[-1].outcome == "ОТКАЗ"
-    return 0 if refused_last and show.journal_ok and show.proof_ok else 1
+    registry_ok = clients["journal"]["intact"] and clients["false_confirmed_with_registry"] == 0
+    return 0 if refused_last and show.journal_ok and show.proof_ok and registry_ok else 1
 
 
 def cmd_examples(args: argparse.Namespace) -> int:
@@ -852,7 +866,7 @@ def build_parser() -> argparse.ArgumentParser:
     asg.add_argument("--file", help="добавить запись в этот файл утверждений; без него — вывести")
     asg.set_defaults(func=cmd_approvals_sign)
 
-    sc = sub.add_parser("showcase", help="сценарий: захват компании останавливается до платежа")
+    sc = sub.add_parser("showcase", help="сценарии: захват до платежа и повторный клиент с реестром заключений")
     sc.add_argument("--out", default="var/showcase", help="каталог для журнала, списков статусов и отчёта сценария")
     sc.set_defaults(func=cmd_showcase)
 
