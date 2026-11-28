@@ -15,6 +15,7 @@ RFC 8785 (``tests/test_jcs.py``).
 from __future__ import annotations
 
 import math
+import re
 from decimal import Context, Decimal
 from typing import Any
 
@@ -31,7 +32,13 @@ def _utf16_key(text: str) -> bytes:
     return text.encode("utf-16-be", "surrogatepass")
 
 
+# Символы, которые экранируются или запрещены; строка без них записывается как есть, без посимвольного цикла.
+_SPECIAL = re.compile(r'["\\\x00-\x1f\ud800-\udfff]')
+
+
 def _string(text: str) -> str:
+    if _SPECIAL.search(text) is None:
+        return '"' + text + '"'
     out = ['"']
     for char in text:
         code = ord(char)
@@ -83,7 +90,8 @@ def canonicalize(value: Any) -> str:
     if isinstance(value, int):
         if abs(value) > MAX_SAFE:
             raise JcsError(f"целое {value} вне ±(2**53 − 1)")
-        return _number(float(value))
+        # Целое до 2**53 − 1 по модулю ECMAScript пишет цифрами без экспоненты — так же, как str (tests/test_jcs.py).
+        return str(value)
     if isinstance(value, float):
         return _number(value)
     if isinstance(value, str):
