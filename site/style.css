@@ -90,7 +90,7 @@ p, li { text-wrap: pretty; }
 .nowrap, .rule { white-space: nowrap; }
 .num { font-variant-numeric: tabular-nums; }
 
-/* ---------- Шапка: на телефоне разделы — лента под логотипом, её листают пальцем ---------- */
+/* ---------- Шапка: на телефоне и узком планшете (до 960 px) разделы — лента под логотипом, её листают пальцем ---------- */
 .top { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 84%, transparent); -webkit-backdrop-filter: saturate(160%) blur(12px); backdrop-filter: saturate(160%) blur(12px); border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
 .bar { display: flex; align-items: center; gap: 8px 14px; min-height: 60px; flex-wrap: wrap; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 800; letter-spacing: -0.02em; font-size: 20px; color: var(--ink); text-decoration: none; margin-right: auto; min-height: 44px; }
@@ -110,7 +110,7 @@ p, li { text-wrap: pretty; }
   :root:where(:not([data-theme="light"])) .theme .sun { display: none; }
   :root:where(:not([data-theme="light"])) .theme .moon { display: inline; }
 }
-@media (max-width: 1080px) {
+@media (max-width: 960px) {
   .bar { padding-bottom: 6px; }
   .nav { order: 3; width: 100%; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; gap: 6px; -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent); }
   .nav::-webkit-scrollbar { display: none; }
@@ -823,7 +823,7 @@ video { display: block; width: 100%; border-radius: 14px; border: 1px solid var(
 
 /* ---------- Навигация: маршруты по ролям, «Назад» и «Дальше», оглавление, карта сайта ---------- */
 /* Лента меню на телефоне: со скриптом края гаснут только там, где лента продолжается. */
-@media (max-width: 1080px) {
+@media (max-width: 960px) {
   .js .nav { -webkit-mask-image: none; mask-image: none; }
   .js .nav.can-right { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); }
   .js .nav.can-left { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
