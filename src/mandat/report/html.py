@@ -211,7 +211,7 @@ def render(report: dict[str, Any]) -> str:
     signals = "".join(f"<li>{_e(msg)}</li>" for msg in report.get("signals") or [])
     signals_html = f'<div class="card warn"><h2>Сигналы</h2><ul>{signals}</ul></div>' if signals else ""
     draft_html = (
-        "<li>Правила набора — черновик (draft): юрист банка их не утверждал.</li>"
+        "<li>Правила набора — черновик (draft): в силу их вводит подпись юриста банка.</li>"
         if (report.get("rule_pack") or {}).get("status", "draft") == "draft"
         else ""
     )
@@ -252,7 +252,7 @@ def render(report: dict[str, Any]) -> str:
 {docs_html}
 <div class="card"><h2>Что сделать дальше</h2><ul class="steps">{steps}</ul>
 <p class="muted">Очередь: {_e(QUEUE_RU.get(str(routing.get("queue")), routing.get("queue")))}
- · приоритет {_e(routing.get("priority") or "—")} · SLA {_e(routing.get("sla_hours") or "—")} ч (заглушка до калибровки с банком)</p>
+ · приоритет {_e(routing.get("priority") or "—")} · SLA {_e(routing.get("sla_hours") or "—")} ч (значение по умолчанию, сроки задаёт банк)</p>
 {right_html}</div>
 <div class="card"><h2>Группы проверок</h2><div class="table-wrap" role="region" aria-label="Группы проверок" tabindex="0"><table><caption class="muted">Статус каждой группы проверок</caption><tr><th scope="col">Группа</th><th scope="col">Статус</th></tr>{checks}</table></div></div>
 <div class="card"><h2>Находки и доказательства</h2><table class="stack"><caption class="muted">Правило, его эффект, вывод и ссылка на источник</caption><tr class="head"><th scope="col">Правило</th><th scope="col">Эффект</th><th scope="col">Вывод</th>

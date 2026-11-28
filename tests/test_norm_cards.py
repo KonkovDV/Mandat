@@ -45,7 +45,7 @@ def test_every_rule_has_exactly_one_card():
 @pytest.mark.parametrize("rule_id", sorted(PACK.rules))
 def test_card_does_not_claim_approval_and_shows_the_signed_hash(rule_id):
     text = (CARDS / f"{rule_id}.md").read_text(encoding="utf-8")
-    assert "**Статус:** черновик (`draft`). Юрист банка правило не утверждал." in text
+    assert "**Статус:** черновик (`draft`): в силу правило вводит подписанная запись юриста банка" in text
     for claim in ("утверждено юристом", "согласовано юристом", "Статус:** утверждено", "status: approved"):
         assert claim not in text
     assert f"`{rule_text_sha256(PACK.rules[rule_id])}`" in text
@@ -81,9 +81,9 @@ def test_repository_quotes_are_the_b3_orders_from_official_publication():
     for path in CARDS.glob("*.md"):
         text = path.read_text(encoding="utf-8")
         if path.stem in B3_RULES:
-            assert "сверено 2026-11-17" in text and "Цитаты из официальной публикации" not in text, path.name
+            assert "сверено 2026-11-17" in text and "Цитата из официальной публикации" not in text, path.name
         else:
-            assert "Цитаты из официальной публикации с адресом и датой сверки нет." in text, path.name
+            assert "Цитата из официальной публикации с адресом и датой сверки добавляется" in text, path.name
 
 
 @pytest.mark.parametrize(
