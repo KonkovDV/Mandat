@@ -888,7 +888,7 @@ def _footer(as_of: str, engine: str) -> str:
   <div class="wrap">
     {_site_map()}
     <p>{note}</p>
-    <div class="row"><span>Сборка {as_of} {built}{ci}, {engine}</span><span>{links}</span></div>
+    <div class="row"><span>Сборка {as_of} {built}{ci}, {engine}</span><span class="foot-links">{links}</span></div>
   </div>
 </footer>"""
 

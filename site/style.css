@@ -90,7 +90,7 @@ p, li { text-wrap: pretty; }
 .nowrap, .rule { white-space: nowrap; }
 .num { font-variant-numeric: tabular-nums; }
 
-/* ---------- Шапка: на телефоне разделы — лента под логотипом, её листают пальцем ---------- */
+/* ---------- Шапка: на телефоне и узком планшете (до 960 px) разделы — лента под логотипом, её листают пальцем ---------- */
 .top { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 84%, transparent); -webkit-backdrop-filter: saturate(160%) blur(12px); backdrop-filter: saturate(160%) blur(12px); border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
 .bar { display: flex; align-items: center; gap: 8px 14px; min-height: 60px; flex-wrap: wrap; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 800; letter-spacing: -0.02em; font-size: 20px; color: var(--ink); text-decoration: none; margin-right: auto; min-height: 44px; }
@@ -110,7 +110,7 @@ p, li { text-wrap: pretty; }
   :root:where(:not([data-theme="light"])) .theme .sun { display: none; }
   :root:where(:not([data-theme="light"])) .theme .moon { display: inline; }
 }
-@media (max-width: 1080px) {
+@media (max-width: 960px) {
   .bar { padding-bottom: 6px; }
   .nav { order: 3; width: 100%; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; gap: 6px; -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent); }
   .nav::-webkit-scrollbar { display: none; }
@@ -171,8 +171,12 @@ input[type="range"] { width: 100%; accent-color: var(--accent); min-height: 32px
 
 /* Амбассадор и 3D-значки — изображения из Figma (docs/VISUALS.md). Анна вымышлена, это подписано рядом с фото. */
 .credit { display: block; font-size: 12px; line-height: 1.35; color: var(--faint); }
+/* Портрет — Анна в полный рост, кадр 2 : 3 целиком, без обрезки: от головы до туфель на первом экране при 1280×800
+   и выше. Фигура занимает середину кадра (доли 0,29–0,67 по ширине), поэтому карточка проверки заходит только на
+   пустой левый край портрета; текст первого экрана всегда лежит над картинкой. */
+.hero-copy { position: relative; z-index: 1; }
 .hero-art { position: relative; margin: 0; display: grid; justify-items: end; }
-.hero-art .anna { display: block; width: 54%; aspect-ratio: 2 / 3; border-radius: 28px; overflow: hidden; background: #0a1f5c; box-shadow: 0 0 0 1px rgb(214 178 106 / 40%), 0 28px 60px rgb(10 41 115 / 28%); }
+.hero-art .anna { display: block; width: 62%; aspect-ratio: 2 / 3; border-radius: 28px; overflow: hidden; background: #0a1f5c; box-shadow: 0 0 0 1px rgb(214 178 106 / 40%), 0 28px 60px rgb(10 41 115 / 28%); }
 .hero-art .anna img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .hero-art .chain { position: absolute; left: 0; bottom: 6%; width: 56%; padding: 8px; border-radius: 22px; border: 1px solid color-mix(in srgb, var(--line-2) 70%, transparent);
   background: color-mix(in srgb, var(--card) 82%, transparent); -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3); box-shadow: var(--glow); }
@@ -197,7 +201,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); min-height: 32px
 }
 @media (max-width: 600px) {
   .hero-art { flex-direction: column; gap: 16px; }
-  .hero-art .anna { width: min(80%, 320px); }
+  .hero-art .anna { width: min(62%, 250px); }
   .hero-art .chain { width: min(100%, 380px); }
 }
 .page-art { float: right; width: clamp(96px, 15vw, 190px); height: auto; margin: -12px -8px 8px 20px; }
@@ -207,6 +211,16 @@ figure.page-art { margin: 0 0 8px 24px; width: clamp(120px, 17vw, 200px); }
 @media (max-width: 560px) { .page-art { width: 84px; margin: -6px -4px 4px 12px; } figure.page-art { width: 112px; margin: 0 0 6px 14px; } }
 /* На узком телефоне картинка шапки не обтекается текстом: иначе длинное слово заголовка не влезает в строку. */
 @media (max-width: 480px) { .page-art { float: none; display: block; width: 64px; margin: -6px 0 6px -6px; } figure.page-art { display: none; } }
+/* Анна в шапке «Экономики» — в полный рост, в шапке «Закона» — по плечи в круглой рамке. Картинка декоративная.
+   Заголовки этих страниц без длинных слов, поэтому и на узком телефоне фото остаётся справа маленьким, текст его
+   обтекает и под него не заходит. */
+figure.page-art.round { width: clamp(120px, 15vw, 184px); }
+.page-art.photo.round img { aspect-ratio: 1; border-radius: 50%; box-shadow: 0 0 0 1px rgb(214 178 106 / 55%), 0 18px 40px rgb(10 41 115 / 24%); }
+@media (max-width: 480px) {
+  figure.page-art.full, figure.page-art.round { display: block; float: right; width: 84px; margin: 0 0 6px 12px; }
+  .page-art.photo.full img { border-radius: 14px; }
+}
+@media (max-width: 340px) { figure.page-art.full, figure.page-art.round { float: none; margin: 0 0 8px; } }
 .banner { position: relative; margin: 0 0 32px; border-radius: 22px; overflow: hidden; background: #0a1f5c; box-shadow: var(--shadow); }
 .banner img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; object-position: 70% 0%; }
 .banner figcaption { position: absolute; inset: 0 auto 0 0; display: flex; flex-direction: column; justify-content: center; gap: 10px; width: min(46%, 520px);
@@ -537,6 +551,7 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space:
    на глазах (сдвиг вёрстки). Без JavaScript блок скрыт, как раньше. */
 .js #scenarios.seg[hidden] { display: block !important; visibility: hidden; min-height: 50px; }
 .js #calc.calc[hidden] { display: block !important; visibility: hidden; min-height: max(1320px, 100vh); }
+.js #lab-box.lab[hidden] { display: grid !important; visibility: hidden; }
 .result { margin-top: 14px; padding: 14px 16px; border-radius: 14px; font-weight: 600; }
 .result.ok { background: var(--ok-bg); color: var(--ok); }
 .result.no { background: var(--no-bg); color: var(--no); }
@@ -648,8 +663,10 @@ video { display: block; width: 100%; border-radius: 14px; border: 1px solid var(
 
 /* ---------- Подвал ---------- */
 .foot { padding: 28px 0 calc(40px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
-.foot .row { display: flex; flex-wrap: wrap; gap: 8px 22px; justify-content: space-between; }
+.foot .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; justify-content: space-between; }
 .foot a { color: var(--muted); }
+/* «Код на GitHub» и «Наверх» — цели касания 44 px в высоту, а не строка текста. */
+.foot-links a { display: inline-flex; align-items: center; min-height: 44px; }
 
 /* Появление по прокрутке: только там, где есть scroll-driven animations; без них всё видно сразу */
 @supports (animation-timeline: view()) {
@@ -823,7 +840,7 @@ video { display: block; width: 100%; border-radius: 14px; border: 1px solid var(
 
 /* ---------- Навигация: маршруты по ролям, «Назад» и «Дальше», оглавление, карта сайта ---------- */
 /* Лента меню на телефоне: со скриптом края гаснут только там, где лента продолжается. */
-@media (max-width: 1080px) {
+@media (max-width: 960px) {
   .js .nav { -webkit-mask-image: none; mask-image: none; }
   .js .nav.can-right { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); }
   .js .nav.can-left { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
@@ -951,7 +968,7 @@ html.on-route body { padding-bottom: 80px; }
 .strip .stages li.done b::after { content: " ✓"; color: var(--ok); }
 @media (max-width: 700px) { .strip { padding: 12px 0; } .strip .stages li:not(.now) { display: none; } }
 /* Телефон: сначала схема цепочки — она объясняет продукт, портрет меньше и после неё. */
-@media (max-width: 600px) { .hero-art .live { order: -1; } .hero-art .anna { width: min(56%, 230px); } }
+@media (max-width: 600px) { .hero-art .live { order: -1; } .hero-art .anna { width: min(62%, 250px); } }
 .two .kicker { margin-bottom: 8px; }
 .answers { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; margin: 10px 0 18px; }
 .answers div { padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
@@ -1039,7 +1056,7 @@ html.on-route body { padding-bottom: 80px; }
 .hero.scene .hero-art .anna { box-shadow: 0 0 0 1px rgb(214 178 106 / 55%), 0 30px 70px rgb(0 0 0 / 45%); }
 @media (max-width: 800px) { .hero.scene { background-image: url("img/bg-lux-768.webp"); } }
 
-.hero-art .live { position: absolute; left: 0; bottom: 6%; width: 56%; padding: 16px 16px 14px; border-radius: 22px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--line-2) 70%, transparent); background: var(--card); color: var(--ink); box-shadow: 0 26px 60px rgb(0 0 0 / 38%); }
+.hero-art .live { position: absolute; z-index: 1; left: 0; bottom: 6%; width: 54%; padding: 16px 16px 14px; border-radius: 22px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--line-2) 70%, transparent); background: var(--card); color: var(--ink); box-shadow: 0 26px 60px rgb(0 0 0 / 38%); }
 .hero-art .live::after { content: ""; position: absolute; top: -30%; bottom: -30%; left: 0; width: 34%; pointer-events: none; opacity: 0; background: linear-gradient(90deg, transparent, rgb(255 255 255 / 42%), transparent); transform: translateX(-160%) rotate(16deg); }
 .live-top { display: flex; align-items: center; gap: 8px; min-height: 26px; margin: 0 0 4px; padding-right: 36px; font: 800 11.5px/1.3 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
 .live-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ok-mark); }
@@ -1078,3 +1095,15 @@ html.on-route body { padding-bottom: 80px; }
 @keyframes live-in { from { opacity: 0; transform: translateY(8px); } }
 @media (max-width: 1023px) { .hero-art .live { position: relative; left: auto; bottom: auto; width: min(50%, 360px); flex: none; } }
 @media (max-width: 600px) { .hero-art .live { width: min(100%, 380px); } }
+
+/* ---------- Касание пальцем: цели не меньше 44 × 44 px (WCAG 2.5.5) ----------
+   Только для сенсорных экранов: с мышью и трекпадом ленты, оглавления и подвал остаются плотными. */
+@media (pointer: coarse) {
+  .roles a, .audience a, .toc a, .pager-all a, .scrub-date { min-height: 44px; }
+  .pager-track a { height: 44px; }
+  .foot-map a { display: inline-flex; align-items: center; min-height: 44px; padding: 0; }
+  details:not(.fold) > summary { min-height: 44px; padding-block: 8px; }
+  .inputs input[type="range"], .law-ctl input[type="range"] { min-height: 44px; }
+  .live-toggle { top: 4px; right: 4px; width: 44px; height: 44px; }
+  .live-top { padding-right: 46px; }
+}
