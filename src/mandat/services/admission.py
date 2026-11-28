@@ -25,7 +25,7 @@ import hashlib
 import hmac
 import json
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -84,20 +84,45 @@ class AdmissionConfig:
 
 
 class StoreWatermarks(dict[str, int]):
-    """``seen`` для ``check_status``: недостающий список читается из хранилища при первом обращении."""
+    """``seen`` для ``check_status``: недостающий список читается из хранилища при первом обращении.
+
+    Хранилище с ``watermark_get_many`` и ``watermark_raise_many`` (Redis) читает и пишет watermark всех списков
+    удостоверения за один обмен; остальные — по одному, как раньше. Значения и порядок те же. Предвыборка
+    необязательна: если она не удалась, чтение по ключу внутри проверки статуса сообщит об ошибке как раньше.
+    """
 
     def __init__(self, store: Store) -> None:
         super().__init__()
         self._store = store
+        self._absent: set[str] = set()
+
+    def prefetch(self, keys: Iterable[str]) -> None:
+        many = getattr(self._store, "watermark_get_many", None)
+        wanted = [k for k in dict.fromkeys(keys) if k not in self and k not in self._absent]
+        if many is None or not wanted:
+            return
+        try:
+            fetched = many(wanted)
+        except Exception:  # noqa: BLE001 — сбой хранилища проявится в обычном чтении, с прежним ответом
+            return
+        for key, value in fetched.items():
+            if value is None:
+                self._absent.add(key)
+            else:
+                super().__setitem__(key, value)
 
     def get(self, key: str, default: Any = None) -> Any:
-        if key not in self:
+        if key not in self and key not in self._absent:
             stored = self._store.watermark_get(key)
             if stored is not None:
                 super().__setitem__(key, stored)
         return super().get(key, default)
 
     def save(self) -> None:
+        many = getattr(self._store, "watermark_raise_many", None)
+        if many is not None and len(self) > 1:
+            many(dict(self))
+            return
         for key, value in self.items():
             self._store.watermark_raise(key, value)
 
@@ -188,6 +213,14 @@ def decide_detailed(
         return False
 
     try:
+        statuses = request.credential.get("credentialStatus") if isinstance(request.credential, dict) else None
+        if isinstance(statuses, list):
+            # Ключ — как у check_status: id списка и эпоха. Не совпал — список читается по одному, как раньше.
+            seen.prefetch(
+                f"{entry.get('statusListCredential')}#{entry.get('epoch', '')}"
+                for entry in statuses
+                if isinstance(entry, dict)
+            )
         problems = attestation.authorize_operation(
             request.credential,
             config.keyring,

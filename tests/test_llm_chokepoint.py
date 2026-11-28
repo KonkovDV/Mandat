@@ -65,6 +65,7 @@ HTTP_ALLOWED = {
     "scripts/pilot_smoke.py": "проверка стенда по HTTP",
     "scripts/tlog_live_check.py": "живая проверка журнала прозрачности",
     "tools/load/run_load.py": "нагрузочный тест API",
+    "scripts/load_test.py": "нагрузочный тест API на потоке vtb_prod и допуска ДБО",
     "tools/experiments/ner_names/fetch.py": "загрузка публичных данных эксперимента (Wikidata, Викитека)",
 }
 

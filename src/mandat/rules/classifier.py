@@ -18,7 +18,7 @@ import io
 import json
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -161,8 +161,18 @@ def from_payload(payload: dict[str, Any]) -> Classifier:
     )
 
 
+_DEFAULT: dict[int, tuple[dict[str, Any], Classifier]] = {}
+
+
 def default_classifier() -> Classifier:
-    return from_payload(load_json("authority_classifier.json"))
+    """Снимок классификатора из пакета; разбирается один раз на объект данных ``load_json``.
+    Каждый вызов, как и раньше, получает свой словарь записей."""
+    payload = load_json("authority_classifier.json")
+    hit = _DEFAULT.get(id(payload))
+    if hit is None or hit[0] is not payload:
+        _DEFAULT.clear()
+        hit = _DEFAULT[id(payload)] = (payload, from_payload(payload))
+    return replace(hit[1], entries=dict(hit[1].entries))
 
 
 ESNSI_COLUMNS = {"code": "CODE", "mnemonic": "MNEMONIC", "name": "NAME", "started": "STARTED", "revoked": "REVOKED"}

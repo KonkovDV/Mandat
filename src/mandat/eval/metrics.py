@@ -27,8 +27,23 @@ def wilson_interval(successes: int, n: int, z: float = Z95) -> tuple[float, floa
 
 
 def _binom_cdf(x: int, n: int, p: float) -> float:
-    """P(X ≤ x) для X ~ Bin(n, p)."""
-    return math.fsum(math.comb(n, k) * p**k * (1 - p) ** (n - k) for k in range(x + 1))
+    """P(X ≤ x) для X ~ Bin(n, p).
+
+    На потоке в десятки тысяч кейсов биномиальный коэффициент не помещается во float: тогда сумма считается
+    в логарифмах. Там, где прямая сумма считается, результат прежний.
+    """
+    try:
+        return math.fsum(math.comb(n, k) * p**k * (1 - p) ** (n - k) for k in range(x + 1))
+    except OverflowError:
+        pass
+    if p <= 0.0:
+        return 1.0
+    if p >= 1.0:
+        return 1.0 if x >= n else 0.0
+    log_p, log_q, log_n = math.log(p), math.log1p(-p), math.lgamma(n + 1)
+    terms = [log_n - math.lgamma(k + 1) - math.lgamma(n - k + 1) + k * log_p + (n - k) * log_q for k in range(x + 1)]
+    top = max(terms)
+    return math.exp(top) * math.fsum(math.exp(t - top) for t in terms)
 
 
 def _bisect(f: Callable[[float], float], lo: float, hi: float, iterations: int = 100) -> float:

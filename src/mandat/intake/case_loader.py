@@ -11,8 +11,11 @@ import json
 import os
 import re
 import stat
+import threading
+from collections import OrderedDict
 from collections.abc import Callable
 from datetime import date, datetime
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +31,55 @@ from mandat.strictjson import strict_loads
 KINDS = {"emchd_xml", "egrul_json", "charter_text", "paper_poa_text"}
 MAX_DOCUMENTS = 500  # длинные цепочки до 300 звеньев проверяет test_long_expired_chain_is_bounded
 MAX_DOC_BYTES = 4 * 1024 * 1024
+
+
+class ParseCache:
+    """Разобранные МЧД и выписки ЕГРЮЛ по содержимому: ту же МЧД проверяют на каждой сессии ДБО и платеже, ту же
+    выписку — у всех представителей клиента.
+
+    Разбор — чистая функция байтов документа и его id (id входит в ссылки на доказательства), результат —
+    неизменяемые объекты. Ключ — вид документа, id и SHA-256 байтов, поэтому другой документ или другой id —
+    промах. Кэшируется только разбор: реестр, ЕГРЮЛ на дату операции, правила и вердикт считаются на каждый
+    запрос. Ошибки разбора не кэшируются. Размер — ``MANDAT_PARSE_CACHE`` записей (по умолчанию 2048, около
+    13 МБ на воркер; 0 выключает), вытеснение LRU.
+    """
+
+    def __init__(self, size: int) -> None:
+        self.size = size
+        self.hits = self.misses = 0
+        self._data: OrderedDict[tuple[str, str, str], Any] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key: tuple[str, str, str], parse: Callable[[], Any]) -> Any:
+        if self.size <= 0:
+            return parse()
+        with self._lock:
+            found = self._data.get(key)
+            if found is not None:
+                self._data.move_to_end(key)
+                self.hits += 1
+                return found
+        value = parse()
+        with self._lock:
+            self.misses += 1
+            self._data[key] = value
+            self._data.move_to_end(key)
+            while len(self._data) > self.size:
+                self._data.popitem(last=False)
+        return value
+
+    def clear(self) -> None:
+        with self._lock:
+            self._data.clear()
+            self.hits = self.misses = 0
+
+
+def _cache_size() -> int:
+    raw = os.environ.get("MANDAT_PARSE_CACHE", "").strip()
+    return int(raw) if raw.isdigit() else 2048
+
+
+PARSE_CACHE = ParseCache(_cache_size())
 
 
 class CaseError(ValueError):
@@ -282,9 +334,9 @@ def load_case_from_manifest(manifest: dict[str, Any], read: Callable[[dict[str, 
         inputs.append({"doc_id": doc_id, "kind": kind, "sha256": sha})
         try:
             if kind == "emchd_xml":
-                poas.append(parse_poa(raw, doc_id=doc_id))
+                poas.append(PARSE_CACHE.get((kind, doc_id, sha), partial(parse_poa, raw, doc_id=doc_id)))
             elif kind == "egrul_json":
-                parsed = parse_egrul(raw, doc_id=doc_id)
+                parsed = PARSE_CACHE.get((kind, doc_id, sha), partial(parse_egrul, raw, doc_id=doc_id))
                 if egrul is not None and egrul.sha256 != parsed.sha256:
                     duplicates.append((doc_id, kind))
                 egrul = egrul or parsed
