@@ -162,7 +162,7 @@ Ed25519 в Мандате подписывает внутренние удост
 | `MANDAT_JOURNAL_ANCHOR_TSA_REVOCATION_TIMEOUT` / `..._CACHE` | таймаут запроса OCSP/CRL, с (5, не больше 60); срок кеша ответа, с (3600, но не дольше nextUpdate) |
 | `MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK` | адрес read-back получателя с `{sha256}`, например `https://anchor.example/anchors/{sha256}`. Контракт ниже |
 | `MANDAT_JOURNAL_ANCHOR_WEBHOOK_READBACK_KEY` | открытый ключ получателя `whpk_`: ответ read-back принимается только с его подписью `v1a`, общим секретом подделать нельзя |
-| `MANDAT_JOURNAL_ANCHOR_POLICY` | `warn` (по умолчанию) или `fail`: в pilot/prod без якоря `mandat serve` не стартует |
+| `MANDAT_JOURNAL_ANCHOR_POLICY` | `warn` (по умолчанию в коде) или `fail`: в pilot/prod без якоря `mandat serve` не стартует. Пилотный compose (`deploy/compose.pilot.yml`) ставит `fail` |
 
 Закрытые сегменты перечислены в манифесте `<журнал>.segments` (SHA-256 и диапазон записей каждого). Квитанции лежат рядом с журналом в `<журнал>.anchors`; `mandat journal-verify` с заданным `MANDAT_JOURNAL_ANCHOR` требует квитанцию на каждый закрытый сегмент и перепроверяет её у приёмника. Публичный Rekor раскрывает хеши и время записи, но не содержимое журнала.
 

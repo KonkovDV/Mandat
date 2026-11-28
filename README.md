@@ -124,7 +124,7 @@ curl http://127.0.0.1:8000/health
 
 Без `MANDAT_ENV` compose не стартует. Для `pilot` и `prod` нужны ещё `MANDAT_JOURNAL_KEY`, `MANDAT_PII_KEY` и `MANDAT_STORE_KEY`: у каждого своё значение длиной от 32 байт ([ключи](docs/KEYS.md)).
 
-Пилотный оверлей кладёт `/app/var` на постоянный том, ставит `MANDAT_ENV=pilot` и проверяет готовность по `/readyz`:
+Пилотный оверлей кладёт `/app/var` на постоянный том, ставит `MANDAT_ENV=pilot`, проверяет готовность по `/readyz` и без внешнего якоря журнала не стартует: приёмник задаёт `MANDAT_JOURNAL_ANCHOR` ([внешний якорь](docs/KEYS.md#внешний-якорь-журнала)):
 
 ```bash
 docker compose -f docker-compose.yml -f deploy/compose.pilot.yml up --build --wait

@@ -98,6 +98,8 @@ def test_pilot_compose_overlay(root):
     assert "MANDAT_API_JOURNAL: /app/var/journal.jsonl" in text
     assert "mandat-var:/app/var" in text
     assert "/readyz" in text
+    # без внешнего якоря журнала оверлей не стартует: политика fail задана по умолчанию
+    assert "MANDAT_JOURNAL_ANCHOR_POLICY: ${MANDAT_JOURNAL_ANCHOR_POLICY:-fail}" in text
     # /app/var не tmpfs: в списке tmpfs оверлея только /tmp
     tmpfs = re.search(r"tmpfs:.*?\n((?:\s+-.*\n)+)", text).group(1)
     assert "/app/var" not in tmpfs

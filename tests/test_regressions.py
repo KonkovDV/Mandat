@@ -739,7 +739,7 @@ def _forbidden_words(text: str) -> list[str]:
     return sorted(w for w in words if hashlib.sha256(w.encode()).hexdigest() in _FORBIDDEN_WORD_DIGESTS)
 
 
-def test_no_coauthor_trailers_or_local_paths_in_repository():
+def test_tracked_files_have_no_local_paths_or_stray_markers():
     hits = []
     for path in _repo_files():
         if path.name == Path(__file__).name:
