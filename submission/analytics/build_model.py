@@ -524,7 +524,7 @@ def bank_sheet(wb: Workbook, inp: Inputs, data: dict) -> Columns:
             kind="link",
         )
 
-    b.section("1. Высвобождение времени")
+    b.section("1. Ручная проверка: время и его стоимость")
     b.row(
         "events",
         "Кейсов смены или добавления подписанта в год",
@@ -543,7 +543,7 @@ def bank_sheet(wb: Workbook, inp: Inputs, data: dict) -> Columns:
     )
     b.row(
         "fte",
-        "Высвобождается ставок",
+        "Ручная проверка, ставок",
         "ставок",
         lambda s, c: f"={a('hours', c)}*1000/{a('hours_fte', c)}",
         NUM1,
@@ -567,7 +567,7 @@ def bank_sheet(wb: Workbook, inp: Inputs, data: dict) -> Columns:
     )
     b.row(
         "capacity",
-        "Стоимость высвобожденного времени (ёмкость)",
+        "Стоимость ручной проверки (ёмкость)",
         "млн ₽ в год",
         lambda s, c: f"={a('fte', c)}*{a('cost_fte', c)}",
         MLN,
@@ -825,7 +825,7 @@ def market_sheet(wb: Workbook, inp: Inputs, bank: Columns, data: dict) -> Column
             kind="link",
         )
     for key, label in [
-        ("capacity", "Стоимость высвобожденного времени ВТБ"),
+        ("capacity", "Стоимость ручной проверки в ВТБ"),
         ("loss_op", "Средняя операция без согласия"),
     ]:
         m.row(
@@ -1873,7 +1873,7 @@ def summary_sheet(wb: Workbook, blocks: list[Block], bank: Columns, market: Colu
     r = 5
     items = [
         ("Эффект для ВТБ", None),
-        ("fte_round", "Высвобождается ставок", "ставок", "bank", INT),
+        ("fte_round", "Ручная проверка, ставок", "ставок", "bank", INT),
         ("prevented_round", "Предотвращённый ущерб клиентов", "млн ₽ в год", "bank", INT),
         ("effect_capacity", "Прямой эффект банка: ёмкость", "млн ₽ в год", "bank", MLN),
         ("effect_cash", "Прямой эффект банка: деньги", "млн ₽ в год", "bank", MLN),
@@ -2342,7 +2342,7 @@ def cover_sheet(wb: Workbook, data: dict, checks: dict, summary: dict[str, int])
     r += 1
     header(ws, r, {"B": "Показатель", "C": data["scenarios"][0], "D": data["scenarios"][1], "E": data["scenarios"][2]})
     for key, label, fmt in [
-        ("fte_round", "Высвобождается ставок в ВТБ", INT),
+        ("fte_round", "Ручная проверка в ВТБ, ставок", INT),
         ("prevented_round", "Предотвращённый ущерб клиентов ВТБ, млн ₽ в год", INT),
         ("payback_cash", "Окупаемость для ВТБ (деньги), месяцев", MONTHS),
         ("sam", "SAM: банки уровней 1 и 2, одна операция, млн ₽ в год", MLN),
