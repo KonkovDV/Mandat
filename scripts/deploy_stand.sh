@@ -330,7 +330,7 @@ log "nginx и HTTPS для $DOMAIN"
 cat > /etc/nginx/conf.d/mandat-stand-limits.conf <<'NGINX'
 # Лимиты частоты по адресу клиента: API, действия консоли и тяжёлые действия (модель, прогон, шлюз).
 limit_req_zone $binary_remote_addr zone=mandat_api:10m rate=10r/s;
-limit_req_zone $binary_remote_addr zone=mandat_heavy:10m rate=6r/m;
+limit_req_zone $binary_remote_addr zone=mandat_heavy:10m rate=30r/m;
 # Файлы страницы: при первом открытии их два десятка, а жюри часто сидит за одним NAT.
 limit_req_zone $binary_remote_addr zone=mandat_static:10m rate=30r/s;
 limit_req_status 429;
@@ -374,7 +374,7 @@ server {
         proxy_pass http://127.0.0.1:$PORT;
     }
     location ~ ^/console/api/(eval|consult|gate)\$ {
-        limit_req zone=mandat_heavy burst=6 nodelay;
+        limit_req zone=mandat_heavy burst=20 nodelay;
         proxy_pass http://127.0.0.1:$PORT;
     }
     location /console/static/ {
