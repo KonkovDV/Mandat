@@ -6,11 +6,17 @@
 модель получает только обезличенные строки устава (``llm.case_charter_messages``), каждый её факт проходит шлюз
 цитаты и уверенности (``advisory.gate``), а отчёт с её находками сверяется с исходным — вердикт тот же.
 Сетевой вызов модели остаётся в ``advisory/llm.py``; этот модуль только держит клиента и передаёт ему запрос.
+
+Учёт модели (``advisory/economy.py``): принятый ответ на тот же обезличенный запрос берётся из кэша без вызова;
+пока открыт предохранитель или исчерпан бюджет дня, справка сразу говорит, что ответ дают правила. Исход вызова
+консультант записывает сам, потому что только он видит решение шлюза: ответ не JSON, ни одного принятого факта
+или ответ позже срока консоли — неудача предохранителя, ответ, принятый шлюзом целиком, — в кэш.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
 from dataclasses import dataclass
@@ -19,6 +25,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from mandat.advisory import llm
+from mandat.advisory.economy import Economy, ModelPaused
 from mandat.advisory.explainer import Fact, explain, facts_of, numbers_in
 from mandat.advisory.gate import as_advisory_findings, ground_candidates
 from mandat.domain.model import Case
@@ -31,6 +38,11 @@ QUESTION = "Почему такой вердикт и что сделать да
 # Одновременных запросов к модели со стенда: остальные получают «модель занята», а не очередь.
 MODEL_SLOTS = 2
 _slots = threading.BoundedSemaphore(MODEL_SLOTS)
+# Срок соединения с моделью. Консоль ждёт справку меньше (routes.MODEL_DEADLINE_SECONDS): ответ позже её срока
+# всё равно попадает в расход и в кэш, а зависший провайдер держит слот не дольше этого.
+CALL_TIMEOUT_SECONDS = 30.0
+# Исходы ответа, которые предохранитель считает неудачей: не JSON и ни одного факта, прошедшего шлюз.
+_FAILED = {"non_json", "ungrounded"}
 # Эффекты находок, которые объясняют вердикт: возражения и непроверенное.
 _EXPLAINING = {"refutes", "needs_review", "not_verified"}
 
@@ -41,9 +53,22 @@ class ModelState:
     model: str | None
     host: str | None
     note: str
+    # Модель подключена, но сейчас её не вызывают: ``budget`` — исчерпан бюджет дня, ``breaker`` — пауза после сбоев.
+    paused: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {"enabled": self.enabled, "model": self.model, "host": self.host, "note": self.note}
+        return {
+            "enabled": self.enabled,
+            "model": self.model,
+            "host": self.host,
+            "note": self.note,
+            "paused": self.paused,
+        }
+
+
+def _economy(client: Any) -> Economy | None:
+    meter = getattr(client, "economy", None)
+    return meter if isinstance(meter, Economy) else None
 
 
 def model_client() -> tuple[ModelState, Any]:
@@ -55,6 +80,10 @@ def model_client() -> tuple[ModelState, Any]:
     except ValueError as exc:
         return ModelState(False, None, None, f"адрес модели не принят: {exc}"), None
     host = (urlparse(client.base_url).hostname or "").lower() or None
+    meter = _economy(client)
+    pause = meter.paused() if meter is not None else None
+    if pause is not None:
+        return ModelState(True, str(client.model), host, pause.note, pause.reason), client
     return ModelState(True, str(client.model), host, "модель подключена через OpenAI-совместимый API"), client
 
 
@@ -110,36 +139,38 @@ def deterministic(case: Case | None, report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def model_advice(case: Case, client: Any) -> dict[str, Any]:
-    """Справка модели по уставу кейса через шлюз; вердикт сверяется с отчётом без справки."""
+def _redacted(case: Case) -> tuple[Any, str] | dict[str, Any]:
+    """Обезличенный запрос по уставу кейса и текст, который получит модель, — или справка, почему запроса нет."""
     if case.charter is None:
         return {"label": ADVICE_LABEL, "error": "в кейсе нет устава: модели нечего читать"}
-    if not _slots.acquire(blocking=False):
-        return {
-            "label": ADVICE_LABEL,
-            "error": "модель отвечает на другой запрос: повторите через минуту",
-            "busy": True,
-        }
-    started = time.perf_counter()
     try:
         messages = llm.case_charter_messages(case)
-        sent = messages.messages[-1]["content"]
-        try:
-            raw = client.complete(messages)
-        except Exception as exc:  # noqa: BLE001 — сеть, тайм-аут, ответ не по формату: справки нет, вердикт тот же
-            return {
-                "label": ADVICE_LABEL,
-                "sent": sent,
-                "error": f"модель не ответила: {type(exc).__name__}",
-                "seconds": round(time.perf_counter() - started, 2),
-            }
-    finally:
-        _slots.release()
+    except llm.MixedAlphabet:
+        error = "в уставе есть слова из кириллицы и латиницы вперемешку: такой текст в модель не уходит"
+        return {"label": ADVICE_LABEL, "error": error}
+    return messages, messages.messages[-1]["content"]
+
+
+def _judge(case: Case, raw: str, sent: str) -> tuple[dict[str, Any], str]:
+    """Ответ модели через шлюз и сверка вердикта. Второе значение — исход для учёта.
+
+    ``accepted`` — шлюз принял ответ целиком (пустой список фактов тоже ответ: ограничений нет), ``partial`` — часть
+    фактов отброшена, ``ungrounded`` — ни один предложенный факт не прошёл, ``non_json`` — ответ не по формату.
+    Цитата сверяется и с уставом, и с обезличенным текстом, который видела модель: в нём ФИО заменены метками.
+    """
+    assert case.charter is not None
     candidates = llm.parse_facts(raw)
-    gate = ground_candidates(candidates, case.charter)
+    seen = sent.replace(llm.DATA_BEGIN, "").replace(llm.DATA_END, "")
+    gate = ground_candidates(candidates, case.charter, seen=seen)
+    if llm.read_facts(raw) is None:
+        outcome = "non_json"
+    elif candidates and not gate.accepted:
+        outcome = "ungrounded"
+    else:
+        outcome = "partial" if gate.dropped else "accepted"
     before = verify_case(case)
     after = verify_case(case, advisory=as_advisory_findings(gate.accepted))
-    return {
+    advice = {
         "label": ADVICE_LABEL,
         "sent": sent,
         "proposed": len(candidates),
@@ -148,8 +179,150 @@ def model_advice(case: Case, client: Any) -> dict[str, Any]:
         "verdict_before": VERDICT_LABEL_RU[before.verdict],
         "verdict_after": VERDICT_LABEL_RU[after.verdict],
         "verdict_unchanged": before.verdict == after.verdict,
-        "seconds": round(time.perf_counter() - started, 2),
     }
+    return advice, outcome
+
+
+def _from_cache(case: Case, meter: Economy, key: str, sent: str) -> dict[str, Any] | None:
+    raw = meter.cached(key)
+    if raw is None:
+        return None
+    advice, _ = _judge(case, raw, sent)
+    return {**advice, "cached": True, "seconds": 0.0}
+
+
+def cached_advice(case: Case, client: Any) -> dict[str, Any] | None:
+    """Справка из кэша принятых ответов без вызова модели, слота и лимита — или ``None``, если запроса там нет."""
+    meter = _economy(client)
+    request = _redacted(case)
+    if meter is None or isinstance(request, dict):
+        return None
+    messages, sent = request
+    return _from_cache(case, meter, client.request_key(messages), sent)
+
+
+def _settle(meter: Economy, key: str, raw: str, outcome: str, *, late: bool) -> None:
+    """Исход вызова в учёт: неудача или удача предохранителя; ответ, принятый шлюзом целиком, — в кэш."""
+    if outcome in _FAILED or late:
+        meter.failed(outcome if outcome in _FAILED else "timeout")
+    else:
+        meter.succeeded()
+    if outcome == "accepted":
+        meter.remember(key, raw)
+
+
+def model_advice(case: Case, client: Any, deadline: float | None = None) -> dict[str, Any]:
+    """Справка модели по уставу кейса через шлюз; вердикт сверяется с отчётом без справки.
+
+    Принятый ответ на тот же запрос берётся из кэша. Пока открыт предохранитель или исчерпан бюджет дня, вызова нет
+    и справка говорит, что ответ дают правила. Ответ позже ``deadline`` секунд — неудача предохранителя, но
+    принятый шлюзом попадает в кэш: за него уже заплачено.
+    """
+    request = _redacted(case)
+    if isinstance(request, dict):
+        return request
+    messages, sent = request
+    meter = _economy(client)
+    key = client.request_key(messages) if meter is not None else ""
+    hit = _from_cache(case, meter, key, sent) if meter is not None else None
+    if hit is not None:
+        return hit
+    if not _slots.acquire(blocking=False):
+        return {
+            "label": ADVICE_LABEL,
+            "error": "модель отвечает на другой запрос: повторите через минуту",
+            "busy": True,
+        }
+    started = time.perf_counter()
+    try:
+        raw = client.complete(messages, timeout=CALL_TIMEOUT_SECONDS)
+    except ModelPaused as exc:
+        return {"label": ADVICE_LABEL, "error": exc.note, "paused": exc.reason}
+    except Exception as exc:  # noqa: BLE001 — сеть, тайм-аут, ответ не по формату: справки нет, вердикт тот же
+        return {
+            "label": ADVICE_LABEL,
+            "sent": sent,
+            "error": f"модель не ответила: {type(exc).__name__}",
+            "seconds": round(time.perf_counter() - started, 2),
+        }
+    finally:
+        _slots.release()
+    seconds = time.perf_counter() - started
+    advice, outcome = _judge(case, raw, sent)
+    if meter is not None:
+        _settle(meter, key, raw, outcome, late=deadline is not None and seconds > deadline)
+    return {**advice, "seconds": round(seconds, 2)}
+
+
+def _int(value: int) -> str:
+    return f"{value:,}".replace(",", " ")
+
+
+def _usd(value: float) -> str:
+    """Сумма в долларах по-русски: «0 $», «0,00017 $», «0,9996 $», «1,5 $». Меньше доллара — до двух значащих
+    цифр после нулей, но не меньше четырёх знаков: остаток бюджета не округляется до целого доллара."""
+    if value <= 0:
+        return "0 $"
+    places = 2 if value >= 1 else min(8, max(4, 2 - math.floor(math.log10(value))))
+    return f"{value:.{places}f}".rstrip("0").rstrip(".").replace(".", ",") + " $"
+
+
+def usage_rows(usage: dict[str, Any]) -> list[dict[str, str]]:
+    """Строки блока «Расход модели»: вызовы, кэш, расход и остаток дня, токены, предохранитель."""
+    today, breaker = usage["today"], usage["breaker"]
+    calls = _int(usage["calls"])
+    if usage["failures"]:
+        calls += f", неудачных {_int(usage['failures'])}"
+    left = f"{_usd(today['left_usd'])} из {_usd(today['cap_usd'])}"
+    if today["exhausted"]:
+        left += ": до 00:00 по Москве ответ дают только правила"
+    state = breaker["state"]
+    if state == "open":
+        guard = f"пауза после сбоев подряд, следующая попытка через {breaker['retry_in_seconds']} с"
+    elif state == "half_open":
+        guard = "пробный вызов: модель проверяется после паузы"
+    elif breaker["failures_in_row"]:
+        guard = f"в норме, неудач подряд: {breaker['failures_in_row']} из {breaker['threshold']}"
+    else:
+        guard = "в норме"
+    rows = [
+        ("Вызовы модели", calls),
+        ("Ответы из кэша", _int(usage["cache_hits"])),
+        ("Расход сегодня", _usd(today["cost_usd"])),
+        ("Осталось на день", left),
+        ("Токены: запрос и ответ", f"{_int(usage['prompt_tokens'])} и {_int(usage['completion_tokens'])}"),
+        ("Предохранитель", guard),
+    ]
+    return [{"label": label, "value": value} for label, value in rows]
+
+
+def usage_view() -> dict[str, Any]:
+    """Блок «Расход модели» консоли: строки «что — сколько», пояснение и сами счётчики. Без ключа, запросов и ПДн."""
+    state, _ = model_client()
+    usage = llm.shared_economy().snapshot()
+    note = (
+        "Счётчики — с запуска службы, общие для всех сессий стенда; стоимость — из ответа провайдера, день — по "
+        "Москве. Ключ, запросы и ответы модели здесь не показываются."
+    )
+    if not state.enabled:
+        note = "Модель не подключена: консультант отвечает по фактам отчёта и разбору устава, расхода нет."
+    elif state.paused:
+        note = f"{state.note[:1].upper()}{state.note[1:]}. {note}"
+    return {"model": state.as_dict(), "rows": usage_rows(usage), "note": note, "usage": usage}
+
+
+def usage_health() -> dict[str, Any]:
+    """Расход модели для /health стенда. Сбой подсчёта не роняет проверку живости: вместо счётчиков — пометка."""
+    try:
+        state, _ = model_client()
+        return {
+            "enabled": state.enabled,
+            "model": state.model,
+            "paused": state.paused,
+            **llm.shared_economy().snapshot(),
+        }
+    except Exception:  # noqa: BLE001 — /health отвечает сторожу службы; счётчики модели ему не обязательны
+        return {"error": "счётчики модели недоступны"}
 
 
 GATE_CASE = "09_charter_limit"

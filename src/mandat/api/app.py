@@ -572,7 +572,7 @@ def create_app(
 
     @app.get("/health")
     def health() -> dict[str, Any]:
-        return {
+        body: dict[str, Any] = {
             "status": "ok",
             "engine": ENGINE,
             "auth_configured": directory.configured,
@@ -581,6 +581,12 @@ def create_app(
             "commit": commit,
             "console": with_console,
         }
+        if with_console:
+            # Расход модели консультанта стенда: счётчики без ключа, запросов и ПДн (console/advisor.py).
+            from mandat.console.advisor import usage_health
+
+            body["model"] = usage_health()
+        return body
 
     @app.get("/readyz")
     def readyz() -> JSONResponse:

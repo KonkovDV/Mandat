@@ -11,6 +11,7 @@ mandat journal-proof var/demo/journal.jsonl --seq 3
 mandat formats                   # поддерживаемые форматы МЧД
 mandat examples                  # пересобрать examples/ из генератора
 mandat serve --port 8000         # нужен extra [api]
+mandat backup --data-dir /var/lib/mandat-stand --out /var/backups/mandat-stand   # копия без остановки службы
 """
 
 from __future__ import annotations
@@ -659,6 +660,21 @@ def cmd_restore_check(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_backup(args: argparse.Namespace) -> int:
+    """Копия каталога данных без остановки службы и ротация (services/backup); код 1 — копия есть, но с замечаниями."""
+    from mandat.services.backup import backup
+
+    raw = args.data_dir or os.environ.get("MANDAT_STAND_DIR", "").strip()
+    if not raw:
+        print("ошибка: укажите --data-dir или MANDAT_STAND_DIR", file=sys.stderr)
+        return 2
+    result = backup(Path(raw), Path(args.out), keep=args.keep, exclude=tuple(args.exclude or ()))
+    print(json.dumps(result.as_dict(), ensure_ascii=False, indent=2))
+    for problem in result.problems:
+        print(f"замечание: {problem}", file=sys.stderr)
+    return 0 if result.ok else 1
+
+
 def cmd_incident_report(args: argparse.Namespace) -> int:
     """Сроки 24 и 72 часа от выявления и факты из журнала для расследования (services/incident)."""
     from mandat.services.incident import incident_report, parse_moment
@@ -868,6 +884,15 @@ def build_parser() -> argparse.ArgumentParser:
     rc.add_argument("--repair", action="store_true", help="повторить удаления и отзывы, записать это в журнал")
     rc.add_argument("--key", default=None, help="ключ подписи списков статусов для --repair (иначе MANDAT_SIGNER)")
     rc.set_defaults(func=cmd_restore_check)
+
+    bk = sub.add_parser("backup", help="копия каталога данных без остановки службы: журнал, базы, файлы; ротация")
+    bk.add_argument("--data-dir", default=None, help="каталог данных; по умолчанию MANDAT_STAND_DIR")
+    bk.add_argument("--out", required=True, help="каталог копий, вне каталога данных")
+    bk.add_argument("--keep", type=int, default=14, help="сколько последних копий оставить (14)")
+    bk.add_argument(
+        "--exclude", action="append", help="шаблон пути от каталога данных или имени, который не копируется"
+    )
+    bk.set_defaults(func=cmd_backup)
 
     ir = sub.add_parser("incident-report", help="инцидент с ПДн: сроки 24 и 72 ч от выявления и факты журнала")
     ir.add_argument("--journal", required=True)

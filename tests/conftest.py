@@ -56,6 +56,14 @@ def _isolated_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _fresh_model_economy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Учёт модели общий на процесс: каждый тест начинает с закрытого предохранителя, пустого кэша и бюджета."""
+    from mandat.advisory import economy, llm
+
+    monkeypatch.setattr(llm, "_SHARED", economy.Economy())
+
+
 # --- перебор двухзвенных цепочек для проверки свойств передоверия --------------------------------
 
 CODE_UNIVERSE = ("SYN-BANK-PAY-SIGN", "SYN-BANK-STATEMENT", "SYN-BANK-USER-ADMIN")
