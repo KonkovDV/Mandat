@@ -59,10 +59,9 @@ from mandat.services.env_policy import PROFILES, ProfileNotAllowed, protected, r
 from mandat.services.monitoring import MOSCOW, NOTICE_DAYS, evaluate, parse_as_of, parse_events
 from mandat.services.next_steps import check_sla
 from mandat.services.verify import verify_case
-from mandat.strictjson import MAX_JSON_DEPTH, strict_loads
+from mandat.strictjson import MAX_BODY, MAX_JSON_DEPTH, strict_loads
 from mandat.strictjson import depth_exceeds as json_depth_exceeds
 
-MAX_BODY = 8 * 1024 * 1024
 OPEN_PATHS = {"/health", "/readyz"}
 # Глубина вложенности JSON — MAX_JSON_DEPTH в strictjson. Глубокий массив в 2 КБ вызывал RecursionError (500).
 # OWASP Secure Headers Project и ASVS 5.0 V3.4: ответы с ПДн не кэшируются, не встраиваются во фреймы,
