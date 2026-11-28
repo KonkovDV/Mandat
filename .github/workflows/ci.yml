@@ -52,6 +52,7 @@ jobs:
           print(f"tests: {s.get('tests')}, failures: {s.get('failures')}, skipped: {s.get('skipped')}, coverage: {cov:.1f}%")
           PY
       - run: python scripts/lint_claims.py
+      - run: python scripts/sync_evidence_marks.py --check
       - run: python scripts/build_evidence.py --verify-source
       - run: python scripts/check_links.py
       - name: workflow lint (actionlint, release pinned by SHA-256)

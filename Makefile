@@ -17,6 +17,7 @@ test:
 
 claims:
 	$(PY) scripts/lint_claims.py
+	$(PY) scripts/sync_evidence_marks.py --check
 	$(PY) scripts/check_links.py
 
 rules-doc:

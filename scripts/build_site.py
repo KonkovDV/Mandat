@@ -672,9 +672,13 @@ def _code(text: str) -> str:
     return "".join(parts)
 
 
+EV_MARK = re.compile(r"<!--/?ev(?::.*?)?-->")
+
+
 def _table(markdown: str, heading: str) -> list[list[str]]:
     """Строки первой таблицы после заголовка; ячейки без внешних пробелов, шапка и разделитель отброшены."""
-    lines = markdown.splitlines()
+    # Метки чисел из evidence.json (scripts/sync_evidence_marks.py) — HTML-комментарии: в ячейку идёт только число.
+    lines = EV_MARK.sub("", markdown).splitlines()
     try:
         start = lines.index(heading)
     except ValueError as exc:

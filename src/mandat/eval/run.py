@@ -67,6 +67,7 @@ def run_corpus(n_per_defect: int = 3, *, seed: int = 7, profile: str = "demo") -
         "agreement": correct / total,
         "agreement_wilson95": wilson_interval(correct, total),
         "false_confirmed": false_confirmed,
+        "negative_cases": len(negatives),
         "false_confirmed_rate_upper95": clopper_pearson(false_confirmed, len(negatives))[1],
         "negative_defect_types": len(negative_types),
         "false_confirmed_defect_types": false_types,
